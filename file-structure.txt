@@ -1,0 +1,242 @@
+PTW System — File Structure
+===========================
+
+/mnt/hdd/software/projects/qt/ptw/
+│
+├── PROJECT.md                      # Full project documentation (architecture, workflows, API)
+├── file-structure.txt              # This file
+├── PTWData.py                      # [STALE / DUPLICATE] Old root-level copy of PTWData — not used
+│
+├── .vscode/
+│   ├── launch.json                 # VS Code debug launch configurations
+│   └── settings.json              # VS Code workspace settings
+│
+├── client/                         # PyQt6 desktop application (runs on user machines)
+│   │
+│   ├── main.py                     # Entry point — creates QApplication, shows Login window
+│   ├── Login.py                    # Login screen UI — auth, password reset flow
+│   ├── MainWindow.py               # Post-login router — loads role-specific main window
+│   ├── GlobalData.py               # Client-side in-memory data cache (users, PTWs, isolations, risks)
+│   ├── clientRequests.py           # HTTP API client — wraps all server calls, returns (err, data)
+│   ├── PTWData.py                  # Client-side mirror of data model classes (PTWData, Isolation, etc.)
+│   ├── User.py                     # User model (UserRoles enum, SecuredUser, User classes)
+│   ├── Isolation.py                # Isolation model (client-side)
+│   │
+│   │   ── MAIN UI WIDGETS ──
+│   ├── WidgetPTW.py                # Full PTW form widget — create, view, and edit a permit
+│   ├── TablePTWs.py                # PTW list view with filtering
+│   ├── TableUsers.py               # Admin user management table
+│   ├── TableRisks.py               # Risk assessment table (list, open, manage)
+│   ├── TableIsolation.py           # All known isolation points table
+│   ├── TableActiveIsolations.py    # Currently active (running) isolation records
+│   ├── TableAttachments.py         # Per-PTW file attachments management table
+│   │
+│   │   ── DIALOGS ──
+│   ├── DialogUser.py               # Create / edit user dialog
+│   ├── DialogIsolation.py          # Create / edit isolation point dialog
+│   ├── DialogRisk.py               # Risk item creation/edit dialog
+│   ├── DialogSelectIsolations.py   # Dialog to select which isolations to keep when requesting hold
+│   ├── DialogSettings.py           # App settings dialog (server URL, credentials, etc.)
+│   │
+│   │   ── REPORTING ──
+│   ├── ReportGenerator.py          # Generates printable PDF permit report for a PTW
+│   │
+│   │   ── ASSETS ──
+│   ├── burullus-logo.png           # Burullus company logo
+│   ├── rashpetco-logo.png          # Rashpetco company logo
+│   ├── sh-logo.png                 # Shell logo (color)
+│   ├── sh-logo-bw.png              # Shell logo (black and white)
+│   ├── icon-settings-48.png        # Settings icon (48px)
+│   ├── qr-summery-*.png            # Generated QR code images for PTW summaries
+│   └── fonts/
+│       └── Satisfy/
+│           ├── Satisfy-Regular.ttf # Handwriting-style font (used in reports)
+│           └── LICENSE.txt
+│
+│   NOTE: Several role-specific main windows exist only as compiled .pyc files in
+│         __pycache__/ — their .py source files are not present in client/:
+│           AdminMainWindow, UserMainWindow, CoordinatorMainWindow,
+│           IssuingMainWindow, SafetyMainWindow, PDHMainWindow,
+│           PGMMainWindow, SODMainWindow, DFGMMainWindow, DFGMMainWindow
+│         These implement the role-gated views (approval buttons, run/hold/close controls, etc.)
+│
+│
+└── server/                         # Flask REST API server (runs on the server machine)
+    │
+    ├── app.py                      # Flask application — all API route handlers (single file)
+    │                               #   Routes: /login, /reset-password*, /users, /ptws,
+    │                               #           /ptws/approvals, /ptws/run*, /ptws/hold*,
+    │                               #           /ptws/close*, /ptws/attachments*, /isolations,
+    │                               #           /risks, /miwi, /miwis
+    │
+    ├── PTWData.py                  # Core data model classes:
+    │                               #   objToDict / dictToObj (serialization helpers)
+    │                               #   RiskItem, RiskAssessment
+    │                               #   Attachment
+    │                               #   Isolation (with Types enum: Mechanical, Electrical,
+    │                               #              Self, Protective System, Other)
+    │                               #   ActiveIsolation (extends Isolation):
+    │                               #     linked_ptws, primary_ptw, latest_ptw
+    │                               #     linkPTW(), unlinkPTW(), isReallyActive()
+    │                               #   PTWData class:
+    │                               #     ALL_TOOLS, ALL_HAZARDS, ALL_CONTROLS (constant lists)
+    │                               #     ALL_ISOLATIONS (dict of 100+ pre-configured isolation tags)
+    │                               #     ApprovalStatus enum (UNDER_REVIEW, APPROVED, RETURNED, REJECTED)
+    │                               #     ApprovalAction enum
+    │                               #     Approval (action, username, timestamp, comment)
+    │                               #     RunningStatus enum:
+    │                               #       NOT_RUNNING, WAITING_RUN_CONFIRM, RUNNING,
+    │                               #       WAITING_CLS_CONFIRM, CLOSED,
+    │                               #       WAITING_HLD_CONFIRM, HELD
+    │
+    ├── User.py                     # User model:
+    │                               #   UserRoles enum (User, Coordinator, Issuing, Safety,
+    │                               #                   PDH, PGM, SOD, DFGM, Isolator, Admin)
+    │                               #   UserDepartments enum (Turbo, Mech, Elec, IT, Prod, Safety)
+    │                               #   SecuredUser class (no password field — safe for API responses)
+    │                               #   User class (extends SecuredUser, adds password)
+    │
+    ├── GlobalData.py               # Server-side in-memory state cache:
+    │                               #   allUsers   : dict[username -> SecuredUser]
+    │                               #   allPTWs    : list[PTWData]
+    │                               #   activeIsolations : dict[tag -> ActiveIsolation]
+    │                               #   allRisks   : list[RiskAssessment]
+    │                               #   refresh()  : re-loads all data from DB
+    │
+    ├── ptwDb.py                    # Database operations for the ptws table:
+    │                               #   addPTWFromDict, getAllPTWs, deletePTW
+    │                               #   updatePTWApprovals
+    │                               #   requestToRunPTW, runAcceptPTW, runRejectPTW
+    │                               #   requestToHldPTW, hldAcceptPTW, hldRejectPTW
+    │                               #   requestToClsPTW, clsAcceptPTW, clsRejectPTW
+    │
+    ├── usersDb.py                  # Database operations for the users table:
+    │                               #   getAllUsers, getAllSecuredUsers, getSecuredUser
+    │                               #   getAllUsernames, addUserFromDict
+    │                               #   updateUserFromDict, updateUserPassword, deleteUser
+    │
+    ├── IsolationDb.py              # Database operations for the active_isolations table:
+    │                               #   updateIsolation (upsert), getIsolation
+    │                               #   getAllIsolations (optionally filtered by ptwId)
+    │                               #   deleteIsolation
+    │
+    ├── risksDb.py                  # Database operations for the risks table:
+    │                               #   getAllRiskAssessments
+    │                               #   addRiskAssessmentFromDict
+    │                               #   updateRiskAssessmentFromDict
+    │                               #   deleteRiskAssessment
+    │
+    ├── commonDb.py                 # Shared DB helpers:
+    │                               #   addRecordFromDict  — generic INSERT from dict
+    │                               #   updateRecordFromDict — generic UPDATE from dict
+    │                               #   deleteRecord       — generic DELETE by key
+    │
+    ├── miwi/                       # Method of Isolation Work Instructions (PDF documents)
+    │   ├── *.pdf                   # Various MIWI PDF documents (ADC, DPCM, MISRA, etc.)
+    │   └── ...                     # Also contains draft/copy files without extensions
+    │
+    ├── ptw-31-attachments/         # Attachment files for PTW #31
+    │   ├── DPCM_annotated
+    │   ├── MISRA_C-2012_7.3
+    │   └── Power Tool Checklist
+    │
+    ├── ptw-37-attachments/         # Attachment files for PTW #37
+    │   └── Power Tool Checklist
+    │
+    ├── ptw-41-attachments/         # Attachment files for PTW #41
+    │   └── Confined Space Medical Certificates
+    │
+    ├── ptw-42-attachments/         # Attachment files for PTW #42
+    │   └── Confined Space Medical Certificates
+    │
+    ├── ptw-43-attachments/         # Attachment files for PTW #43
+    │   ├── Confined Space Medical Certificates
+    │   ├── DPCM_annotated
+    │   ├── MISRA_C-2012_7.3
+    │   └── Power Tool Checklist
+    │
+    ├── ptw-44-attachments/         # Attachment files for PTW #44
+    │   ├── Confined Space Medical Certificates
+    │   ├── DPCM_annotated
+    │   ├── MISRA_C-2012_7.3
+    │   └── Power Tool Checklist
+    │
+    ├── ptw-46-attachments/         # Attachment files for PTW #46
+    │   └── Working at Height Medical Certificates
+    │
+    ├── ptw-48-attachments/         # Attachment files for PTW #48
+    │   └── Working at Height Medical Certificates
+    │
+    ├── ptw-49-attachments/         # Attachment files for PTW #49
+    │   └── Working at Height Medical Certificates
+    │
+    ├── ptw-50-attachments/         # Attachment files for PTW #50
+    │   └── Working at Height Medical Certificates
+    │
+    └── ptw-51-attachments/         # Attachment files for PTW #51
+        └── Working at Height Medical Certificates
+
+
+===========================================================
+DATABASE (PostgreSQL — ptw_database @ localhost)
+===========================================================
+
+Tables:
+  users               — user accounts (username PK, password, name, role, department, email, ext)
+  ptws                — permit records (id SERIAL PK, all PTW fields, JSONB[] for approvals/isolations)
+  active_isolations   — currently active isolation locks (tag PK, linked_ptws TEXT[], primary_ptw, latest_ptw)
+  risks               — risk assessment line items (title + date composite, hazard, effect, ctrl, eval, etc.)
+
+
+===========================================================
+KEY DATA FLOWS
+===========================================================
+
+CREATE PTW:
+  Client WidgetPTW → POST /ptws → ptwDb.addPTWFromDict → INSERT ptws
+  → optional: POST /ptws/attachments (multipart upload)
+
+APPROVE PTW:
+  Role window (Coordinator/Safety/DFGM/etc.) → POST /ptws/approvals
+  → ptwDb.updatePTWApprovals → appends Approval to ptws.approvals[]
+  → approval_status updated based on all votes
+
+REQUEST RUN:
+  Performer → POST /ptws/run-request → ptwDb.requestToRunPTW
+  → running_status = WAITING_RUN_CONFIRM
+
+ACCEPT RUN (Issuing):
+  Issuing window → POST /ptws/run {response: true}
+  → ptwDb.runAcceptPTW → running_status = RUNNING
+  → for each isolation: ActiveIsolation.linkPTW() → isoDB.updateIsolation (upsert)
+
+REJECT RUN (Issuing):
+  Issuing window → POST /ptws/run {response: false}
+  → ptwDb.runRejectPTW → running_status = NOT_RUNNING
+
+REQUEST HOLD:
+  Performer → POST /ptws/hold-request {keep-tags: [...]}
+  → ptwDb.requestToHldPTW → running_status = WAITING_HLD_CONFIRM
+  → keep_isolations stored on PTW
+
+ACCEPT HOLD (Issuing):
+  Issuing window → POST /ptws/hold {response: true}
+  → ptwDb.hldAcceptPTW → running_status = HELD (approval_status stays APPROVED)
+  → isolations NOT in keep_isolations: ActiveIsolation.unlinkPTW()
+
+REJECT HOLD (Issuing):
+  Issuing window → POST /ptws/hold {response: false}
+  → ptwDb.hldRejectPTW → running_status = RUNNING (restored)
+
+REQUEST CLOSE:
+  Performer → POST /ptws/close-request
+  → ptwDb.requestToClsPTW → running_status = WAITING_CLS_CONFIRM
+
+ACCEPT CLOSE (Issuing):
+  Issuing window → POST /ptws/close {response: true}
+  → ptwDb.clsAcceptPTW → running_status = CLOSED
+  → all isolations: ActiveIsolation.unlinkPTW()
+
+REJECT CLOSE (Issuing):
+  Issuing window → POST /ptws/close {response: false}
+  → ptwDb.clsRejectPTW → running_status = RUNNING (restored)
