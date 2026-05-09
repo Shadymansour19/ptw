@@ -740,7 +740,7 @@ class ReportGenerator:
 
             logo1 = Image("./rashpetco-logo.png", LOGO_IMG_WIDTH, LOGO_IMG_WIDTH)
             logo2 = Image("./burullus-logo.png",  LOGO_IMG_WIDTH, LOGO_IMG_WIDTH)
-            label = Paragraph(f'RA for PTW# {ptwId} <br/>' + ptwTitle, styles['Title'])
+            label = Paragraph(f'RA for PTW# {ptwId} <br/>' + _html.escape(ptwTitle), styles['Title'])
 
             table = Table([[logo1, label, logo2]], colWidths=[1.2*LOGO_IMG_WIDTH, dataTableWidth - 2.4*LOGO_IMG_WIDTH, 1.2*LOGO_IMG_WIDTH])
             table.setStyle(TableStyle([
