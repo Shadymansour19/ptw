@@ -13,6 +13,40 @@ from TableIsolation import TableIsolation
 from functools import partial
 import qtawesome as qta
 
+class TabButton(QToolButton):
+    TAB_BTN_STYLE = """
+        QToolButton {
+            background: transparent;
+            border: none;
+            border-radius: 12px;
+            padding: 10px 20px;
+            color: #d0d0d0;
+        }
+
+        QToolButton:hover {
+            background: rgba(255,255,255,0.08);
+        }
+
+        QToolButton[selected="true"] {
+            background: rgba(107,206,107,0.18);
+            color: #6BCE6B;
+            font-weight: bold;
+        }
+    """
+    
+    def __init__(self, parent = None, text = '', icon = ''):
+        super().__init__(parent)
+        self.setText(text)
+        self.setFont(QFont("Helvetica", 12, QFont.Weight.Bold))
+        self.icon = qta.icon(icon) if icon else None
+        self.selection_icon = qta.icon(icon, color="#6BCE6B") if icon else None
+        self.setStyleSheet(TabButton.TAB_BTN_STYLE)
+        self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+        self.setIconSize(QSize(32, 32))
+
+    def setIcon(self, isSelected):
+        super().setIcon(self.selection_icon if isSelected and self.selection_icon else self.icon if self.icon else QIcon())
+
 class DialogPTW(QDialog):
     GRID_LYT_COLS = 3
     def __init__(self, parent, loggedUser, ptw: PTWData, referencePTW: PTWData, new: bool, readOnly: bool, lbl: str):
@@ -99,94 +133,31 @@ class DialogPTW(QDialog):
         # self.btnMiwiMos   = QPushButton(qta.icon("fa6.rectangle-list"), 'MIWI/MOS')
         # self.btnAttachments = QPushButton(qta.icon("fa6s.paperclip"), 'Attachs')
 
-        self.btnBasicInfo = QToolButton()
-        self.btnBasicInfo.setText("Basic Info")
-        self.btnBasicInfo.setIcon(qta.icon("mdi6.file-document-outline"))
+        self.btnBasicInfo = TabButton(self.stack, "Basic Info", "mdi6.file-document-outline")
+        self.btnTools     = TabButton(self.stack, "Tools", "fa6s.wrench")
+        self.btnHazards   = TabButton(self.stack, "Hazards", "mdi.alert-octagon-outline")
+        self.btnControls  = TabButton(self.stack, "Controls", "fa6s.shield-halved")
+        self.btnRisks     = TabButton(self.stack, "Risks", "fa5s.exclamation-triangle")
+        self.btnIsolation = TabButton(self.stack, "Isolation", "fa6s.unlock-keyhole")
+        self.btnMiwiMos   = TabButton(self.stack, "MIWI/MOS", "fa6.rectangle-list")
+        self.btnAttachments = TabButton(self.stack, "Attachments", "fa6s.paperclip")
 
-        self.btnTools     = QToolButton()
-        self.btnTools.setText("Tools")
-        self.btnTools.setIcon(qta.icon("fa6s.wrench"))
+        self.tabsBtnsMap: dict[QPushButton, QWidget] = {
+            self.btnBasicInfo:      self.tabBasicInfo,
+            self.btnTools:          self.tabTools,
+            self.btnHazards:        self.tabHazards,
+            self.btnControls:       self.tabControls,
+            self.btnRisks:          self.tabRisks,
+            self.btnIsolation:      self.tabIsolation,
+            self.btnMiwiMos:        self.tabMiwiMos,
+            self.btnAttachments:    self.tabAttachments
+        }
 
-        self.btnHazards   = QToolButton()
-        self.btnHazards.setText("Hazards")
-        self.btnHazards.setIcon(qta.icon("mdi.alert-octagon-outline"))
-
-        self.btnControls  = QToolButton()
-        self.btnControls.setText("Controls")
-        self.btnControls.setIcon(qta.icon("fa6s.shield-halved"))
-
-        self.btnRisks     = QToolButton()
-        self.btnRisks.setText("Risks")
-        self.btnRisks.setIcon(qta.icon("fa5s.exclamation-triangle"))
-
-        self.btnIsolation = QToolButton()
-        self.btnIsolation.setText("Isolation")
-        self.btnIsolation.setIcon(qta.icon("fa6s.unlock-keyhole"))
-
-        self.btnMiwiMos   = QToolButton()
-        self.btnMiwiMos.setText("MIWI/MOS")
-        self.btnMiwiMos.setIcon(qta.icon("fa6.rectangle-list"))
-
-        self.btnAttachments = QToolButton()
-        self.btnAttachments.setText("Attachments")
-        self.btnAttachments.setIcon(qta.icon("fa6s.paperclip"))
-
-        TAB_BTN_STYLE = """
-            QToolButton {
-                background: transparent;
-                border: none;
-                border-radius: 12px;
-                padding: 10px 20px;
-                color: #d0d0d0;
-            }
-
-            QToolButton:hover {
-                background: rgba(255,255,255,0.08);
-            }
-
-            QToolButton[selected="true"] {
-                background: rgba(76,175,80,0.18);
-                color: #4CAF50;
-                background: rgba(25,118,210,0.18);
-                color: #42A5F5;
-                font-weight: bold;
-            }
-            """
-        self.tabsBtns: list[QPushButton] = [self.btnBasicInfo, self.btnTools, self.btnHazards, self.btnControls, self.btnRisks, self.btnIsolation, self.btnMiwiMos, self.btnAttachments]
-
-        for btn in self.tabsBtns:
-            btn.setFont(QFont("Helvetica", 12, QFont.Weight.Bold))
-            btn.setStyleSheet(TAB_BTN_STYLE)
-            btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-            btn.setIconSize(QSize(32, 32))
-
-
-        self.btnBasicInfo.clicked.connect(lambda: self.stack.setCurrentWidget(self.tabBasicInfo))
-        self.btnTools.clicked.connect(lambda: self.stack.setCurrentWidget(self.tabTools))
-        self.btnHazards.clicked.connect(lambda: self.stack.setCurrentWidget(self.tabHazards))
-        self.btnControls.clicked.connect(lambda: self.stack.setCurrentWidget(self.tabControls))
-        self.btnRisks.clicked.connect(lambda: self.stack.setCurrentWidget(self.tabRisks))
-        self.btnIsolation.clicked.connect(lambda: self.stack.setCurrentWidget(self.tabIsolation))
-        self.btnMiwiMos.clicked.connect(lambda: self.stack.setCurrentWidget(self.tabMiwiMos))
-        self.btnAttachments.clicked.connect(lambda: self.stack.setCurrentWidget(self.tabAttachments))
-
-        self.stack.addWidget(self.tabBasicInfo)
-        self.stack.addWidget(self.tabTools)
-        self.stack.addWidget(self.tabHazards)
-        self.stack.addWidget(self.tabControls)
-        self.stack.addWidget(self.tabRisks)
-        self.stack.addWidget(self.tabIsolation)
-        self.stack.addWidget(self.tabMiwiMos)
-        self.stack.addWidget(self.tabAttachments)
-
-        lytTabs.addWidget(self.btnBasicInfo)
-        lytTabs.addWidget(self.btnTools)
-        lytTabs.addWidget(self.btnHazards)
-        lytTabs.addWidget(self.btnControls)
-        lytTabs.addWidget(self.btnRisks)
-        lytTabs.addWidget(self.btnIsolation)
-        lytTabs.addWidget(self.btnMiwiMos)
-        lytTabs.addWidget(self.btnAttachments)
+        for btn, tab in self.tabsBtnsMap.items():
+            btn.clicked.connect(partial(self.stack.setCurrentWidget, tab))
+            self.stack.addWidget(tab)
+            lytTabs.addWidget(btn)
+        
         # lytTabs.setSpacing(20)
 
         self.boxPTWId = QLineEdit()
@@ -442,12 +413,12 @@ class DialogPTW(QDialog):
     def stackTabChanged(self):
         tabIdx = self.stack.currentIndex()
 
-        for i, btn in enumerate(self.tabsBtns):
+        for i, btn in enumerate(self.tabsBtnsMap.keys()):
             # btn.setStyleSheet('QPushButton { background-color: transparent; border: none; }')
             btn.setProperty("selected", i == tabIdx)
-
             btn.style().unpolish(btn)
             btn.style().polish(btn)
+            btn.setIcon(isSelected=(i == tabIdx))
             btn.update()
         # self.tabsBtns[tabIdx].setStyleSheet('QPushButton { background-color: transparent; border: none; color: green; }')
 
