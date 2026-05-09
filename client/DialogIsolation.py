@@ -72,6 +72,7 @@ class DialogIsolation(QDialog):
         self.isolation = None
 
         lyt = QFormLayout()
+        lyt.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         self.setLayout(lyt)
 
         self.typeCombo = QComboBox()

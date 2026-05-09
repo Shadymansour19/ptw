@@ -73,11 +73,13 @@ class DialogPTW(QDialog):
         self.tabAttachments = QWidget(self.stack)
 
         lytBasicInfo = QFormLayout()
+        lytBasicInfo.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         lytTools = QGridLayout()
         lytHazards = QGridLayout()
         lytControls = QGridLayout()
         lytIsolation = QVBoxLayout()
         lytMiwiMos = QFormLayout()
+        lytMiwiMos.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         lytAttachments = QVBoxLayout()
 
         self.tabBasicInfo.setLayout(lytBasicInfo)
@@ -371,6 +373,7 @@ class DialogPTW(QDialog):
             self.setWindowTitle(title)
             self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowMaximizeButtonHint & ~Qt.WindowType.WindowMinimizeButtonHint)
             lyt = QFormLayout()
+            lyt.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
             self.setLayout(lyt)
             self.invalidList = invalidList
 

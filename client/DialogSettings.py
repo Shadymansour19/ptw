@@ -11,6 +11,7 @@ class DialogSettings(QDialog):
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowMaximizeButtonHint & ~Qt.WindowType.WindowMinimizeButtonHint)
 
         lyt = QFormLayout()
+        lyt.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         self.setLayout(lyt)
         self.loggedUser = loggedUser
 

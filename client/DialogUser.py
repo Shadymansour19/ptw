@@ -18,6 +18,7 @@ class DialogUser(QDialog):
         self.readonly = readonly
 
         lyt = QFormLayout()
+        lyt.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         self.setLayout(lyt)
 
         self.txtUsername = QLineEdit()

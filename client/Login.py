@@ -126,6 +126,7 @@ class ResetPasswordDialog(QDialog):
         self.setWindowTitle("Reset Password")
 
         lyt = QFormLayout()
+        lyt.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         self.setLayout(lyt)
 
 
@@ -252,6 +253,7 @@ class LoginWindow(QMainWindow):
         self.btns.rejected.connect(self.close)
 
         mainLayout = QFormLayout()
+        mainLayout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         container.setLayout(mainLayout)
 
         mainLayout.addRow("Username", self.boxUsername)

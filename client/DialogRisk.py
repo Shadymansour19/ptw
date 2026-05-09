@@ -17,6 +17,7 @@ class DialogRiskAssessment(QDialog):
             self.risk = risk
 
             lyt = QFormLayout(self)
+            lyt.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
             self.setLayout(lyt)
 
             self.txtHazard = QTextEdit(self)
