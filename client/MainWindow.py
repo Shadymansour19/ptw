@@ -26,7 +26,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.loggedUser = loggedUser
         self.setWindowTitle("PTW (Permit To Work)")
-        self.setMinimumSize(1200, 1000)
+        self.setMinimumSize(1200, 900)
 
         frame = self.frameGeometry()
         frame.moveCenter(self.screen().availableGeometry().center())
@@ -77,7 +77,7 @@ class MainWindow(QMainWindow):
         self.tabClosedPTWs = TablePTWs(self.stack, self.loggedUser, "Closed PTWs")
         self.tabAllUsers = TableUsers(self.stack, self.loggedUser, "All Users")
         self.tabRisks = TableRisks(self.stack, self.loggedUser, "All Risks", readonly=False, selectable=False)
-        self.tabActiveIsolations = TableActiveIsolations(self.stack, self.loggedUser, "Active Isolations")
+        self.tabIsolations = TableActiveIsolations(self.stack, self.loggedUser, "Isolations")
 
         lytWelcome = QVBoxLayout()
         self.lytWelcomeBtns = QGridLayout()
@@ -91,8 +91,11 @@ class MainWindow(QMainWindow):
         self.btnWelcomeName = QPushButton(self.loggedUser.getRole() + ' ' + self.loggedUser.getName().upper() + '!')
         self.btnWelcomeName.setStyleSheet('QPushButton { background-color: transparent; border: none; color: green; } QPushButton:hover { color: lightgreen; } ')
         self.btnWelcomeName.setFont(QFont("Helvetica", 40, QFont.Weight.Bold, italic=True))
+        self.btnWelcomeName.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btnWelcomeName.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         self.lytWelcomeBtns.setSpacing(10)
         lytWelcome.addWidget(self.btnWelcomeName)
+        lytWelcome.setAlignment(self.btnWelcomeName, Qt.AlignmentFlag.AlignCenter)
         lytWelcome.addStretch()
         lytWelcome.addLayout(self.lytWelcomeBtns)
         lytWelcome.addStretch()
@@ -112,7 +115,7 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.tabClosedPTWs)
         self.stack.addWidget(self.tabAllUsers)
         self.stack.addWidget(self.tabRisks)
-        self.stack.addWidget(self.tabActiveIsolations)
+        self.stack.addWidget(self.tabIsolations)
 
         self.stack.currentChanged.connect(self.stackTabChanged)
 
@@ -192,7 +195,7 @@ class MainWindow(QMainWindow):
             self.btnClosedPTWs:                 self.tabClosedPTWs,
             self.btnUsers:                      self.tabAllUsers,
             self.btnRisks:                      self.tabRisks,
-            self.btnActiveIsolations:           self.tabActiveIsolations,
+            self.btnActiveIsolations:           self.tabIsolations,
             self.btnRefresh:                    None, 
             self.btnSettings:                   None,
             self.btnLogout:                     None,
@@ -204,8 +207,7 @@ class MainWindow(QMainWindow):
                 background: transparent;
                 border: none;
                 padding: 6px;
-                margin: 2px;
-                border-radius: 8px;
+                border-radius: 6px;
             }
 
             /* Hover */
@@ -221,7 +223,7 @@ class MainWindow(QMainWindow):
             /* Selected */
             QPushButton[selected="true"] {
                 background: rgba(25,118,210,45);
-                border-left: 4px solid #1976D2;
+                /* border-left: 4px solid #1976D2; */
             }
 
             /* Selected hover */
@@ -314,6 +316,11 @@ class MainWindow(QMainWindow):
             btn.setProperty("selected", is_selected)
             btn.style().unpolish(btn)
             btn.style().polish(btn)
+            effect = btn.graphicsEffect()
+            if not isinstance(effect, QGraphicsOpacityEffect):
+                effect = QGraphicsOpacityEffect(btn)
+                btn.setGraphicsEffect(effect)
+            effect.setOpacity(1.0 if is_selected or tab is None else 0.3)
             btn.update()
 
     def btnFABHandler(self):
@@ -707,7 +714,7 @@ class MainWindow(QMainWindow):
         for tab in tabs:
             tab.sort()
 
-        self.tabActiveIsolations.setIsolations(globalData.activeIsolations)
+        self.tabIsolations.setIsolations(globalData.activeIsolations)
 
     def acceptPTW(self, row: int, ptw: PTWData):
         approval = PTWData.Approval(PTWData.ApprovalActions.APPROVED, self.loggedUser.getUsername(), datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
