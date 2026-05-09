@@ -78,6 +78,7 @@ class DialogIsolation(QDialog):
         self.typeCombo = QComboBox()
         self.boxTag = QComboBox()
         self.boxDescription = QTextEdit()
+        self.boxDescription.setFixedHeight(self.boxDescription.fontMetrics().lineSpacing() * 4 + 10)
         
         self.typeCombo.addItems([t.value for t in Isolation.Types])
 
