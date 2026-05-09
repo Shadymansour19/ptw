@@ -6,13 +6,17 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 
 ## Screenshots
 
-| Home Dashboard | PTW List |
-|:-:|:-:|
-| ![Home](screenshots/home.png) | ![PTW List](screenshots/ptw-list.png) |
+**Home Dashboard:**
+![Home](screenshots/home.png) 
 
-| Active Isolations | New PTW Form |
-|:-:|:-:|
-| ![Isolations](screenshots/isolations.png) | ![New PTW](screenshots/new-ptw.png) |
+**PTW List:**
+![PTW List](screenshots/ptw-list.png)
+
+**Isolations:**
+![Isolations](screenshots/isolations.png) 
+
+**New PTW Form:**
+![New PTW](screenshots/new-ptw.png)
 
 ---
 
@@ -251,8 +255,3 @@ Full API reference in [PROJECT.md](PROJECT.md).
 - Passwords are stored in plain text — hashing is planned for a future version.
 - File storage is local filesystem — back up `server/miwi/` and `server/ptw-*-attachments/` regularly.
 
----
-
-## License
-
-Private / internal use — Rashpetco operations.
