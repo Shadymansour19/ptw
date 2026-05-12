@@ -90,14 +90,24 @@ class ResetPasswordDialog(QDialog):
         self.boxConfirmPassword = PasswordLineEdit()
         self.progressStack = QStackedWidget()
         self.lblStatus = QLabel("Sending verification code…")
-        self.progressBar = QProgressBar()
-        self.progressBar.setRange(0, 0)  # indeterminate
+
+        self.icnLoading = QPushButton()
+        # self.icnLoading.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.icnLoading.setStyleSheet('QPushButton { background-color: transparent; border: none; }')
+        self._animation = qta.Spin(self.icnLoading)
+        self.icnLoading.setIcon(qta.icon('fa6s.spinner', color='green', animation=self._animation))
+        self.icnLoading.setIconSize(QSize(32, 32))
+        self._animation.start()
+
+        # self.progressBar = QProgressBar()
+        # self.progressBar.setRange(0, 0)  # indeterminate
+
         self.icnDone = QLabel()
         self.icnDone.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.icnDone.setPixmap(
             QApplication.style().standardIcon(QStyle.StandardPixmap.SP_DialogOkButton).pixmap(QSize(32, 32))
         )
-        self.progressStack.addWidget(self.progressBar)
+        self.progressStack.addWidget(self.icnLoading)
         self.progressStack.addWidget(self.icnDone)
 
         self.boxUsername.setText(username)
@@ -149,6 +159,7 @@ class ResetPasswordDialog(QDialog):
             self._setFormEnabled(False)
             self.reject()
         else:
+            self._animation.stop()
             self.progressStack.setCurrentIndex(1)
             self.lblStatus.setText("Verification code sent. Check your email.")
             self._setFormEnabled(True)
