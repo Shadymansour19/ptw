@@ -9,9 +9,10 @@ from PTWData import PTWData
 
 class TablePTWs(QWidget):
     class MenuOption:
-        def __init__(self, lbl, fun):
+        def __init__(self, lbl, fun, icn):
             self.lbl = lbl
             self.fun = fun
+            self.icn = icn
         
     def __init__(self, parent, loggedUser, label: str):
         super().__init__(parent)
@@ -167,7 +168,7 @@ class TablePTWs(QWidget):
         menu = QMenu(self.tbl)
         
         for option in self.options:
-            action = QAction(option.lbl, self.tbl)
+            action = QAction(option.icn, option.lbl, self.tbl)
             menu.addAction(action)
             action.triggered.connect(partial(self.optionDoForAllSelected, option.fun))
         

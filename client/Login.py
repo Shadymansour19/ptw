@@ -3,53 +3,10 @@ from PyQt6.QtWidgets import *
 from PyQt6.QtGui import *
 import keyring
 from keyring.errors import KeyringError
+import qtawesome as qta
+
 
 SERVICE_NAME = "PTW-login-credentials"
-
-
-
-# ---------------------------------------------------------------------------
-# Minimal SVG-style eye icons drawn with QPainter (no external assets needed)
-# ---------------------------------------------------------------------------
-def _eye_icon(visible: bool) -> QIcon:
-    """Generate an eye (or eye-slash) icon programmatically."""
-    from PyQt6.QtGui import QPixmap
-
-    px = QPixmap(QSize(20, 20))
-    px.fill(Qt.GlobalColor.transparent)
-
-    p = QPainter(px)
-    p.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-    pen = QPen(QColor("#6b7280"), 1.6)
-    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-    p.setPen(pen)
-    p.setBrush(Qt.BrushStyle.NoBrush)
-
-    # Outer eye shape
-    from PyQt6.QtCore import QPointF
-    from PyQt6.QtGui import QPainterPath
-
-    path = QPainterPath()
-    path.moveTo(2, 10)
-    path.cubicTo(2, 10, 5, 4, 10, 4)
-    path.cubicTo(15, 4, 18, 10, 18, 10)
-    path.cubicTo(18, 10, 15, 16, 10, 16)
-    path.cubicTo(5, 16, 2, 10, 2, 10)
-    p.drawPath(path)
-
-    # Iris
-    p.drawEllipse(QRect(7, 7, 6, 6))
-
-    if not visible:
-        # Slash line for "hidden" state
-        slash_pen = QPen(QColor("#6b7280"), 1.6)
-        slash_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        p.setPen(slash_pen)
-        p.drawLine(3, 17, 17, 3)
-
-    p.end()
-    return QIcon(px)
 
 
 class PasswordLineEdit(QLineEdit):
@@ -57,6 +14,7 @@ class PasswordLineEdit(QLineEdit):
         super().__init__(parent)
 
         self._visible = False
+        self._icons = [qta.icon('fa6.eye'), qta.icon('fa6.eye-slash')]
 
         self._btn = QToolButton(self)
         self._btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -82,15 +40,11 @@ class PasswordLineEdit(QLineEdit):
 
     def _toggle_visibility(self):
         self._visible = not self._visible
-        self.setEchoMode(
-            QLineEdit.EchoMode.Normal
-            if self._visible
-            else QLineEdit.EchoMode.Password
-        )
+        self.setEchoMode(QLineEdit.EchoMode.Normal if self._visible else QLineEdit.EchoMode.Password)
         self._update_icon()
 
     def _update_icon(self):
-        self._btn.setIcon(_eye_icon(self._visible))
+        self._btn.setIcon(self._icons[0] if self._visible else self._icons[1])
         self._btn.setIconSize(QSize(18, 18))
 
     def _adjust_text_margins(self):
