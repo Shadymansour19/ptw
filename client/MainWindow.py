@@ -57,8 +57,8 @@ class MainWindow(QMainWindow):
         self.viewIsolationsOption = TablePTWs.MenuOption('View Isolations', self.viewIsolations, qta.icon('fa6s.unlock-keyhole'))
         self.viewApprovalsOption = TablePTWs.MenuOption('View Approvals', self.viewApprovals, qta.icon('fa6s.check-double'))
         self.viewRequestorOption = TablePTWs.MenuOption('View Requestor', self.viewRequestor, qta.icon('fa6s.user'))
-        self.viewPerformingOption = TablePTWs.MenuOption('View PA', self.viewPerforming, qta.icon('fa6s.user'))
-        self.viewIssuingOption = TablePTWs.MenuOption('View PA', self.viewIssuing, qta.icon('fa6s.user-tie'))
+        self.viewPerformingOption = TablePTWs.MenuOption('View PA', self.viewPerforming, qta.icon('mdi6.account-hard-hat'))
+        self.viewIssuingOption = TablePTWs.MenuOption('View IA', self.viewIssuing, qta.icon('fa6s.user-tie'))
 
         self.stack = QStackedWidget()
         self.stack.setAutoFillBackground(False)
@@ -222,13 +222,13 @@ class MainWindow(QMainWindow):
 
             /* Selected */
             QPushButton[selected="true"] {
-                background: rgba(25,118,210,45);
-                /* border-left: 4px solid #1976D2; */
+                background: rgba(25,200,150,45);
+                /* border-left: 4px solid #1a3a5c; */
             }
 
             /* Selected hover */
             QPushButton[selected="true"]:hover {
-                background: rgba(25,118,210,65);
+                background: rgba(25,200,150,65);
             }
             """
         
@@ -320,7 +320,7 @@ class MainWindow(QMainWindow):
             if not isinstance(effect, QGraphicsOpacityEffect):
                 effect = QGraphicsOpacityEffect(btn)
                 btn.setGraphicsEffect(effect)
-            effect.setOpacity(1.0 if is_selected or tab is None else 0.3)
+            effect.setOpacity(1.0 if is_selected or tab is None else 0.2)
             btn.update()
 
     def btnFABHandler(self):
@@ -524,24 +524,24 @@ class MainWindow(QMainWindow):
         pass
 
 
-    def viewUser(self, username: str):
+    def viewUser(self, username: str, role: str):
         if username is None or username.strip() == '':
-            QMessageBox.warning(self, 'No PA Assigned', "No user assigned yet.")
+            QMessageBox.warning(self, f'No {role} Assigned', f"No {role} assigned yet.")
             return
         elif username not in globalData.allUsers:
             QMessageBox.warning(self, 'User Not Found', f"username {username} was not found.")
             return
-        DialogUser(self, True, False, self.loggedUser, globalData.allUsers[username], f"View Mode - User {username}").exec()
+        DialogUser(self, True, False, self.loggedUser, globalData.allUsers[username], f"{role} - View Mode - User {username}").exec()
     
 
     def viewRequestor(self, row: int, ptw: PTWData):
-        self.viewUser(ptw.requestor)
+        self.viewUser(ptw.requestor, 'Requestor')
 
     def viewPerforming(self, row: int, ptw: PTWData):
-        self.viewUser(ptw.performing)
+        self.viewUser(ptw.performing, 'PA')
 
     def viewIssuing(self, row: int, ptw: PTWData):
-        self.viewUser(ptw.issuing)
+        self.viewUser(ptw.issuing, 'IA')
     
     def viewApprovals(self, row: int, ptw: PTWData):
         dlg = QDialog(self)

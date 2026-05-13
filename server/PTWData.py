@@ -155,10 +155,22 @@ class ActiveIsolation(Isolation):
 
 
 class PTWData:
-    ALL_TOOLS:      list[str] = ['Hand Tools', 'Power Tools', 'Non-Ex Tools', 'Test Tools', 'Pneumatic Tools']
-    ALL_HAZARDS:    list[str] = ['Confined Space', 'Working at Height', 'Electrical/Mechanical Spark', 'Static Electricity', 'Hazardous Substance', 'Flammable Material']
-    ALL_CONTROLS:   list[str] = ['Initial Gas Test', 'Continuous Gas Test', 'Equipment Earthing', 'Drained', 'Vented', 'Flushed', 'Housekeeping', 'Lifting Plan']
-    ALL_RISKS:      list[str] = []
+    ALL_TOOLS:      list[str] = [
+        'Hand Tools', 'Power Tools', 'Non-Ex Tools', 'Test Tools', 'Pneumatic Tools', 'Camera', 'Hydraulic Tools', 'Grit Blasting', 
+    ]
+    ALL_HAZARDS:    list[str] = [
+        'Confined Space', 'Working at Height', 'Scaffolding', 'Dropped Objects', 'Electrical/Mechanical Spark', 'Static Electricity', 
+        'Flammable Material', 'Gas Cylinders', 'Stored Energy', 'Moving Vehicle', 'Safety Device Overridden', 'SIMOPS', 
+        'Temp. Equipment', 'Inadequate Lighting', 'Heavy/Complex Lifts', 'Extreme Temperature', 'Excavation', 'Rotating Machinery', 
+        'Hazardous Substance', 'Pressurized Pipes', 'Noise', 'Vibration', 'Slips', 'Trips', 'Access/Egress', 
+    ]
+    ALL_CONTROLS:   list[str] = [
+        'Initial Gas Test', 'Continuous Gas Test', 'Portable Fire Extinguisher', 'IS/Ex Rated Equipment', 'Equipment Earthing', 
+        'Drained', 'Vented', 'Flushed', 'Purged', 'MSDS', 'Rescue Plan', 'Additional Lighting', 'Secure Loose Objects', 
+        'Housekeeping', 'Lifting Plan', 'Manual Handing', 'Working at Height Equipment', 'Vendor', 'Signs & Barriers', 
+        'Safe Access & Egress', 'Radios', 'Face Shield', 'Hearing Protection', 'Safety Harness', 'Dust Mask', 'Respirator', 
+        'Fire Retardant Coverall', 'Breathing Apparatus', 
+    ]
     ALL_ISOLATIONS: dict[str, Isolation] = {
         'XV-7227A':     Isolation(type=Isolation.Types.MECHANICAL,  tag='XV-7227A',  description='MC-A 1nd Stage ASV'), 
         'XV-7227B':     Isolation(type=Isolation.Types.MECHANICAL,  tag='XV-7227B',  description='MC-B 1nd Stage ASV'), 
