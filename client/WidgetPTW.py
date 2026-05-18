@@ -2,6 +2,7 @@ from datetime import date
 from PyQt6.QtCore import *
 from PyQt6.QtWidgets import *
 from PyQt6.QtGui import *
+import re
 
 from PTWData import PTWData, Attachment
 from TableRisks import TableRisks
@@ -219,27 +220,54 @@ class DialogPTW(QDialog):
             btn = QCheckBox(tool)
             btn.setChecked(btn.text() in ptw.tools)
             btn.setEnabled(not readOnly)
-            btn.setStyleSheet('QCheckBox::indicator {width: 20px; height: 20px}')
+            # btn.setStyleSheet('QCheckBox::inkodicator {width: 20px; height: 20px}')
             lytTools.addWidget(btn, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS)
             self.btnsTools.append(btn)
+        self.boxOtherTools = QLineEdit()
+        self.boxOtherTools.setEnabled(not readOnly)
+        self.boxOtherTools.setPlaceholderText("Others")
+        self.boxOtherTools.setToolTip("Other Tools")
+        self.boxOtherTools.setText(', '.join(tool for tool in ptw.tools if tool not in PTWData.ALL_TOOLS))
+        remaining_cols = DialogPTW.GRID_LYT_COLS - (i % DialogPTW.GRID_LYT_COLS)
+        lytTools.addWidget(self.boxOtherTools, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS, 1, remaining_cols)
         
         self.btnsHazard: list[QCheckBox] = []
         for i,hazard in enumerate(PTWData.ALL_HAZARDS):
             btn = QCheckBox(hazard)
             btn.setChecked(btn.text() in ptw.hazards)
             btn.setEnabled(not readOnly)
-            btn.setStyleSheet('QCheckBox::indicator {width: 20px; height: 20px}')
+            # btn.setStyleSheet('QCheckBox::indicator {width: 20px; height: 20px}')
             lytHazards.addWidget(btn, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS)
             self.btnsHazard.append(btn)
+        self.boxOtherHazards = QLineEdit()
+        self.boxOtherHazards.setEnabled(not readOnly)
+        self.boxOtherHazards.setPlaceholderText("Others")
+        self.boxOtherHazards.setToolTip("Other Hazards")
+        self.boxOtherHazards.setText(', '.join(tool for tool in ptw.tools if tool not in PTWData.ALL_HAZARDS))
+        remaining_cols = DialogPTW.GRID_LYT_COLS - (i % DialogPTW.GRID_LYT_COLS)
+        lytHazards.addWidget(self.boxOtherHazards, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS, 1, remaining_cols)
         
-        self.btnsControl: list[QCheckBox] = []
+        self.btnsControls: list[QCheckBox] = []
         for i,ctrl in enumerate(PTWData.ALL_CONTROLS):
             btn = QCheckBox(ctrl)
             btn.setChecked(btn.text() in ptw.controls)
             btn.setEnabled(not readOnly)
-            btn.setStyleSheet('QCheckBox::indicator {width: 20px; height: 20px;}')
+            # btn.setStyleSheet('QCheckBox::indicator {width: 20px; height: 20px;}')
             lytControls.addWidget(btn, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS)
-            self.btnsControl.append(btn)
+            self.btnsControls.append(btn)
+        self.boxOtherControls = QLineEdit()
+        self.boxOtherControls.setEnabled(not readOnly)
+        self.boxOtherControls.setPlaceholderText("Others")
+        self.boxOtherControls.setToolTip("Other Controls")
+        self.boxOtherControls.setText(', '.join(tool for tool in ptw.tools if tool not in PTWData.ALL_CONTROLS))
+        remaining_cols = DialogPTW.GRID_LYT_COLS - (i % DialogPTW.GRID_LYT_COLS)
+        lytControls.addWidget(self.boxOtherControls, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS, 1, remaining_cols)
+
+        # Set equal column stretches to maintain consistent width across resize
+        for col in range(DialogPTW.GRID_LYT_COLS):
+            lytTools.setColumnStretch(col, 1)
+            lytHazards.setColumnStretch(col, 1)
+            lytControls.setColumnStretch(col, 1)
 
         if self.readonly:
             self.tabRisks.setRiskAssessmentsInGUI({
@@ -328,6 +356,7 @@ class DialogPTW(QDialog):
             self.boxMOS.setEnabled(True)
             self.btnViewMiwi.setEnabled(False)
             self.btnNewMiwi.setEnabled(False)
+            self.boxMOS.setFocus()
 
     def openMIWI(self):
         miwiName = self.boxMiwi.currentText()
@@ -453,16 +482,31 @@ class DialogPTW(QDialog):
         for btn in self.btnsTools:
             if btn.isChecked():
                 self.ptw.addTool(btn.text())
-        
+        if self.boxOtherTools.text():
+            for tool in re.split(r'[,-+;|]', self.boxOtherTools.text()):
+                tool = tool.strip()
+                if tool:
+                    self.ptw.addTool(tool)
+
         self.ptw.hazards = []
         for btn in self.btnsHazard:
             if btn.isChecked():
                 self.ptw.addHazard(btn.text())
+        if self.boxOtherHazards.text():
+            for hazard in re.split(r'[,-+;|]', self.boxOtherHazards.text()):
+                hazard = hazard.strip()
+                if hazard:
+                    self.ptw.addHazard(hazard)
         
         self.ptw.controls = []
-        for btn in self.btnsControl:
+        for btn in self.btnsControls:
             if btn.isChecked():
                 self.ptw.addControl(btn.text())
+        if self.boxOtherControls.text():
+            for ctrl in re.split(r'[,-+;|]', self.boxOtherControls.text()):
+                ctrl = ctrl.strip()
+                if ctrl:
+                    self.ptw.addControl(ctrl)
         
         self.ptw.risks = []
         for riskAssessment in self.tabRisks.getSelectedRiskAssessments():
