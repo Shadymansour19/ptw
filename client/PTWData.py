@@ -1190,7 +1190,9 @@ class PTWData:
         SP = 'Spark'
         HT = 'Hot'
         HC = 'HydroCarbon'
-    
+        EX = 'Excavation'
+        CS = 'Confined Space'
+
     class AreaClasses(enum.StrEnum):
         HAZ = 'Hazard'
         NHZ = 'Non-Hazard'
@@ -1279,6 +1281,8 @@ class PTWData:
         Types.SP:   QColor(255, 255, 0, 100),
         Types.HT:   QColor(255, 0, 0, 100),
         Types.HC:   QColor(0, 0, 0, 100),
+        Types.EX:   QColor(128, 128, 128, 100),
+        Types.CS:   QColor(0, 255, 0, 100),
     }
     
     __foregroundColors = {
@@ -1286,6 +1290,8 @@ class PTWData:
         Types.SP:   QColor('black'), 
         Types.HT:   QColor('white'), 
         Types.HC:   QColor('white'), 
+        Types.EX:   QColor('white'), 
+        Types.CS:   QColor('white'),
     }
 
     def __init__(self, data: dict = {}):

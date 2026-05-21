@@ -15,9 +15,9 @@ _pixmap.save(_tmp.name, 'PNG')
 _checkmark_path = _tmp.name.replace('\\', '/')
 
 app.setStyleSheet(f"""
-    QRadioButton::indicator {{width: 20px; height: 20px; border: 2px solid darkgreen; border-radius: 6px;}}
+    QRadioButton::indicator {{width: 20px; height: 20px; border: 2px solid gray; border-radius: 6px;}}
     QRadioButton::indicator:checked {{background-color: green; border-color: green; image: url({_checkmark_path});}}
-    QCheckBox::indicator {{width: 20px; height: 20px; border: 2px solid darkgreen; border-radius: 6px;}}
+    QCheckBox::indicator {{width: 20px; height: 20px; border: 2px solid gray; border-radius: 6px;}}
     QCheckBox::indicator:checked {{background-color: green; border-color: green; image: url({_checkmark_path});}}
 """)
 loginWindow = LoginWindow()
