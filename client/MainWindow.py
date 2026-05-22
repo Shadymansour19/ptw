@@ -617,7 +617,7 @@ class MainWindow(QMainWindow):
         welcomeBtns = []
         for i in range(self.sideBarLayout.count()):
             widget = self.sideBarLayout.itemAt(i).widget()
-            if isinstance(widget, QPushButton) and widget.toolTip():
+            if isinstance(widget, QPushButton) and widget.toolTip() and widget.toolTip() != "Home [Ctrl+H]":
                 btn = QToolButton()
                 btn.setIcon(widget.icon())
                 btn.setText(widget.toolTip())
@@ -986,11 +986,11 @@ class SafetyMainWindow(MainWindow):
         self.sideBarLayout.addWidget(self.btnWelcome)
         self.sideBarLayout.addWidget(self._makeSeparator())
         self.sideBarLayout.addWidget(self.btnUnderReviewPTWs)
-        self.sideBarLayout.addWidget(self.btnRisks)
-        self.sideBarLayout.addWidget(self._makeSeparator())
         self.sideBarLayout.addWidget(self.btnRunningPTWs)
         self.sideBarLayout.addWidget(self._makeSeparator())
         self.sideBarLayout.addWidget(self.btnActiveIsolations)
+        self.sideBarLayout.addWidget(self._makeSeparator())
+        self.sideBarLayout.addWidget(self.btnRisks)
         self.sideBarLayout.addStretch()
         self.sideBarLayout.addWidget(self.btnSettings)
         self.sideBarLayout.addWidget(self.btnRefresh)
