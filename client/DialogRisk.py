@@ -52,15 +52,15 @@ class DialogRiskAssessment(QDialog):
             self.txtEffect.setTabChangesFocus(True)
             self.txtControl.setTabChangesFocus(True)
 
-            self.txtHazard.setFixedHeight(self.txtHazard.fontMetrics().lineSpacing() * 3 + 10)
+            self.txtHazard.setMinimumHeight(self.txtHazard.fontMetrics().lineSpacing() * 3 + 10)
             self.txtHazard.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
             self.txtHazard.setAcceptRichText(False)
             
-            self.txtEffect.setFixedHeight(self.txtEffect.fontMetrics().lineSpacing() * 3 + 10)
+            self.txtEffect.setMinimumHeight(self.txtEffect.fontMetrics().lineSpacing() * 3 + 10)
             self.txtEffect.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
             self.txtEffect.setAcceptRichText(False)
 
-            self.txtControl.setFixedHeight(self.txtEffect.fontMetrics().lineSpacing() * 5 + 10)
+            self.txtControl.setMinimumHeight(self.txtEffect.fontMetrics().lineSpacing() * 5 + 10)
             self.txtControl.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
             self.txtControl.setAcceptRichText(False)
 
