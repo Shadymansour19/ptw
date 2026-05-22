@@ -483,7 +483,7 @@ class DialogPTW(QDialog):
             if btn.isChecked():
                 self.ptw.addTool(btn.text())
         if self.boxOtherTools.text():
-            for tool in re.split(r'[,-+;|]', self.boxOtherTools.text()):
+            for tool in re.split(r'[,/\-+;|]', self.boxOtherTools.text()):
                 tool = tool.strip()
                 if tool:
                     self.ptw.addTool(tool)
@@ -493,7 +493,7 @@ class DialogPTW(QDialog):
             if btn.isChecked():
                 self.ptw.addHazard(btn.text())
         if self.boxOtherHazards.text():
-            for hazard in re.split(r'[,-+;|]', self.boxOtherHazards.text()):
+            for hazard in re.split(r'[,/\-+;|]', self.boxOtherHazards.text()):
                 hazard = hazard.strip()
                 if hazard:
                     self.ptw.addHazard(hazard)
@@ -503,7 +503,7 @@ class DialogPTW(QDialog):
             if btn.isChecked():
                 self.ptw.addControl(btn.text())
         if self.boxOtherControls.text():
-            for ctrl in re.split(r'[,-+;|]', self.boxOtherControls.text()):
+            for ctrl in re.split(r'[,/\-+;|]', self.boxOtherControls.text()):
                 ctrl = ctrl.strip()
                 if ctrl:
                     self.ptw.addControl(ctrl)
