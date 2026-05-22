@@ -362,6 +362,9 @@ class DialogPTW(QDialog):
             if riskTitle in self.ptw.risks:
                 self.tabRisks.checkRisk(riskTitle)
 
+        self.requiredAttachs = self.ptw.requiredAttachs()
+        self.tableAttachments.setRequiredAttachs(self.requiredAttachs)
+
     def miwiMosSwitch(self):
         if self.btnMiwi.isChecked():
             self.boxMiwi.setEnabled(not self.readonly)
@@ -474,8 +477,6 @@ class DialogPTW(QDialog):
         self.collectData()
         self.ptw.updateRequirements()
         self.refreshUI()
-        self.requiredAttachs = self.ptw.requiredAttachs()
-        self.tableAttachments.setRequiredAttachs(self.requiredAttachs)
 
     def collectData(self):
         if self.readonly:
