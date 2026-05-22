@@ -16,6 +16,7 @@ from DialogSettings import DialogSettings
 from clientRequests import ClientRequests
 from GlobalData import globalData
 from ReportGenerator import ReportGenerator
+from SSEListener import SSEListener
 from User import User, UserRoles
 from functools import partial
 import qtawesome as qta
@@ -288,6 +289,17 @@ class MainWindow(QMainWindow):
         self.refreshGUI()
         QTimer.singleShot(0, self._populateWelcomeBtns)
 
+        sb = self.statusBar()
+        sb.show()
+        sb.setStyleSheet("QStatusBar { background: rgba(0,0,0,40); color: #ccc; padding: 0 8px; font-size: 14px; border-top: 1px solid rgba(255,255,255,20); }")
+
+        self._trayIcon = QSystemTrayIcon(QIcon("sh-logo-bw.png"), self)
+        self._trayIcon.show()
+
+        self._sseListener = SSEListener(ClientRequests.SERVER_URL, loggedUser.getUsername(), loggedUser.getPassword())
+        self._sseListener.eventReceived.connect(self._onSSEEvent)
+        self._sseListener.start()
+
 
     def _makeSeparator(self):
         line = QFrame()
@@ -303,8 +315,8 @@ class MainWindow(QMainWindow):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        painter.setOpacity(0.04 if self.stack.currentWidget() == self.tabWelcome else 0.02)
-        painter.drawPixmap(self.rect(), QPixmap('./sh-logo.png'))
+        painter.setOpacity(0.02 if self.stack.currentWidget() == self.tabWelcome else 0.01)
+        painter.drawPixmap(self.rect(), QPixmap('./sh-logo-bw.png'))
         painter.setOpacity(1.0)
         super().paintEvent(event)
 
@@ -329,6 +341,8 @@ class MainWindow(QMainWindow):
     def logout(self):
         import os
         import sys
+        self._sseListener.stop()
+        self._sseListener.wait(1000)
         self.close()
         os.execv(sys.executable, [sys.executable] + sys.argv)
     
@@ -606,7 +620,7 @@ class MainWindow(QMainWindow):
     def btnFABUpdatePosition(self):
         margin = 40
         x = self.width() - self.btnFAB.width() - margin
-        y = self.height() - self.btnFAB.height() - margin
+        y = self.height() - self.btnFAB.height() - margin - self.statusBar().height()
         self.btnFAB.move(x, y)
     
     def _populateWelcomeBtns(self):
@@ -663,6 +677,39 @@ class MainWindow(QMainWindow):
 
     def refreshGUI(self):
         pass
+
+    def _onSSEEvent(self, event_type: str, data: dict):
+        self.refreshGUI()
+        msg = self._formatSSEMessage(event_type, data)
+        QApplication.beep()
+        self._trayIcon.showMessage("PTW Update", msg, QSystemTrayIcon.MessageIcon.Information, 5000)
+        self.statusBar().showMessage(msg, 6000)
+
+    def _formatSSEMessage(self, event_type: str, data: dict) -> str:
+        ptw_id = data.get("ptw_id", "?")
+        by = data.get("by", "?")
+        if event_type == "new_ptw":
+            return f"New PTW #{ptw_id} created by {by} (type: {data.get('type', '?')})"
+        if event_type == "ptw_deleted":
+            return f"PTW #{ptw_id} deleted by {by}"
+        if event_type == "ptw_approval":
+            return f"PTW #{ptw_id}: {data.get('action', 'status update')} by {by}"
+        if event_type == "ptw_run_request":
+            return f"PTW #{ptw_id}: run requested by {by}"
+        if event_type == "ptw_run":
+            verb = "now RUNNING" if data.get("accepted") else "run rejected"
+            return f"PTW #{ptw_id}: {verb} (by {by})"
+        if event_type == "ptw_hold_request":
+            return f"PTW #{ptw_id}: hold requested by {by}"
+        if event_type == "ptw_hold":
+            verb = "now HELD" if data.get("accepted") else "hold rejected"
+            return f"PTW #{ptw_id}: {verb} (by {by})"
+        if event_type == "ptw_close_request":
+            return f"PTW #{ptw_id}: close requested by {by}"
+        if event_type == "ptw_close":
+            verb = "CLOSED" if data.get("accepted") else "close rejected"
+            return f"PTW #{ptw_id}: {verb} (by {by})"
+        return f"Update: {event_type} for PTW #{ptw_id}"
 
     def refreshWelcomePage(self):
         globalData.refresh(self.loggedUser, self.loggedUser.getDepartment() if self.loggedUser.getRole() == UserRoles.USER else None, refreshUsers=True)
@@ -871,7 +918,7 @@ class CoordinatorMainWindow(MainWindow):
         self.setWindowTitle("PTW (Permit To Work) - Coordinator Window")
 
         self.tabUnderReviewPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.requestEditsOption, self.acceptOption, self.printOption])
-        self.tabReturnedPTWs.addOptions([self.viewApprovalsOption, self.viewRequestorOption, self.printOption])
+        self.tabReturnedPTWs.addOptions([self.viewOption, self.viewApprovalsOption, self.viewRequestorOption, self.printOption])
         self.tabApprovedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.printOption])
         self.tabRejectedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.dltOption, self.printOption])
         self.tabWaitingRunConfirmationPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewPerformingOption, self.viewApprovalsOption, self.printOption])
@@ -908,7 +955,7 @@ class CoordinatorMainWindow(MainWindow):
     def stackTabChanged(self):
         super().stackTabChanged()
         tab = self.stack.currentWidget()
-        self.btnFAB.setVisible(tab != self.tabWelcome)
+        self.btnFAB.setVisible(tab != self.tabWelcome and tab != self.tabIsolations)
 
     def refreshGUI(self):
         super().refreshPtwUserGUI()
@@ -964,7 +1011,7 @@ class IssuingMainWindow(MainWindow):
     def stackTabChanged(self):
         super().stackTabChanged()
         tab = self.stack.currentWidget()
-        self.btnFAB.setVisible(tab != self.tabWelcome)
+        self.btnFAB.setVisible(tab != self.tabWelcome and tab != self.tabIsolations)
 
     def refreshGUI(self):
         super().refreshPtwUserGUI()
@@ -1028,10 +1075,10 @@ class SafetyMainWindow(MainWindow):
 
 
 
-class PDHMainWindow(MainWindow):
-    def __init__(self, loggedUser: User):
+class ManagerMainWindow(MainWindow):
+    def __init__(self, loggedUser: User, role: str):
         super().__init__(loggedUser)
-        self.setWindowTitle("PTW (Permit To Work) - PDH Window")
+        self.setWindowTitle(f"PTW (Permit To Work) - {role} Window")
 
         self.tabUnderReviewPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestEditsOption, self.acceptOption, self.rejectOption, self.printOption])
         self.tabReturnedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.printOption])
@@ -1065,153 +1112,7 @@ class PDHMainWindow(MainWindow):
     def stackTabChanged(self):
         super().stackTabChanged()
         tab = self.stack.currentWidget()
-        self.btnFAB.setVisible(tab != self.tabWelcome)
-
-    def refreshGUI(self):
-        super().refreshPtwUserGUI()
-
-    def btnFABHandler(self):
-        self.printPTWs()
-
-
-
-
-class PGMMainWindow(MainWindow):
-    def __init__(self, loggedUser: User):
-        super().__init__(loggedUser)
-        self.setWindowTitle("PTW (Permit To Work) - PGM Window")
-
-        self.tabUnderReviewPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestEditsOption, self.acceptOption, self.rejectOption, self.printOption])
-        self.tabReturnedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.printOption])
-        self.tabApprovedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.printOption])
-        self.tabRejectedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.dltOption, self.printOption])
-        self.tabRunningPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewPerformingOption, self.viewApprovalsOption, self.printOption])
-        self.tabHeldPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.viewIsolationsOption, self.printDeIsolationOption, self.printOption])
-        self.tabClosedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.printDeIsolationOption, self.printOption])
-
-        self.sideBarLayout.addWidget(self.btnWelcome)
-        self.sideBarLayout.addWidget(self._makeSeparator())
-        self.sideBarLayout.addWidget(self.btnUnderReviewPTWs)
-        self.sideBarLayout.addWidget(self.btnReturnedPTWs)
-        self.sideBarLayout.addWidget(self.btnApprovedPTWs)
-        self.sideBarLayout.addWidget(self.btnRejectedPTWs)
-        self.sideBarLayout.addWidget(self._makeSeparator())
-        self.sideBarLayout.addWidget(self.btnRunningPTWs)
-        self.sideBarLayout.addWidget(self.btnHeldPTWs)
-        self.sideBarLayout.addWidget(self.btnClosedPTWs)
-        self.sideBarLayout.addWidget(self._makeSeparator())
-        self.sideBarLayout.addWidget(self.btnActiveIsolations)
-        self.sideBarLayout.addStretch()
-        self.sideBarLayout.addWidget(self.btnSettings)
-        self.sideBarLayout.addWidget(self.btnRefresh)
-        self.sideBarLayout.addWidget(self.btnLogout)
-
-        # Create Floating Option Button
-        self.btnFAB.setIcon(qta.icon("fa5.file-pdf"))
-        self.btnFAB.setToolTip("Print current widget PTWs")
-
-    def stackTabChanged(self):
-        super().stackTabChanged()
-        tab = self.stack.currentWidget()
-        self.btnFAB.setVisible(tab != self.tabWelcome)
-
-    def refreshGUI(self):
-        super().refreshPtwUserGUI()
-        
-    def btnFABHandler(self):
-        self.printPTWs()
-
-
-
-
-
-class SODMainWindow(MainWindow):
-    def __init__(self, loggedUser: User):
-        super().__init__(loggedUser)
-        self.setWindowTitle("PTW (Permit To Work) - SOD Window")
-
-        self.tabUnderReviewPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestEditsOption, self.acceptOption, self.rejectOption, self.printOption])
-        self.tabReturnedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.printOption])
-        self.tabApprovedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.printOption])
-        self.tabRejectedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.dltOption, self.printOption])
-        self.tabRunningPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewPerformingOption, self.viewApprovalsOption, self.printOption])
-        self.tabHeldPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.viewIsolationsOption, self.printDeIsolationOption, self.printOption])
-        self.tabClosedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.printDeIsolationOption, self.printOption])
-
-        self.sideBarLayout.addWidget(self.btnWelcome)
-        self.sideBarLayout.addWidget(self._makeSeparator())
-        self.sideBarLayout.addWidget(self.btnUnderReviewPTWs)
-        self.sideBarLayout.addWidget(self.btnReturnedPTWs)
-        self.sideBarLayout.addWidget(self.btnApprovedPTWs)
-        self.sideBarLayout.addWidget(self.btnRejectedPTWs)
-        self.sideBarLayout.addWidget(self._makeSeparator())
-        self.sideBarLayout.addWidget(self.btnRunningPTWs)
-        self.sideBarLayout.addWidget(self.btnHeldPTWs)
-        self.sideBarLayout.addWidget(self.btnClosedPTWs)
-        self.sideBarLayout.addWidget(self._makeSeparator())
-        self.sideBarLayout.addWidget(self.btnActiveIsolations)
-        self.sideBarLayout.addStretch()
-        self.sideBarLayout.addWidget(self.btnSettings)
-        self.sideBarLayout.addWidget(self.btnRefresh)
-        self.sideBarLayout.addWidget(self.btnLogout)
-
-        # Create Floating Option Button
-        self.btnFAB.setIcon(qta.icon("fa5.file-pdf"))
-        self.btnFAB.setToolTip("Print current widget PTWs")
-
-    def stackTabChanged(self):
-        super().stackTabChanged()
-        tab = self.stack.currentWidget()
-        self.btnFAB.setVisible(tab != self.tabWelcome)
-
-    def refreshGUI(self):
-        super().refreshPtwUserGUI()
-
-    def btnFABHandler(self):
-        self.printPTWs()
-
-
-
-
-
-class DFGMMainWindow(MainWindow):
-    def __init__(self, loggedUser: User):
-        super().__init__(loggedUser)
-        self.setWindowTitle("PTW (Permit To Work) - DFGM Window")
-
-        self.tabUnderReviewPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestEditsOption, self.acceptOption, self.rejectOption, self.printOption])
-        self.tabReturnedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.printOption])
-        self.tabApprovedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.printOption])
-        self.tabRejectedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.dltOption, self.printOption])
-        self.tabRunningPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewPerformingOption, self.viewApprovalsOption, self.printOption])
-        self.tabHeldPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.viewIsolationsOption, self.printDeIsolationOption, self.printOption])
-        self.tabClosedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.printDeIsolationOption, self.printOption])
-
-        self.sideBarLayout.addWidget(self.btnWelcome)
-        self.sideBarLayout.addWidget(self._makeSeparator())
-        self.sideBarLayout.addWidget(self.btnUnderReviewPTWs)
-        self.sideBarLayout.addWidget(self.btnReturnedPTWs)
-        self.sideBarLayout.addWidget(self.btnApprovedPTWs)
-        self.sideBarLayout.addWidget(self.btnRejectedPTWs)
-        self.sideBarLayout.addWidget(self._makeSeparator())
-        self.sideBarLayout.addWidget(self.btnRunningPTWs)
-        self.sideBarLayout.addWidget(self.btnHeldPTWs)
-        self.sideBarLayout.addWidget(self.btnClosedPTWs)
-        self.sideBarLayout.addWidget(self._makeSeparator())
-        self.sideBarLayout.addWidget(self.btnActiveIsolations)
-        self.sideBarLayout.addStretch()
-        self.sideBarLayout.addWidget(self.btnSettings)
-        self.sideBarLayout.addWidget(self.btnRefresh)
-        self.sideBarLayout.addWidget(self.btnLogout)
-
-        # Create Floating Option Button
-        self.btnFAB.setIcon(qta.icon("fa5.file-pdf"))
-        self.btnFAB.setToolTip("Print current widget PTWs")
-
-    def stackTabChanged(self):
-        super().stackTabChanged()
-        tab = self.stack.currentWidget()
-        self.btnFAB.setVisible(tab != self.tabWelcome)
+        self.btnFAB.setVisible(tab != self.tabWelcome and tab != self.tabIsolations)
 
     def refreshGUI(self):
         super().refreshPtwUserGUI()

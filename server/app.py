@@ -1,4 +1,7 @@
 import os
+import json
+import queue
+import threading
 from pathlib import Path
 from time import time
 
@@ -35,6 +38,19 @@ app.config.update(
 mail = Mail(app)
 
 resetCodes = {}
+
+_sse_clients: list[queue.Queue] = []
+_sse_lock = threading.Lock()
+
+def _broadcast(event_type: str, data: dict):
+    msg = f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
+    with _sse_lock:
+        for q in list(_sse_clients):
+            try:
+                q.put_nowait(msg)
+            except queue.Full:
+                _sse_clients.remove(q)
+
 try:
     userDB = UsersDb()
     ptwDB = PtwsDb()
@@ -55,6 +71,35 @@ def getVerifiedUser(auth) -> User:
         return None
     except AttributeError:
         return None
+
+
+@app.get("/events")
+def sse_stream():
+    user = getVerifiedUser(request.authorization)
+    if user is None:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    q = queue.Queue(maxsize=50)
+    with _sse_lock:
+        _sse_clients.append(q)
+    def generate():
+        try:
+            yield ": connected\n\n"
+            while True:
+                try:
+                    yield q.get(timeout=30)
+                except queue.Empty:
+                    yield ": heartbeat\n\n"
+        finally:
+            with _sse_lock:
+                try:
+                    _sse_clients.remove(q)
+                except ValueError:
+                    pass
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.route("/login", methods=["POST"])
@@ -272,7 +317,9 @@ def addPTWRequest():
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     ptwDict = request.get_json(silent=True) or {}
     try:
-        return jsonify({"success": True, "ptw-id": ptwDB.addPTWFromDict(ptwDict)})
+        ptw_id = ptwDB.addPTWFromDict(ptwDict)
+        _broadcast("new_ptw", {"ptw_id": ptw_id, "type": ptwDict.get("type", ""), "by": user.getUsername()})
+        return jsonify({"success": True, "ptw-id": ptw_id})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
@@ -284,7 +331,10 @@ def deletePTWRequest():
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
     try:
-        return jsonify({"success": True, "ptw": ptwDB.deletePTW(payload.get('ptw-id'))})
+        ptw_id = payload.get('ptw-id')
+        result = ptwDB.deletePTW(ptw_id)
+        _broadcast("ptw_deleted", {"ptw_id": ptw_id, "by": user.getUsername()})
+        return jsonify({"success": True, "ptw": result})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
@@ -299,7 +349,9 @@ def updatePTWApprovals():
     if ptwId is None or approval is None:
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     try:
-        return jsonify({"success": True, "ptw": ptwDB.updatePTWApprovals(ptwId, approval)})
+        result = ptwDB.updatePTWApprovals(ptwId, approval)
+        _broadcast("ptw_approval", {"ptw_id": ptwId, "action": str(approval.action), "by": user.getUsername()})
+        return jsonify({"success": True, "ptw": result})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
     
@@ -316,7 +368,9 @@ def requestToRunPTW():
     if ptwId is None or pa is None or ts is None:
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     try:
-        return jsonify({"success": True, "message": ptwDB.requestToRunPTW(ptwId, pa, ts)})
+        result = ptwDB.requestToRunPTW(ptwId, pa, ts)
+        _broadcast("ptw_run_request", {"ptw_id": ptwId, "by": pa})
+        return jsonify({"success": True, "message": result})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
@@ -349,9 +403,11 @@ def runPTW():
                     globalData.activeIsolations[iso.tag] = ActiveIsolation(type=iso.type, tag=iso.tag, description=iso.description)
                 globalData.activeIsolations[iso.tag].linkPTW(ptwId)
                 isoDB.updateIsolation(globalData.activeIsolations[iso.tag])
+            _broadcast("ptw_run", {"ptw_id": ptwId, "accepted": True, "by": ia})
             return jsonify({"success": True})
         else:
             ptwDB.runRejectPTW(ptwId, ia, ts)
+            _broadcast("ptw_run", {"ptw_id": ptwId, "accepted": False, "by": ia})
             return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
@@ -376,6 +432,7 @@ def requestToHldPTW():
                 p.keep_isolations = keepTags
                 p.running_status = PTWData.RunningStatus.WAITING_HLD_CONFIRM
                 break
+        _broadcast("ptw_hold_request", {"ptw_id": ptwId, "by": pa})
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
@@ -406,9 +463,11 @@ def hldPTW():
                 if iso.tag not in keepTags and iso.tag in globalData.activeIsolations:
                     globalData.activeIsolations[iso.tag].unlinkPTW(ptwId)
                     isoDB.updateIsolation(globalData.activeIsolations[iso.tag])
+            _broadcast("ptw_hold", {"ptw_id": ptwId, "accepted": True, "by": ia})
             return jsonify({"success": True})
         else:
             ptwDB.hldRejectPTW(ptwId, ia, ts)
+            _broadcast("ptw_hold", {"ptw_id": ptwId, "accepted": False, "by": ia})
             return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
@@ -426,7 +485,9 @@ def requestToClsPTW():
     if ptwId is None or pa is None or ts is None:
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     try:
-        return jsonify({"success": True, "message": ptwDB.requestToClsPTW(ptwId, pa, ts)})
+        result = ptwDB.requestToClsPTW(ptwId, pa, ts)
+        _broadcast("ptw_close_request", {"ptw_id": ptwId, "by": pa})
+        return jsonify({"success": True, "message": result})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
@@ -457,9 +518,11 @@ def clsPTW():
                     isoDB.updateIsolation(globalData.activeIsolations[iso.tag])
                 else:
                     print(f"Isolation {iso.tag} not found in active isolations")
+            _broadcast("ptw_close", {"ptw_id": ptwId, "accepted": True, "by": ia})
             return jsonify({"success": True})
         else:
             ptwDB.clsRejectPTW(ptwId, ia, ts)
+            _broadcast("ptw_close", {"ptw_id": ptwId, "accepted": False, "by": ia})
             return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400

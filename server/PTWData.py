@@ -378,7 +378,7 @@ class PTWData:
     
     def updateApprovals(self, approval):
         self.approvals.append(approval)
-        self.getStatus()
+        self.__updateStatus()
 
     def clearApprovals(self):
         self.approvals = []

@@ -282,7 +282,7 @@ class LoginWindow(QMainWindow):
     
 
     def login(self):
-        from MainWindow import MainWindow, AdminMainWindow, UserMainWindow, CoordinatorMainWindow, IssuingMainWindow, SafetyMainWindow, PDHMainWindow, PGMMainWindow, SODMainWindow, DFGMMainWindow
+        from MainWindow import MainWindow, AdminMainWindow, UserMainWindow, CoordinatorMainWindow, IssuingMainWindow, SafetyMainWindow, ManagerMainWindow
         from clientRequests import ClientRequests
         from User import UserRoles
 
@@ -310,13 +310,13 @@ class LoginWindow(QMainWindow):
         elif user.getRole() == UserRoles.SAFETY:
             mainWindow = SafetyMainWindow(user)
         elif user.getRole() == UserRoles.PGM:
-            mainWindow = PGMMainWindow(user)
+            mainWindow = ManagerMainWindow(user, "PGM")
         elif user.getRole() == UserRoles.PDH:
-            mainWindow = PDHMainWindow(user)
+            mainWindow = ManagerMainWindow(user, "PDH")
         elif user.getRole() == UserRoles.SOD:
-            mainWindow = SODMainWindow(user)
+            mainWindow = ManagerMainWindow(user, "SOD")
         elif user.getRole() == UserRoles.DFGM:
-            mainWindow = DFGMMainWindow(user)
+            mainWindow = ManagerMainWindow(user, "DFGM")
         elif user.getRole() == UserRoles.ADMIN:
             mainWindow = AdminMainWindow(user)
         else:
