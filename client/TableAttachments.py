@@ -150,7 +150,7 @@ class TableAttachments(QWidget):
             self.__addAttachmentToGUI(attachment)
         self.missingLst.clear()
         for title in self.requiredAttachs:
-            if title not in [attachment.remoteName for attachment in self.attachments]:
+            if title not in [attachment.remoteName[:attachment.remoteName.rfind('.')] for attachment in self.attachments]:
                 self.__addRequiredAttachmentToGUI(title)
 
     def itemDoubleClicked(self, item: QListWidgetItem):
@@ -190,7 +190,7 @@ class TableAttachments(QWidget):
             selectedFiles = fileDialog.selectedFiles()
             if selectedFiles:
                 localPath = selectedFiles[0]
-                newAttachment = Attachment(localPath=localPath, remoteName=title, uploaded=False)
+                newAttachment = Attachment(localPath=localPath, remoteName=title + '.' + QFileInfo(localPath).suffix(), uploaded=False)
                 self.addAttachment(newAttachment)
                 self.refreshGUI()
     
