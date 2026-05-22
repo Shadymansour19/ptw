@@ -167,8 +167,8 @@ class PTWData:
     ALL_CONTROLS:   list[str] = [
         'Initial Gas Test', 'Continuous Gas Test', 'Portable Fire Extinguisher', 'IS/Ex Rated Equipment', 'Equipment Earthing', 
         'Drained', 'Vented', 'Flushed', 'Purged', 'MSDS', 'Rescue Plan', 'Additional Lighting', 'Secure Loose Objects', 
-        'Housekeeping', 'Lifting Plan', 'Manual Handing', 'Working at Height Equipment', 'Vendor', 'Signs & Barriers', 
-        'Safe Access & Egress', 'Radios', 'Face Shield', 'Hearing Protection', 'Safety Harness', 'Dust Mask', 'Respirator', 
+        'Housekeeping', 'Lifting Plan', 'Manual Handing', 'Working at Height Equipment', 'Vendor', 'Signs && Barriers', 
+        'Safe Access && Egress', 'Radios', 'Face Shield', 'Hearing Protection', 'Safety Harness', 'Dust Mask', 'Respirator', 
         'Fire Retardant Coverall', 'Breathing Apparatus', 
     ]
     ALL_ISOLATIONS: dict[str, Isolation] = {
@@ -1456,11 +1456,11 @@ class PTWData:
         if 'Confined Space' in self.hazards:
             docs.append('Confined Space Medical Certificates')
         return docs
-    
+
     def requiredDocsToPrint(self) -> list[str]:
-        docs = []
+        docs = ['toolbox', 'audit']
         if 'Initial Gas Test' in self.controls:
-            docs.append('Gas Test')
+            docs.append('gas-test')
         return docs
     
     def updateApprovals(self, approval):
