@@ -1,0 +1,22 @@
+# Credentials — NEVER commit these
+server/.env
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Root-level duplicate/stale files (the real copies are in client/ and server/)
+/PTWData.py
+/User.py
+
+# Operational data — user uploads and company PDFs
+server/miwi/
+server/ptw-*-attachments/
+
+# Generated files
+client/qr-summery-*.png
+
+# IDE
+.vscode/
+*.swp
