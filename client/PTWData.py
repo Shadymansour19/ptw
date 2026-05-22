@@ -155,22 +155,118 @@ class ActiveIsolation(Isolation):
 
 
 class PTWData:
-    ALL_TOOLS:      list[str] = [
-        'Hand Tools', 'Power Tools', 'Non-Ex Tools', 'Test Tools', 'Pneumatic Tools', 'Camera', 'Hydraulic Tools', 'Grit Blasting', 
-    ]
-    ALL_HAZARDS:    list[str] = [
-        'Confined Space', 'Working at Height', 'Scaffolding', 'Dropped Objects', 'Electrical/Mechanical Spark', 'Static Electricity', 
-        'Flammable Material', 'Gas Cylinders', 'Stored Energy', 'Moving Vehicle', 'Safety Device Overridden', 'SIMOPS', 
-        'Temp. Equipment', 'Inadequate Lighting', 'Heavy/Complex Lifts', 'Extreme Temperature', 'Excavation', 'Rotating Machinery', 
-        'Hazardous Substance', 'Pressurized Pipes', 'Noise', 'Vibration', 'Slips', 'Trips', 'Access/Egress', 
-    ]
-    ALL_CONTROLS:   list[str] = [
-        'Initial Gas Test', 'Continuous Gas Test', 'Portable Fire Extinguisher', 'IS/Ex Rated Equipment', 'Equipment Earthing', 
-        'Drained', 'Vented', 'Flushed', 'Purged', 'MSDS', 'Rescue Plan', 'Additional Lighting', 'Secure Loose Objects', 
-        'Housekeeping', 'Lifting Plan', 'Manual Handing', 'Working at Height Equipment', 'Vendor', 'Signs && Barriers', 
-        'Safe Access && Egress', 'Radios', 'Face Shield', 'Hearing Protection', 'Safety Harness', 'Dust Mask', 'Respirator', 
-        'Fire Retardant Coverall', 'Breathing Apparatus', 
-    ]
+    class Requirement:
+        class Types(enum.StrEnum):
+            TOOL = enum.auto()
+            HAZARD = enum.auto()
+            CONTROL = enum.auto()
+            ISOLATION = enum.auto()
+            RISK = enum.auto()
+            ATTACH = enum.auto()
+            DOC = enum.auto()
+        
+        def __init__(self, type: 'PTWData.Requirement.Types', description: str):
+            self.type = type
+            self.description = description
+
+    ALL_TOOLS:      dict[str, list[Requirement]] = {
+        'Hand Tools':       [
+            Requirement(type=Requirement.Types.RISK, description='Use of Hand Tools'), 
+        ],
+        'Power Tools':      [
+            Requirement(type=Requirement.Types.RISK, description='Use of Power Tools'), 
+            Requirement(type=Requirement.Types.ATTACH, description='Power Tools Checklist'), 
+        ],
+        'Non-Ex Tools':     [
+            Requirement(type=Requirement.Types.RISK, description='Use of Non-Ex Tools'), 
+        ],
+        'Test Tools':       [],
+        'Pneumatic Tools':  [],
+        'Camera':           [
+            Requirement(type=Requirement.Types.RISK, description='Use of Camera'), 
+        ],
+        'Hydraulic Tools':  [],
+        'Grit Blasting':    [],
+    }
+    
+    ALL_HAZARDS:    dict[str, list[Requirement]] = {
+        'Confined Space':                   [
+            Requirement(type=Requirement.Types.ATTACH, description='Confined Space Medical Checks'), 
+            Requirement(type=Requirement.Types.DOC, description='Confined Space IOGP'), 
+        ],
+        'Working at Height':                [
+            Requirement(type=Requirement.Types.ATTACH, description='Working at Height Medical Checks'), 
+            Requirement(type=Requirement.Types.DOC, description='Working at Height IOGP'), 
+        ],
+        'Scaffolding':                      [],
+        'Dropped Objects':                  [],
+        'Electrical / Mechanical Spark':    [
+            Requirement(type=Requirement.Types.CONTROL, description='Initial Gas Test'), 
+        ],
+        'Static Electricity':               [],
+        'Flammable Material':               [],
+        'Gas Cylinders':                    [
+            Requirement(type=Requirement.Types.CONTROL, description='MSDS'), 
+        ],
+        'Stored Energy':                    [],
+        'Moving Vehicle':                   [],
+        'Safety Device Overridden':         [],
+        'SIMOPS':                           [],
+        'Temp. Equipment':                  [],
+        'Inadequate Lighting':              [],
+        'Heavy / Complex Lifts':            [],
+        'Extreme Temperature':              [],
+        'Excavation':                       [],
+        'Rotating Machinery':               [],
+        'Hazardous Substance':              [
+            Requirement(type=Requirement.Types.CONTROL, description='MSDS'), 
+        ],
+        'Pressurized Pipes':                [],
+        'Noise':                            [],
+        'Vibration':                        [],
+        'Slips / Trips':                    [],
+        'Access / Egress':                  []
+    }
+
+    ALL_CONTROLS:   dict[str, list[Requirement]] = {
+        'Initial Gas Test':             [
+            Requirement(type=Requirement.Types.DOC, description='Atmospheric Gas Test'), 
+        ],
+        'Continuous Gas Test':          [],
+        'Portable Fire Extinguisher':   [],
+        'IS/Ex Rated Equipment':        [],
+        'Equipment Earthing':           [],
+        'Drained':                      [],
+        'Vented':                       [],
+        'Flushed':                      [],
+        'Purged':                       [],
+        'MSDS':                         [
+            Requirement(type=Requirement.Types.ATTACH, description='MSDS'), 
+        ],
+        'Rescue Plan':                  [
+            Requirement(type=Requirement.Types.ATTACH, description='Rescue Plan'), 
+        ],
+        'Additional Lighting':          [],
+        'Secure Loose Objects':         [],
+        'Housekeeping':                 [],
+        'Lifting Plan':                 [
+            Requirement(type=Requirement.Types.ATTACH, description='Lifting Plan'), 
+        ],
+        'Manual Handing':               [],
+        'Working at Height Equipment':  [],
+        'Vendor':                       [],
+        'Signs && Barriers':            [],
+        'Safe Access && Egress':        [],
+        'Radios':                       [],
+        'Face Shield':                  [],
+        'Hearing Protection':           [],
+        'Safety Harness':               [],
+        'Dust Mask':                    [],
+        'Respirator':                   [],
+        'Fire Retardant Coverall':      [],
+        'Breathing Apparatus':          [],
+    }
+
     ALL_ISOLATIONS: dict[str, Isolation] = {
         'XV-7227A':     Isolation(type=Isolation.Types.MECHANICAL,  tag='XV-7227A',  description='MC-A 1nd Stage ASV'), 
         'XV-7227B':     Isolation(type=Isolation.Types.MECHANICAL,  tag='XV-7227B',  description='MC-B 1nd Stage ASV'), 
@@ -1405,23 +1501,28 @@ class PTWData:
         return self
     
     def addIsolation(self, isolation: Isolation):
-        self.isolations.append(isolation)
+        if isolation not in self.isolations:
+            self.isolations.append(isolation)
         return self
     
     def addHazard(self, hazard: str):
-        self.hazards.append(hazard)
+        if hazard not in self.hazards:
+            self.hazards.append(hazard)
         return self
     
     def addTool(self, tool: str):
-        self.tools.append(tool)
+        if tool not in self.tools:
+            self.tools.append(tool)
         return self
     
     def addControl(self, control: str):
-        self.controls.append(control)
+        if control not in self.controls:
+            self.controls.append(control)
         return self
 
     def addRisk(self, risk: str):
-        self.risks.append(risk)
+        if risk not in self.risks:
+            self.risks.append(risk)
         return self
 
     def __str__(self):
@@ -1447,14 +1548,43 @@ class PTWData:
                 return "Missing required attachment: {}".format(required)
         return None
     
+    def updateRequirements(self):
+        def __handleRequirement(requirement):
+            if requirement.type == PTWData.Requirement.Types.TOOL:
+                self.addTool(requirement.description)
+            elif requirement.type == PTWData.Requirement.Types.CONTROL:
+                self.addControl(requirement.description)
+            elif requirement.type == PTWData.Requirement.Types.HAZARD:
+                self.addHazard(requirement.description)
+            elif requirement.type == PTWData.Requirement.Types.RISK:
+                self.addRisk(requirement.description)
+        
+        for tool in self.tools:
+            for requirement in PTWData.ALL_TOOLS.get(tool, []):
+                __handleRequirement(requirement)
+
+        for ctrl in self.controls:
+            for requirement in PTWData.ALL_CONTROLS.get(ctrl, []):
+                __handleRequirement(requirement)
+        
+        for hazard in self.hazards:
+            for requirement in PTWData.ALL_HAZARDS.get(hazard, []):
+                __handleRequirement(requirement)
+        
     def requiredAttachs(self) -> list[str]:
         docs = []
-        if 'Power Tools' in self.tools:
-            docs.append('Power Tool Checklist')
-        if 'Working at Height' in self.hazards:
-            docs.append('Working at Height Medical Certificates')
-        if 'Confined Space' in self.hazards:
-            docs.append('Confined Space Medical Certificates')
+        for tool in self.tools:
+            for requirement in PTWData.ALL_TOOLS.get(tool, []):
+                if requirement.type == PTWData.Requirement.Types.ATTACH:
+                    docs.append(requirement.description)
+        for ctrl in self.controls:
+            for requirement in PTWData.ALL_CONTROLS.get(ctrl, []):
+                if requirement.type == PTWData.Requirement.Types.ATTACH:
+                    docs.append(requirement.description)
+        for hazard in self.hazards:
+            for requirement in PTWData.ALL_HAZARDS.get(hazard, []):
+                if requirement.type == PTWData.Requirement.Types.ATTACH:
+                    docs.append(requirement.description)
         return docs
 
     def requiredDocsToPrint(self) -> list[str]:

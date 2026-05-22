@@ -345,6 +345,23 @@ class DialogPTW(QDialog):
         self.stackTabChanged()
         self.miwiMosSwitch()
 
+    def refreshUI(self):
+        for btn in self.btnsTools:
+            btn.setChecked(btn.text() in self.ptw.tools)
+        self.boxOtherTools.setText(', '.join(tool for tool in self.ptw.tools if tool not in PTWData.ALL_TOOLS))
+
+        for btn in self.btnsHazard:
+            btn.setChecked(btn.text() in self.ptw.hazards)
+        self.boxOtherHazards.setText(', '.join(tool for tool in self.ptw.hazards if tool not in PTWData.ALL_HAZARDS))
+
+        for btn in self.btnsControls:
+            btn.setChecked(btn.text() in self.ptw.controls)
+        self.boxOtherControls.setText(', '.join(tool for tool in self.ptw.controls if tool not in PTWData.ALL_CONTROLS))
+
+        for riskTitle in globalData.allRiskAssessments.keys():
+            if riskTitle in self.ptw.risks:
+                self.tabRisks.checkRisk(riskTitle)
+
     def miwiMosSwitch(self):
         if self.btnMiwi.isChecked():
             self.boxMiwi.setEnabled(not self.readonly)
@@ -455,6 +472,8 @@ class DialogPTW(QDialog):
         self.btnBack.setEnabled(tabIdx > 0)
 
         self.collectData()
+        self.ptw.updateRequirements()
+        self.refreshUI()
         self.requiredAttachs = self.ptw.requiredAttachs()
         self.tableAttachments.setRequiredAttachs(self.requiredAttachs)
 
