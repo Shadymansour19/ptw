@@ -50,6 +50,21 @@ class TabButton(QToolButton):
 
 class DialogPTW(QDialog):
     GRID_LYT_COLS = 3
+    CHECK_BOX_MAX_LINE_CHARS = 36
+
+    def checkboxDisplayName(text: str):
+        if len(text) <= DialogPTW.CHECK_BOX_MAX_LINE_CHARS:
+            return text
+        else:
+            # Insert a newline at the last space before the max line chars, or at max line chars if no space found
+            breakpoint = text.rfind(' ', 0, DialogPTW.CHECK_BOX_MAX_LINE_CHARS)
+            if breakpoint == -1:
+                breakpoint = DialogPTW.CHECK_BOX_MAX_LINE_CHARS
+            return text[:breakpoint] + '\n' + text[breakpoint:].lstrip()
+        
+    def formatCheckBoxText(text: str):
+        return text.replace('\n', ' ')
+
     def __init__(self, parent, loggedUser, ptw: PTWData, referencePTW: PTWData, new: bool, readOnly: bool, lbl: str):
         super().__init__(parent)
 
@@ -217,12 +232,13 @@ class DialogPTW(QDialog):
 
         self.btnsTools: list[QCheckBox] = []
         for i,tool in enumerate(PTWData.ALL_TOOLS):
-            btn = QCheckBox(tool)
-            btn.setChecked(btn.text() in ptw.tools)
+            btn = QCheckBox(DialogPTW.checkboxDisplayName(tool))
+            btn.setChecked(DialogPTW.formatCheckBoxText(btn.text()) in ptw.tools)
             btn.setEnabled(not readOnly)
             # btn.setStyleSheet('QCheckBox::inkodicator {width: 20px; height: 20px}')
             lytTools.addWidget(btn, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS)
             self.btnsTools.append(btn)
+        i += 1
         self.boxOtherTools = QLineEdit()
         self.boxOtherTools.setEnabled(not readOnly)
         self.boxOtherTools.setPlaceholderText("Others")
@@ -233,12 +249,13 @@ class DialogPTW(QDialog):
         
         self.btnsHazard: list[QCheckBox] = []
         for i,hazard in enumerate(PTWData.ALL_HAZARDS):
-            btn = QCheckBox(hazard)
-            btn.setChecked(btn.text() in ptw.hazards)
+            btn = QCheckBox(DialogPTW.checkboxDisplayName(hazard))
+            btn.setChecked(DialogPTW.formatCheckBoxText(btn.text()) in ptw.hazards)
             btn.setEnabled(not readOnly)
             # btn.setStyleSheet('QCheckBox::indicator {width: 20px; height: 20px}')
             lytHazards.addWidget(btn, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS)
             self.btnsHazard.append(btn)
+        i += 1
         self.boxOtherHazards = QLineEdit()
         self.boxOtherHazards.setEnabled(not readOnly)
         self.boxOtherHazards.setPlaceholderText("Others")
@@ -249,12 +266,13 @@ class DialogPTW(QDialog):
         
         self.btnsControls: list[QCheckBox] = []
         for i,ctrl in enumerate(PTWData.ALL_CONTROLS):
-            btn = QCheckBox(ctrl)
-            btn.setChecked(btn.text() in ptw.controls)
+            btn = QCheckBox(DialogPTW.checkboxDisplayName(ctrl))
+            btn.setChecked(DialogPTW.formatCheckBoxText(btn.text()) in ptw.controls)
             btn.setEnabled(not readOnly)
             # btn.setStyleSheet('QCheckBox::indicator {width: 20px; height: 20px;}')
             lytControls.addWidget(btn, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS)
             self.btnsControls.append(btn)
+        i += 1
         self.boxOtherControls = QLineEdit()
         self.boxOtherControls.setEnabled(not readOnly)
         self.boxOtherControls.setPlaceholderText("Others")
@@ -347,15 +365,15 @@ class DialogPTW(QDialog):
 
     def refreshUI(self):
         for btn in self.btnsTools:
-            btn.setChecked(btn.text() in self.ptw.tools)
+            btn.setChecked(DialogPTW.formatCheckBoxText(btn.text()) in self.ptw.tools)
         self.boxOtherTools.setText(', '.join(tool for tool in self.ptw.tools if tool not in PTWData.ALL_TOOLS))
 
         for btn in self.btnsHazard:
-            btn.setChecked(btn.text() in self.ptw.hazards)
+            btn.setChecked(DialogPTW.formatCheckBoxText(btn.text()) in self.ptw.hazards)
         self.boxOtherHazards.setText(', '.join(tool for tool in self.ptw.hazards if tool not in PTWData.ALL_HAZARDS))
 
         for btn in self.btnsControls:
-            btn.setChecked(btn.text() in self.ptw.controls)
+            btn.setChecked(DialogPTW.formatCheckBoxText(btn.text()) in self.ptw.controls)
         self.boxOtherControls.setText(', '.join(tool for tool in self.ptw.controls if tool not in PTWData.ALL_CONTROLS))
 
         for riskTitle in globalData.allRiskAssessments.keys():
@@ -501,7 +519,7 @@ class DialogPTW(QDialog):
         self.ptw.tools = []
         for btn in self.btnsTools:
             if btn.isChecked():
-                self.ptw.addTool(btn.text())
+                self.ptw.addTool(DialogPTW.formatCheckBoxText(btn.text()))
         if self.boxOtherTools.text():
             for tool in re.split(r'[,/\-+;|]', self.boxOtherTools.text()):
                 tool = tool.strip()
@@ -511,7 +529,7 @@ class DialogPTW(QDialog):
         self.ptw.hazards = []
         for btn in self.btnsHazard:
             if btn.isChecked():
-                self.ptw.addHazard(btn.text())
+                self.ptw.addHazard(DialogPTW.formatCheckBoxText(btn.text()))
         if self.boxOtherHazards.text():
             for hazard in re.split(r'[,/\-+;|]', self.boxOtherHazards.text()):
                 hazard = hazard.strip()
@@ -521,7 +539,7 @@ class DialogPTW(QDialog):
         self.ptw.controls = []
         for btn in self.btnsControls:
             if btn.isChecked():
-                self.ptw.addControl(btn.text())
+                self.ptw.addControl(DialogPTW.formatCheckBoxText(btn.text()))
         if self.boxOtherControls.text():
             for ctrl in re.split(r'[,/\-+;|]', self.boxOtherControls.text()):
                 ctrl = ctrl.strip()
