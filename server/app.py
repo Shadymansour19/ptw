@@ -39,17 +39,20 @@ mail = Mail(app)
 
 resetCodes = {}
 
-_sse_clients: list[queue.Queue] = []
+_sse_clients: dict[UserRoles, list[queue.Queue]] = {}   # role -> connected queues
 _sse_lock = threading.Lock()
 
-def _broadcast(event_type: str, data: dict):
+def _broadcast(event_type: str, data: dict, roles: list[UserRoles] = None):
+    """Broadcast an SSE event. roles=None sends to all connected roles."""
     msg = f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
     with _sse_lock:
-        for q in list(_sse_clients):
-            try:
-                q.put_nowait(msg)
-            except queue.Full:
-                _sse_clients.remove(q)
+        targets = roles if roles is not None else list(_sse_clients.keys())
+        for role in targets:
+            for q in list(_sse_clients.get(role, [])):
+                try:
+                    q.put_nowait(msg)
+                except queue.Full:
+                    _sse_clients[role].remove(q)
 
 try:
     userDB = UsersDb()
@@ -78,9 +81,10 @@ def sse_stream():
     user = getVerifiedUser(request.authorization)
     if user is None:
         return jsonify({"success": False, "error": "Unauthorized"}), 401
+    role = user.getRole()
     q = queue.Queue(maxsize=50)
     with _sse_lock:
-        _sse_clients.append(q)
+        _sse_clients.setdefault(role, []).append(q)
     def generate():
         try:
             yield ": connected\n\n"
@@ -92,8 +96,8 @@ def sse_stream():
         finally:
             with _sse_lock:
                 try:
-                    _sse_clients.remove(q)
-                except ValueError:
+                    _sse_clients[role].remove(q)
+                except (ValueError, KeyError):
                     pass
     return Response(
         stream_with_context(generate()),
@@ -318,7 +322,7 @@ def addPTWRequest():
     ptwDict = request.get_json(silent=True) or {}
     try:
         ptw_id = ptwDB.addPTWFromDict(ptwDict)
-        _broadcast("new_ptw", {"ptw_id": ptw_id, "type": ptwDict.get("type", ""), "by": user.getUsername()})
+        _broadcast("new_ptw", {"ptw_id": ptw_id, "type": ptwDict.get("type", ""), "by": user.getUsername()}, roles=[UserRoles.USER, UserRoles.COORDINATOR])
         return jsonify({"success": True, "ptw-id": ptw_id})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
@@ -369,7 +373,7 @@ def requestToRunPTW():
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     try:
         result = ptwDB.requestToRunPTW(ptwId, pa, ts)
-        _broadcast("ptw_run_request", {"ptw_id": ptwId, "by": pa})
+        _broadcast("ptw_run_request", {"ptw_id": ptwId, "by": pa}, roles=[UserRoles.USER, UserRoles.ISSUING])
         return jsonify({"success": True, "message": result})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
@@ -432,7 +436,7 @@ def requestToHldPTW():
                 p.keep_isolations = keepTags
                 p.running_status = PTWData.RunningStatus.WAITING_HLD_CONFIRM
                 break
-        _broadcast("ptw_hold_request", {"ptw_id": ptwId, "by": pa})
+        _broadcast("ptw_hold_request", {"ptw_id": ptwId, "by": pa}, roles=[UserRoles.USER, UserRoles.ISSUING])
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
@@ -486,7 +490,7 @@ def requestToClsPTW():
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     try:
         result = ptwDB.requestToClsPTW(ptwId, pa, ts)
-        _broadcast("ptw_close_request", {"ptw_id": ptwId, "by": pa})
+        _broadcast("ptw_close_request", {"ptw_id": ptwId, "by": pa}, roles=[UserRoles.USER, UserRoles.ISSUING])
         return jsonify({"success": True, "message": result})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
