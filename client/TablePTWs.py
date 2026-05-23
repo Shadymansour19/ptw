@@ -9,10 +9,11 @@ from PTWData import PTWData
 
 class TablePTWs(QWidget):
     class MenuOption:
-        def __init__(self, lbl, fun, icn):
+        def __init__(self, lbl, fun, icn, allAtOnce : bool = False):
             self.lbl = lbl
             self.fun = fun
             self.icn = icn
+            self.allAtOnce = allAtOnce
         
     def __init__(self, parent, loggedUser, label: str):
         super().__init__(parent)
@@ -153,10 +154,13 @@ class TablePTWs(QWidget):
         if len(self.options) > 0:
             self.options[0].fun(row, self.ptwsData[row])
     
-    def optionDoForAllSelected(self, fun):
+    def optionDoForAllSelected(self, fun, allAtOnce: bool):
         selectedRows = list(set(row.row() for row in self.tbl.selectedIndexes() if row.isValid()))
-        for row in selectedRows[::-1]:          # reverse to avoid messing up row numbers when deleting
-            fun(row, self.ptwsData[row])
+        if allAtOnce:
+            fun(selectedRows, [self.ptwsData[row] for row in selectedRows])
+        else:
+            for row in selectedRows[::-1]:          # reverse to avoid messing up row numbers when deleting
+                fun(row, self.ptwsData[row])
     
     def showContextMenu(self, pos: QPoint):
         row = self.tbl.indexAt(pos)
@@ -170,7 +174,7 @@ class TablePTWs(QWidget):
         for option in self.options:
             action = QAction(option.icn, option.lbl, self.tbl)
             menu.addAction(action)
-            action.triggered.connect(partial(self.optionDoForAllSelected, option.fun))
+            action.triggered.connect(partial(self.optionDoForAllSelected, option.fun, option.allAtOnce))
         
         menu.exec(self.tbl.mapToGlobal(pos))
     

@@ -521,7 +521,87 @@ class ReportGenerator:
         # url = 'file:{}'.format(pathname2url(absPath))
         # webbrowser.open_new_tab(url)
 
-    
+
+    def exportPTWs(ptws: list[PTWData]):
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'PTWs'
+
+        
+        headers = ['PTW#', 'Type', 'Status', 'Date', 'Department', 'Requestor', 'PA', 'Location', 'Area Class', 'Equipment', 'Description']
+        col_widths = [8, 20, 15, 14, 18, 22, 22, 20, 12, 25, 50]
+
+        header_font = Font(bold=True, color='FFFFFF')
+        header_fill = PatternFill(fill_type='solid', fgColor='2E4057')
+        header_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        thin = Side(style='thin', color='AAAAAA')
+        border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+        for col_idx, (header, width) in enumerate(zip(headers, col_widths), start=1):
+            cell = ws.cell(row=1, column=col_idx, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_align
+            cell.border = border
+            ws.column_dimensions[cell.column_letter].width = width
+
+        ws.row_dimensions[1].height = 28
+
+        def qcolor_to_hex(qcolor):
+            r, g, b, a = qcolor.red(), qcolor.green(), qcolor.blue(), 240
+            if a < 255:
+                r = (r * a + 255 * (255 - a)) // 255
+                g = (g * a + 255 * (255 - a)) // 255
+                b = (b * a + 255 * (255 - a)) // 255
+            return f'{r:02X}{g:02X}{b:02X}'
+
+        cell_align = Alignment(vertical='center', wrap_text=True)
+
+        for row_idx, ptw in enumerate(ptws, start=2):
+            status = str(ptw.running_status if ptw.approval_status == PTWData.ApprovalStatus.APPROVED and ptw.running_status is not None else ptw.approval_status)
+            requestor = globalData.allUsers[ptw.requestor].getName() if ptw.requestor in globalData.allUsers else str(ptw.requestor or '')
+            pa = globalData.allUsers[ptw.performing].getName() if ptw.performing in globalData.allUsers else str(ptw.performing or '')
+
+            row_data = [
+                ptw.id,
+                str(ptw.type or ''),
+                status,
+                str(ptw.date or ''),
+                str(ptw.department or ''),
+                requestor,
+                pa,
+                str(ptw.location or ''),
+                str(ptw.area_class or ''),
+                str(ptw.equipment or ''),
+                str(ptw.description or ''),
+            ]
+
+            row_fill = PatternFill(fill_type='solid', fgColor=qcolor_to_hex(ptw.backgroundColor()))
+            row_font = Font(color=qcolor_to_hex(ptw.foregroundColor()))
+            for col_idx, value in enumerate(row_data, start=1):
+                cell = ws.cell(row=row_idx, column=col_idx, value=value)
+                cell.alignment = cell_align
+                cell.border = border
+                cell.fill = row_fill
+                cell.font = row_font
+
+        ws.freeze_panes = 'A2'
+        ws.auto_filter.ref = ws.dimensions
+
+        timestamp = datetime.now().strftime('%d-%m-%Y_%H-%M-%S')
+        with tempfile.NamedTemporaryFile(delete=False, prefix=f'ptws-export-{timestamp}-', suffix='.xlsx') as f:
+            wb.save(f.name)
+            if platform.system() == 'Windows':
+                os.startfile(f.name)
+            elif platform.system() == 'Darwin':
+                subprocess.call(['open', f.name])
+            else:
+                subprocess.call(['xdg-open', f.name])
+
+
     def MOSReport(mos: str, ptwId: str, ptwTitle: str):
         LOGO_IMG_WIDTH = 30*mm
         MARGIN = 0.8 * inch
@@ -908,6 +988,7 @@ class ReportGenerator:
         buffer.seek(0)
         return buffer.read()
 
+
     def deIsolationReport(loggedUser, ptw: PTWData):
         pdf_bytes = ReportGenerator._buildDeIsolationPdf(ptw)
         if pdf_bytes is None:
@@ -916,3 +997,4 @@ class ReportGenerator:
             f.write(pdf_bytes)
             f.flush()
             ReportGenerator.openPDF(f.name)
+
