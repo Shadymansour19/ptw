@@ -1,5 +1,6 @@
 from datetime import datetime
 import copy
+import re
 from PyQt6.QtCore import *
 from PyQt6.QtWidgets import *
 from PyQt6.QtGui import *
@@ -178,10 +179,6 @@ class MainWindow(QMainWindow):
         self.btnActiveIsolations.setToolTip("Isolations")
         self.btnLanguage.setToolTip("Switch Language")
 
-        QShortcut(QKeySequence("Ctrl+H"), self).activated.connect(self.btnWelcome.click)
-        QShortcut(QKeySequence("Ctrl+X"), self).activated.connect(self.btnLogout.click)
-        QShortcut(QKeySequence("Ctrl+R"), self).activated.connect(self.refreshGUI)
-
         self._sideBarBtnMap = {
             self.btnWelcome:                    self.tabWelcome,
             self.btnUnderReviewPTWs:            self.tabUnderReviewPTWs,
@@ -213,12 +210,12 @@ class MainWindow(QMainWindow):
 
             /* Hover */
             QPushButton:hover {
-                background: rgba(255,255,255,30);
+                background: rgba(255,255,255,40);
             }
 
             /* Pressed */
             QPushButton:pressed {
-                background: rgba(255,255,255,60);
+                background: rgba(255,255,255,80);
             }
 
             /* Selected */
@@ -244,23 +241,59 @@ class MainWindow(QMainWindow):
         self.btnRefresh.clicked.connect(self.refreshGUI)
         self.btnLogout.clicked.connect(self.logout)
 
-        mainLayout = QHBoxLayout()
-        sideBarWidget = QWidget()
-        self.sideBarLayout = QVBoxLayout()
-        sideBarWidget.setLayout(self.sideBarLayout)
-        sideBarPalette = sideBarWidget.palette()
-        sideBarColor = sideBarPalette.color(QPalette.ColorRole.Window).darker(130)
-        sideBarBorderColor = sideBarPalette.color(QPalette.ColorRole.Window).darker(30)
-        sideBarWidget.setStyleSheet(f"QWidget {{ background-color: {sideBarColor.name()}; border-right: 1px solid {sideBarBorderColor.name()}; }}")
-        mainLayout.setContentsMargins(0, 0, 0, 0)
+        self.setCentralWidget(self.stack)
 
-        mainLayout.addWidget(sideBarWidget, stretch=0)
-        mainLayout.addWidget(self.stack, stretch=1)
+        sideBarColor = self.palette().color(QPalette.ColorRole.Window).darker(130)
+        self.sideBarLayout = QToolBar("SideBar Navigator")
+        self.sideBarLayout.setMovable(True)
+        self.sideBarLayout.setAllowedAreas(Qt.ToolBarArea.LeftToolBarArea | Qt.ToolBarArea.RightToolBarArea | Qt.ToolBarArea.BottomToolBarArea)
+        self.sideBarLayout.setFloatable(False)
+        self.sideBarLayout.setIconSize(QSize(32, 32))
+        self.sideBarLayout.setStyleSheet(f"""
+            QToolBar {{
+                background-color: {sideBarColor.name()};
+                border: none;
+                spacing: 2px;
+                padding: 4px 2px;
+            }}
+            QToolBar::separator:vertical {{
+                background: rgba(255, 255, 255, 40);
+                height: 2px;
+                margin: 2px 4px;
+            }}
+            QToolBar::separator:horizontal {{
+                background: rgba(255, 255, 255, 40);
+                width: 2px;
+                margin: 4px 2px;
+            }}
+        """)
+        self.addToolBar(Qt.ToolBarArea.LeftToolBarArea, self.sideBarLayout)
 
-        container = QWidget()
-        container.setLayout(mainLayout)
-        container.setAutoFillBackground(False)
-        self.setCentralWidget(container)
+        self.toolbar = QToolBar("ToolBar")
+        self.toolbar.setMovable(False)
+        self.toolbar.setStyleSheet("""
+            QToolBar {
+                background: rgba(0, 0, 0, 0.25);
+                border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+                spacing: 4px;
+                padding: 2px 4px;
+            }
+            QToolButton {
+                background: transparent;
+                border: none;
+                border-radius: 6px;
+                padding: 4px 8px;
+                color: white;
+                font-size: 13px;
+            }
+            QToolButton:hover {
+                background: rgba(255, 255, 255, 0.12);
+            }
+            QToolButton:pressed {
+                background: rgba(255, 255, 255, 0.22);
+            }
+        """)
+        self.addToolBar(self.toolbar)
 
         # Create Floating Action Button
         self.btnFAB = QPushButton(self)
@@ -287,7 +320,6 @@ class MainWindow(QMainWindow):
         self.btnFABUpdatePosition()
         self.stackTabChanged()
         self.refreshGUI()
-        QTimer.singleShot(0, self._populateWelcomeBtns)
 
         sb = self.statusBar()
         sb.show()
@@ -308,9 +340,17 @@ class MainWindow(QMainWindow):
         line.setStyleSheet("QFrame { background-color: rgba(255,255,255,40); border: none; margin: 2px 2px; }")
         return line
 
+    def _sideBarStretch(self):
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.sideBarLayout.addWidget(spacer)
+
     def resizeEvent(self, event):
         self.btnFABUpdatePosition()
         super().resizeEvent(event)
+
+    def createPopupMenu(self):
+        return None
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -623,57 +663,232 @@ class MainWindow(QMainWindow):
         y = self.height() - self.btnFAB.height() - margin - self.statusBar().height()
         self.btnFAB.move(x, y)
     
-    def _populateWelcomeBtns(self):
+    def setAvailableTabs(self, groups: list[list[QPushButton]]):
+        FOOTER_BTNS: list[QPushButton] = [self.btnSettings, self.btnRefresh, self.btnLogout]
+
+        # --- Sidebar ---
+        self.sideBarLayout.clear()
+        for i, group in enumerate(groups):
+            if i > 0:
+                self.sideBarLayout.addSeparator()
+            for btn in group:
+                self.sideBarLayout.addWidget(btn)
+        self._sideBarStretch()
+        for btn in FOOTER_BTNS:
+            self.sideBarLayout.addWidget(btn)
+
+        # --- Collect nav buttons ---
+        nav_btns = [btn for group in groups for btn in group] + FOOTER_BTNS
+
+        # --- Welcome grid ---
         col_count = 3
         for i in range(col_count):
             self.lytWelcomeBtns.setColumnStretch(i, 1)
+        while self.lytWelcomeBtns.count():
+            item = self.lytWelcomeBtns.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
 
-        welcomeBtns = []
-        for i in range(self.sideBarLayout.count()):
-            widget = self.sideBarLayout.itemAt(i).widget()
-            if isinstance(widget, QPushButton) and widget.toolTip() and widget.toolTip() != "Home [Ctrl+H]":
-                btn = QToolButton()
-                btn.setIcon(widget.icon())
-                btn.setText(widget.toolTip())
-                btn.setIconSize(QSize(48, 48))
-                # btn.setFixedHeight(90)
-                btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-                btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-                btn.clicked.connect(widget.click)
-                btn.setStyleSheet("""
-                    QToolButton {
-                        background: rgba(255, 255, 255, 0.10);
-                        border: 1px solid rgba(255, 255, 255, 0.30);
-                        border-radius: 10px;
-                        padding: 10px 6px;
-                        color: white;
-                    }
-                    QToolButton:hover {
-                        background: rgba(255, 255, 255, 0.15);
-                        border: 1px solid rgba(255, 255, 255, 0.45);
-                    }
-                    QToolButton:pressed {
-                        background: rgba(255, 255, 255, 0.20);
-                    }
-                """)
-                welcomeBtns.append(btn)
+        tiles = []
+        for btn in nav_btns:
+            tile = QToolButton()
+            tile.setIcon(btn.icon())
+            tile.setText(btn.toolTip())
+            tile.setIconSize(QSize(48, 48))
+            tile.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            tile.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+            tile.clicked.connect(btn.click)
+            tile.setStyleSheet("""
+                QToolButton {
+                    background: rgba(255, 255, 255, 0.10);
+                    border: 1px solid rgba(255, 255, 255, 0.30);
+                    border-radius: 10px;
+                    padding: 10px 6px;
+                    color: white;
+                }
+                QToolButton:hover {
+                    background: rgba(255, 255, 255, 0.15);
+                    border: 1px solid rgba(255, 255, 255, 0.45);
+                }
+                QToolButton:pressed {
+                    background: rgba(255, 255, 255, 0.20);
+                }
+            """)
+            tiles.append(tile)
 
-        total = len(welcomeBtns)
+        total = len(tiles)
         last_row_count = total % col_count or col_count
         last_row_start = total - last_row_count
-
-        for i, btn in enumerate(welcomeBtns):
+        for i, tile in enumerate(tiles):
             row = i // col_count
             if i >= last_row_start:
                 pos = i - last_row_start
                 col = pos * col_count // last_row_count
                 colspan = (pos + 1) * col_count // last_row_count - col
-                self.lytWelcomeBtns.addWidget(btn, row, col, 1, colspan)
+                self.lytWelcomeBtns.addWidget(tile, row, col, 1, colspan)
             else:
-                self.lytWelcomeBtns.addWidget(btn, row, i % col_count)
-
+                self.lytWelcomeBtns.addWidget(tile, row, i % col_count)
             if i < 10:
-                QShortcut('Alt+' + str(i), self).activated.connect(btn.click)
+                QShortcut('Alt+' + str(i + 1), self).activated.connect(tile.click)
+
+        # --- Top toolbar (grouped) ---
+        TOOLBAR_BTN_STYLE = """
+            QToolButton {
+                color: white; background: transparent; border: none;
+                border-radius: 4px; padding: 5px 14px;
+                font-size: 13px; font-weight: 500;
+            }
+            QToolButton:hover { background: rgba(255, 255, 255, 0.12); }
+            QToolButton:pressed { background: rgba(255, 255, 255, 0.22); }
+            QToolButton::menu-indicator { image: none; width: 0px; }
+        """
+
+        def make_menu_btn(text, actions):
+            btn = QToolButton()
+            btn.setText(text)
+            m = re.search(r'&([A-Za-z])', text)
+            if m:
+                btn.setShortcut(QKeySequence(f"Alt+{m.group(1).upper()}"))
+            btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+            btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+            btn.setStyleSheet(TOOLBAR_BTN_STYLE)
+            menu = QMenu(self)
+            menu.setStyleSheet("QMenu::separator { height: 2px; background: rgba(255, 255, 255, 40); margin: 4px 4px; }")
+            for a in actions:
+                if a:
+                    lbl = a.text()
+                    a.setText('&' + lbl) if lbl else None
+                    menu.addAction(a)
+                else:
+                    menu.addSeparator()
+            btn.setMenu(menu)
+            return btn
+
+        def nav_action(w):
+            tip = w.toolTip()
+            m = re.search(r'\[(.+)\]$', tip.strip())
+            label = tip[:m.start()].strip() if m else tip.replace('PTWs', '').replace('PTW', '').strip()
+            a = QAction(w.icon(), label, self)
+            if m:
+                a.setShortcut(QKeySequence(m.group(1)))
+            a.triggered.connect(w.click)
+            return a
+
+        # TOOLBAR_GROUPS = [
+        #     ("&PTWs",        lambda tip: "PTW" in tip),
+        #     ("&Risks",       lambda tip: "Risks" in tip),
+        #     ("&Isolations",  lambda tip: "Isolation" in tip),
+        #     ("&Users",       lambda tip: "User" in tip),
+        # ]
+        
+        TOOLBAR_GROUPS = ["&PTWs", "&Risks", "&Isolations", "&Users", "&View", "&Help"]
+
+        def getToolbarGroup(tip):
+            if "Home" in tip or "Refresh" in tip:
+                return "&View"
+            for group in TOOLBAR_GROUPS:
+                if group[1:] in tip:
+                    return group
+            return "&Help"
+
+        
+        # group_widgets: dict[str, list] = {name: [] for name, _ in TOOLBAR_GROUPS}
+        # ungrouped: list = []
+        # for group in groups:
+        #     for g in group_widgets.values():
+        #         if g and g[-1]:
+        #             g.append(None)  # separator between groups
+        #     for btn in group:
+        #         tip = btn.toolTip()
+        #         for name, predicate in TOOLBAR_GROUPS:
+        #             if predicate(tip):
+        #                 group_widgets[name].append(btn)
+        #                 break
+        #         else:
+        #             ungrouped.append(btn)
+
+        group_widgets: dict[str, list] = {name: [] for name in TOOLBAR_GROUPS}
+        for group in groups + [FOOTER_BTNS]:
+            for g in group_widgets.values():
+                if g and g[-1]:
+                    g.append(None)  # separator between groups
+            for btn in group:
+                tip = btn.toolTip()
+                group_name = getToolbarGroup(tip)
+                group_widgets[group_name].append(btn)
+
+        sidebarToggle = QAction("Navigation Sidebar", self)
+        sidebarToggle.setCheckable(True)
+        sidebarToggle.setChecked(True)
+        sidebarToggle.toggled.connect(self.sideBarLayout.setVisible)
+        group_widgets["&View"].insert(0, sidebarToggle)
+
+        aboutAction = QAction(qta.icon('fa6s.circle-info'), "About PTW", self)
+        aboutAction.triggered.connect(self._showAboutPTW)
+        aboutQtAction = QAction(qta.icon('fa6s.circle-question'), "About Qt", self)
+        aboutQtAction.triggered.connect(lambda: QMessageBox.aboutQt(self, "About Qt"))
+        group_widgets["&Help"].extend([None, aboutAction, aboutQtAction])
+
+        self.toolbar.clear()
+        for name in TOOLBAR_GROUPS:
+            if btns := group_widgets[name]:
+                self.toolbar.addWidget(make_menu_btn(name, [nav_action(w) if isinstance(w, QPushButton) else w for w in btns]))
+
+    def _showAboutPTW(self):
+        role = self.loggedUser.getRole()
+        role_descriptions = {
+            UserRoles.USER: (
+                "As a <b>Requestor</b>, you initiate and submit work permit requests from the <b>Under Review</b> tab. "
+                "You can track your PTWs through each stage of the approval workflow — "
+                "from submission and review, through approval and active work, to formal closure. "
+                "Use the PTWs menu to monitor the current status of your permits."
+            ),
+            UserRoles.COORDINATOR: (
+                "As a <b>Coordinator</b>, you manage the PTW approval pipeline. "
+                "You review submitted permits, either accepting or requesting changes to them, "
+                "and review the overall workflow to ensure timely processing. "
+                "Use the PTWs menu to act on permits awaiting your coordination in the <b>Under Review</b> Tab."
+            ),
+            UserRoles.ISSUING: (
+                "As an <b>Issuing Authority</b>, you are responsible for formally approving "
+                "and issuing work permits. You can oversee active isolations. "
+                "Authorizing work to run, and you can request edits or reject permits that "
+                "do not meet requirements."
+                "Use the <b>Under Review</b> tab to review permits waiting for your review."
+                "Use the <b>Waiting Run/Hold/Close Confirmation</b> tabs to review permits waiting your coordination."
+            ),
+            UserRoles.SAFETY: (
+                "As a <b>Safety Officer</b>, you review permits for safety compliance, "
+                "manage associated risk assessments, and ensure that all necessary precautions are in place."
+                "Use the <b>Risks</b> tab to manage risk assessment records."
+                "Use the <b>Under Review</b> tab to review permits waiting for your review."
+            ),
+            UserRoles.ADMIN: (
+                "As an <b>Administrator</b>, you manage system users and their access roles. "
+                "Use the <b>Users</b> tab to create, and edit user accounts. "
+                "You have full visibility over all registered users in the system."
+            ),
+        }
+        role_text = role_descriptions.get(
+            role,
+            f"As a <b>{role}</b>, you participate in the PTW approval and oversight process. "
+            "Use the PTWs menu to review and act on permits relevant to your role."
+        )
+        QMessageBox.about(
+            self, "About PTW",
+            "<b>PTW — Permit To Work</b><br><br>"
+            "A digital system for managing work permits in industrial and hazardous environments. "
+            "It provides end-to-end control over the permit lifecycle — from creation and multi-level "
+            "approval to active monitoring, hold management, and formal closure.<br><br>"
+            f"{role_text}<br><br>"
+            "Key features:<br>"
+            "&nbsp;&nbsp;• Structured permit workflows with role-based approvals<br>"
+            "&nbsp;&nbsp;• Isolation and de-isolation tracking<br>"
+            "&nbsp;&nbsp;• Risk assessment integration<br>"
+            "&nbsp;&nbsp;• Real-time status updates and notifications<br>"
+            "&nbsp;&nbsp;• Audit-ready reporting and PDF export<br><br>"
+            f"<small>Logged in as: <b>{self.loggedUser.getName()}</b> &mdash; {role}</small>"
+        )
 
     def refreshGUI(self):
         pass
@@ -863,27 +1078,12 @@ class UserMainWindow(MainWindow):
         self.tabClosedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.printDeIsolationOption, self.printOption])
 
 
-        self.sideBarLayout.addWidget(self.btnWelcome)
-        self.sideBarLayout.addWidget(self._makeSeparator())
-        # self.sideBarLayout.addWidget(self.btnRegisteredPTWs)
-        self.sideBarLayout.addWidget(self.btnUnderReviewPTWs)
-        self.sideBarLayout.addWidget(self.btnReturnedPTWs)
-        self.sideBarLayout.addWidget(self.btnApprovedPTWs)
-        self.sideBarLayout.addWidget(self.btnRejectedPTWs)
-        self.sideBarLayout.addWidget(self._makeSeparator())
-        self.sideBarLayout.addWidget(self.btnWaitingRunConfirmationPTWs)
-        self.sideBarLayout.addWidget(self.btnRunningPTWs)
-        self.sideBarLayout.addWidget(self.btnWaitingHldConfirmationPTWs)
-        self.sideBarLayout.addWidget(self.btnHeldPTWs)
-        self.sideBarLayout.addWidget(self.btnWaitingClsConfirmationPTWs)
-        self.sideBarLayout.addWidget(self.btnClosedPTWs)
-        self.sideBarLayout.addWidget(self._makeSeparator())
-        self.sideBarLayout.addWidget(self.btnActiveIsolations)
-        self.sideBarLayout.addStretch()
-        self.sideBarLayout.addWidget(self.btnLanguage)
-        self.sideBarLayout.addWidget(self.btnSettings)
-        self.sideBarLayout.addWidget(self.btnRefresh)
-        self.sideBarLayout.addWidget(self.btnLogout)
+        self.setAvailableTabs([
+            [self.btnWelcome],
+            [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs, self.btnRejectedPTWs],
+            [self.btnWaitingRunConfirmationPTWs, self.btnRunningPTWs, self.btnWaitingHldConfirmationPTWs, self.btnHeldPTWs, self.btnWaitingClsConfirmationPTWs, self.btnClosedPTWs],
+            [self.btnActiveIsolations],
+        ])
 
         self.btnFAB.setToolTip("New PTW [Ctrl+N]")
         self.btnFAB.setText("+")
@@ -928,22 +1128,12 @@ class CoordinatorMainWindow(MainWindow):
         self.tabHeldPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewPerformingOption, self.viewApprovalsOption, self.viewIsolationsOption, self.printDeIsolationOption, self.printOption])
         self.tabClosedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.printDeIsolationOption, self.printOption])
 
-        self.sideBarLayout.addWidget(self.btnWelcome)
-        self.sideBarLayout.addWidget(self._makeSeparator())
-        self.sideBarLayout.addWidget(self.btnUnderReviewPTWs)
-        self.sideBarLayout.addWidget(self.btnReturnedPTWs)
-        self.sideBarLayout.addWidget(self.btnApprovedPTWs)
-        self.sideBarLayout.addWidget(self.btnRejectedPTWs)
-        self.sideBarLayout.addWidget(self._makeSeparator())
-        self.sideBarLayout.addWidget(self.btnRunningPTWs)
-        self.sideBarLayout.addWidget(self.btnHeldPTWs)
-        self.sideBarLayout.addWidget(self.btnClosedPTWs)
-        self.sideBarLayout.addWidget(self._makeSeparator())
-        self.sideBarLayout.addWidget(self.btnActiveIsolations)
-        self.sideBarLayout.addStretch()
-        self.sideBarLayout.addWidget(self.btnSettings)
-        self.sideBarLayout.addWidget(self.btnRefresh)
-        self.sideBarLayout.addWidget(self.btnLogout)
+        self.setAvailableTabs([
+            [self.btnWelcome],
+            [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs, self.btnRejectedPTWs],
+            [self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs],
+            [self.btnActiveIsolations],
+        ])
 
         # Create Floating Option Button
         self.btnFAB.setIcon(qta.icon("fa5.file-pdf"))
@@ -983,25 +1173,12 @@ class IssuingMainWindow(MainWindow):
         self.tabWaitingClsConfirmationPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewPerformingOption, self.viewApprovalsOption, self.clsAcceptOption, self.clsRejectOption, self.printOption])
         self.tabClosedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.printDeIsolationOption, self.printOption])
 
-        self.sideBarLayout.addWidget(self.btnWelcome)
-        self.sideBarLayout.addWidget(self._makeSeparator())
-        self.sideBarLayout.addWidget(self.btnUnderReviewPTWs)
-        self.sideBarLayout.addWidget(self.btnReturnedPTWs)
-        self.sideBarLayout.addWidget(self.btnApprovedPTWs)
-        self.sideBarLayout.addWidget(self.btnRejectedPTWs)
-        self.sideBarLayout.addWidget(self._makeSeparator())
-        self.sideBarLayout.addWidget(self.btnWaitingRunConfirmationPTWs)
-        self.sideBarLayout.addWidget(self.btnRunningPTWs)
-        self.sideBarLayout.addWidget(self.btnWaitingHldConfirmationPTWs)
-        self.sideBarLayout.addWidget(self.btnHeldPTWs)
-        self.sideBarLayout.addWidget(self.btnWaitingClsConfirmationPTWs)
-        self.sideBarLayout.addWidget(self.btnClosedPTWs)
-        self.sideBarLayout.addWidget(self._makeSeparator())
-        self.sideBarLayout.addWidget(self.btnActiveIsolations)
-        self.sideBarLayout.addStretch()
-        self.sideBarLayout.addWidget(self.btnSettings)
-        self.sideBarLayout.addWidget(self.btnRefresh)
-        self.sideBarLayout.addWidget(self.btnLogout)
+        self.setAvailableTabs([
+            [self.btnWelcome],
+            [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs, self.btnRejectedPTWs],
+            [self.btnWaitingRunConfirmationPTWs, self.btnRunningPTWs, self.btnWaitingHldConfirmationPTWs, self.btnHeldPTWs, self.btnWaitingClsConfirmationPTWs, self.btnClosedPTWs],
+            [self.btnActiveIsolations],
+        ])
 
         # Create Floating Option Button
         self.btnFAB.setIcon(qta.icon("fa5.file-pdf"))
@@ -1029,18 +1206,12 @@ class SafetyMainWindow(MainWindow):
         self.tabUnderReviewPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestEditsOption, self.acceptOption])
         self.tabRunningPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewPerformingOption, self.viewApprovalsOption, self.printOption])
 
-        self.sideBarLayout.addWidget(self.btnWelcome)
-        self.sideBarLayout.addWidget(self._makeSeparator())
-        self.sideBarLayout.addWidget(self.btnUnderReviewPTWs)
-        self.sideBarLayout.addWidget(self.btnRunningPTWs)
-        self.sideBarLayout.addWidget(self._makeSeparator())
-        self.sideBarLayout.addWidget(self.btnActiveIsolations)
-        self.sideBarLayout.addWidget(self._makeSeparator())
-        self.sideBarLayout.addWidget(self.btnRisks)
-        self.sideBarLayout.addStretch()
-        self.sideBarLayout.addWidget(self.btnSettings)
-        self.sideBarLayout.addWidget(self.btnRefresh)
-        self.sideBarLayout.addWidget(self.btnLogout)
+        self.setAvailableTabs([
+            [self.btnWelcome],
+            [self.btnUnderReviewPTWs, self.btnRunningPTWs],
+            [self.btnActiveIsolations],
+            [self.btnRisks],
+        ])
 
         self.btnFAB.setText("+")
         self.btnFAB.setToolTip("New Risk [Ctrl+N]")
@@ -1087,22 +1258,12 @@ class ManagerMainWindow(MainWindow):
         self.tabHeldPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.viewIsolationsOption, self.printDeIsolationOption, self.printOption])
         self.tabClosedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.printDeIsolationOption, self.printOption])
 
-        self.sideBarLayout.addWidget(self.btnWelcome)
-        self.sideBarLayout.addWidget(self._makeSeparator())
-        self.sideBarLayout.addWidget(self.btnUnderReviewPTWs)
-        self.sideBarLayout.addWidget(self.btnReturnedPTWs)
-        self.sideBarLayout.addWidget(self.btnApprovedPTWs)
-        self.sideBarLayout.addWidget(self.btnRejectedPTWs)
-        self.sideBarLayout.addWidget(self._makeSeparator())
-        self.sideBarLayout.addWidget(self.btnRunningPTWs)
-        self.sideBarLayout.addWidget(self.btnHeldPTWs)
-        self.sideBarLayout.addWidget(self.btnClosedPTWs)
-        self.sideBarLayout.addWidget(self._makeSeparator())
-        self.sideBarLayout.addWidget(self.btnActiveIsolations)
-        self.sideBarLayout.addStretch()
-        self.sideBarLayout.addWidget(self.btnSettings)
-        self.sideBarLayout.addWidget(self.btnRefresh)
-        self.sideBarLayout.addWidget(self.btnLogout)
+        self.setAvailableTabs([
+            [self.btnWelcome],
+            [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs, self.btnRejectedPTWs],
+            [self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs],
+            [self.btnActiveIsolations],
+        ])
 
         # Create Floating Option Button
         self.btnFAB.setIcon(qta.icon("fa5.file-pdf"))
@@ -1127,12 +1288,10 @@ class AdminMainWindow(MainWindow):
         super().__init__(loggedUser)
         self.setWindowTitle("PTW (Permit To Work) - Admin Window")
 
-        self.sideBarLayout.addWidget(self.btnWelcome)
-        self.sideBarLayout.addWidget(self.btnUsers)
-        self.sideBarLayout.addStretch()
-        self.sideBarLayout.addWidget(self.btnSettings)
-        self.sideBarLayout.addWidget(self.btnRefresh)
-        self.sideBarLayout.addWidget(self.btnLogout)
+        self.setAvailableTabs([
+            [self.btnWelcome],
+            [self.btnUsers],
+        ])
 
         self.btnFAB.setText("+")
         self.btnFAB.setToolTip("Add New User [Ctrl+N]")
