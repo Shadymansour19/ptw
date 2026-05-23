@@ -243,7 +243,7 @@ class DialogPTW(QDialog):
         self.boxOtherHazards.setEnabled(not readOnly)
         self.boxOtherHazards.setPlaceholderText("Others")
         self.boxOtherHazards.setToolTip("Other Hazards")
-        self.boxOtherHazards.setText(', '.join(tool for tool in ptw.tools if tool not in PTWData.ALL_HAZARDS))
+        self.boxOtherHazards.setText(', '.join(hazard for hazard in ptw.hazards if hazard not in PTWData.ALL_HAZARDS))
         remaining_cols = DialogPTW.GRID_LYT_COLS - (i % DialogPTW.GRID_LYT_COLS)
         lytHazards.addWidget(self.boxOtherHazards, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS, 1, remaining_cols)
         
@@ -259,7 +259,7 @@ class DialogPTW(QDialog):
         self.boxOtherControls.setEnabled(not readOnly)
         self.boxOtherControls.setPlaceholderText("Others")
         self.boxOtherControls.setToolTip("Other Controls")
-        self.boxOtherControls.setText(', '.join(tool for tool in ptw.tools if tool not in PTWData.ALL_CONTROLS))
+        self.boxOtherControls.setText(', '.join(ctrl for ctrl in ptw.controls if ctrl not in PTWData.ALL_CONTROLS))
         remaining_cols = DialogPTW.GRID_LYT_COLS - (i % DialogPTW.GRID_LYT_COLS)
         lytControls.addWidget(self.boxOtherControls, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS, 1, remaining_cols)
 
