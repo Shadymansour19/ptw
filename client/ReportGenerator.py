@@ -403,6 +403,10 @@ class ReportGenerator:
             else:
                 ReportGenerator.openPDF(filepath)
             
+        for doc in ptw.requiredDocsToPrint():
+            continue
+            ReportGenerator.openPDF(doc)
+
         os.remove(f"qr-summery-{ptw.id}.png")
         return None
     

@@ -1333,6 +1333,7 @@ class PTWData:
         CLOSED = 'Closed'
         WAITING_HLD_CONFIRM = 'Waiting Hold Confirm'
         HELD = 'Held'
+        ARCHIVED = 'Archived'
     
     class Approval:
         def __init__(self, action = None, username: str = None, timestamp: str = None, comment: str = None):

@@ -359,6 +359,21 @@ def updatePTWApprovals():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
     
+@app.route("/ptws/archive", methods=["POST"])
+def archivePTW():
+    user = getVerifiedUser(request.authorization)
+    if user is None:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    payload = request.get_json(silent=True) or {}
+    ptwId = payload.get('ptw-id')
+    if ptwId is None:
+        return jsonify({"success": False, "error": "Missing required field: ptw-id"}), 400
+    try:
+        result = ptwDB.archivePTW(ptwId)
+        _broadcast("ptw_archived", {"ptw_id": ptwId, "by": user.getUsername()})
+        return jsonify({"success": True, "ptw": result})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
 
 @app.route("/ptws/run-request", methods=["POST"])
 def requestToRunPTW():

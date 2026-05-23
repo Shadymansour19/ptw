@@ -348,6 +348,22 @@ class ClientRequests:
 
         return None
 
+    def archivePTW(loggedUser: User, ptwId: str) -> str:
+        response = None
+        try:
+            response = requests.post(f'{ClientRequests.SERVER_URL}/ptws/archive', json={'ptw-id': ptwId}, auth=(loggedUser.getUsername(), loggedUser.getPassword()))
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to archive PTW\n{err}"
+
+        if not data.get("success"):
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to archive PTW\n{err}"
+
+        return None
+
 
     def requestToRunPTW(loggedUser: User, ptwId: str, pa: str, ts: str):
         response = None
