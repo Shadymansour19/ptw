@@ -967,7 +967,6 @@ class CoordinatorMainWindow(MainWindow):
 
 
 
-
 class IssuingMainWindow(MainWindow):
     def __init__(self, loggedUser: User):
         super().__init__(loggedUser)
@@ -1119,6 +1118,7 @@ class ManagerMainWindow(MainWindow):
 
     def btnFABHandler(self):
         self.printPTWs()
+
 
 
 
