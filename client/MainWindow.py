@@ -207,7 +207,7 @@ class MainWindow(QMainWindow):
             self.btnLanguage:                   None,
         }
 
-        SIDEBAR_BTN_STYLE = """
+        self._sidebarBtnStyle = """
             QPushButton {
                 background: transparent;
                 border: none;
@@ -236,11 +236,11 @@ class MainWindow(QMainWindow):
                 background: rgba(25,200,150,65);
             }
             """
-        
+
         for btn in self._sideBarBtnMap.keys():
             btn.setIconSize(QSize(32, 32))
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setStyleSheet(SIDEBAR_BTN_STYLE)
+            btn.setStyleSheet(self._sidebarBtnStyle)
             if self._sideBarBtnMap[btn] is not None:
                 btn.clicked.connect(partial(self.stack.setCurrentWidget, self._sideBarBtnMap[btn]))
         
@@ -279,6 +279,7 @@ class MainWindow(QMainWindow):
         self.sideBarLayout.customContextMenuRequested.connect(self._sideBarMoveMenu)
         self._sidebarDockActions: dict[Qt.ToolBarArea, QAction] = {}
         self.addToolBar(Qt.ToolBarArea.LeftToolBarArea, self.sideBarLayout)
+        self._initSidebarHover()
 
         self.toolbar = QToolBar("ToolBar")
         self.toolbar.setMovable(False)
@@ -353,7 +354,20 @@ class MainWindow(QMainWindow):
         super().resizeEvent(event)
 
     def _moveSidebar(self, area: Qt.ToolBarArea):
+        if self._sidebarExpanded:
+            self._sidebarExpanded = False
+            self._sidebarAnim.stop()
+            for btn in self._sideBarBtnMap:
+                btn.setText("")
+                btn.setStyleSheet(self._sidebarBtnStyle)
+                btn.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
+                btn.setMinimumWidth(0)
         self.addToolBar(area, self.sideBarLayout)
+        is_vertical = area in (Qt.ToolBarArea.LeftToolBarArea, Qt.ToolBarArea.RightToolBarArea)
+        if is_vertical:
+            self.sideBarLayout.setMaximumWidth(self._sidebarCollapsedW)
+        else:
+            self.sideBarLayout.setMaximumWidth(16777215)
         self._updateSidebarDockActions()
 
     def _updateSidebarDockActions(self):
@@ -373,6 +387,63 @@ class MainWindow(QMainWindow):
             act.setEnabled(area != current)
             act.triggered.connect(lambda _, a=area: self._moveSidebar(a))
         menu.exec(self.sideBarLayout.mapToGlobal(pos))
+
+    def _initSidebarHover(self):
+        self._sidebarExpanded = False
+        self._sidebarCollapsedW = 52
+        self._sidebarExpandedW = 320
+        self.sideBarLayout.setMaximumWidth(self._sidebarCollapsedW)
+        self._sidebarAnim = QPropertyAnimation(self.sideBarLayout, b"maximumWidth")
+        self._sidebarAnim.setDuration(300)
+        self._sidebarAnim.setEasingCurve(QEasingCurve.Type.InOutQuart)
+        self._sidebarAnim.finished.connect(self._onSidebarAnimFinished)
+        self.sideBarLayout.installEventFilter(self)
+        for btn in self._sideBarBtnMap:
+            btn.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        if obj in self._sideBarBtnMap and event.type() == QEvent.Type.ToolTip:
+            return True  # suppress tooltip popup while keeping toolTip() text intact
+        if obj is self.sideBarLayout:
+            area = self.toolBarArea(self.sideBarLayout)
+            is_vertical = area in (Qt.ToolBarArea.LeftToolBarArea, Qt.ToolBarArea.RightToolBarArea)
+            if is_vertical:
+                if event.type() == QEvent.Type.Enter:
+                    self._expandSidebar()
+                elif event.type() == QEvent.Type.Leave:
+                    self._collapseSidebar()
+        return super().eventFilter(obj, event)
+
+    def _expandSidebar(self):
+        if self._sidebarExpanded:
+            return
+        self._sidebarExpanded = True
+        expanded_style = self._sidebarBtnStyle + "QPushButton { text-align: left; padding-left: 8px; }"
+        for btn in self._sideBarBtnMap:
+            tip = btn.toolTip()
+            if tip:
+                btn.setText(tip.split(" [")[0])
+            btn.setStyleSheet(expanded_style)
+        self._sidebarAnim.stop()
+        self._sidebarAnim.setStartValue(self.sideBarLayout.maximumWidth())
+        self._sidebarAnim.setEndValue(self._sidebarExpandedW)
+        self._sidebarAnim.start()
+
+    def _collapseSidebar(self):
+        if not self._sidebarExpanded:
+            return
+        self._sidebarExpanded = False
+        self._sidebarAnim.stop()
+        self._sidebarAnim.setStartValue(self.sideBarLayout.maximumWidth())
+        self._sidebarAnim.setEndValue(self._sidebarCollapsedW)
+        self._sidebarAnim.start()
+
+    def _onSidebarAnimFinished(self):
+        if not self._sidebarExpanded:
+            for btn in self._sideBarBtnMap:
+                btn.setText("")
+                btn.setStyleSheet(self._sidebarBtnStyle)
+                btn.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
 
     def createPopupMenu(self):
         return None
