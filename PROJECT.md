@@ -10,15 +10,16 @@ The application runs as a **PyQt6 desktop client** communicating with a **Flask 
 
 ## Technology Stack
 
-| Layer      | Technology                     |
-|------------|-------------------------------|
-| Client UI  | Python 3.10+, PyQt6            |
-| HTTP Client| requests (Basic Auth)          |
-| Server     | Python 3.10+, Flask            |
-| Database   | PostgreSQL (psycopg2)          |
-| Email      | Flask-Mail (Gmail SMTP)        |
-| Credentials| keyring                        |
-| Reports    | ReportGenerator (custom PDF)   |
+| Layer        | Technology                          |
+|--------------|-------------------------------------|
+| Client UI    | Python 3.10+, PyQt6                 |
+| HTTP Client  | requests (Basic Auth + SSE stream)  |
+| Server       | Python 3.10+, Flask                 |
+| Database     | PostgreSQL (psycopg2)               |
+| Email        | Flask-Mail (Gmail SMTP)             |
+| Credentials  | keyring                             |
+| Reports      | ReportGenerator (custom PDF)        |
+| Excel Export | openpyxl                            |
 
 ---
 
@@ -26,12 +27,14 @@ The application runs as a **PyQt6 desktop client** communicating with a **Flask 
 
 Each PTW is classified by the nature of the work. The type drives visual theming in the UI:
 
-| Code | Name         | Background | Text  | Use Case                    |
-|------|--------------|------------|-------|-----------------------------|
-| CW   | Cold Work    | Blue       | White | Non-spark generating work   |
-| SP   | Spark        | Yellow     | Black | Work that may produce sparks|
-| HT   | Hot Work     | Red        | White | Open flame / welding        |
-| HC   | HydroCarbon  | Black      | White | Work near HC systems        |
+| Code | Name          | Background | Text  | Use Case                           |
+|------|---------------|------------|-------|------------------------------------|
+| CW   | Cold Work     | Blue       | White | Non-spark generating work          |
+| SP   | Spark         | Yellow     | Black | Work that may produce sparks       |
+| HT   | Hot Work      | Red        | White | Open flame / welding               |
+| HC   | HydroCarbon   | Black      | White | Work near HC systems               |
+| EX   | Excavation    | Gray       | White | Ground excavation work             |
+| CS   | Confined Space| Green      | White | Work inside confined spaces        |
 
 ---
 
@@ -119,6 +122,11 @@ WAITING_RUN_CONFIRM
     │         │                                 │
     │         ▼                                 ▼
     │       CLOSED                           RUNNING (returns)
+    │         │
+    │         │ [Archive]
+    │         │
+    │         ▼
+    │      ARCHIVED
     │
     │
     └──── [PA sends hold request + selects keep_isolations]
@@ -140,15 +148,16 @@ WAITING_RUN_CONFIRM
 
 **Running Statuses:**
 
-| Status               | Meaning                                                    |
-|----------------------|------------------------------------------------------------|
-| NOT_RUNNING          | PTW approved but work not yet started                      |
-| WAITING_RUN_CONFIRM  | Run request sent to Issuing Authority; awaiting confirmation         |
-| RUNNING              | Work is actively in progress                               |
-| WAITING_CLS_CONFIRM  | Close request sent to Issuing Authority; awaiting confirmation       |
-| CLOSED               | Work complete; permit closed (final state)                 |
-| WAITING_HLD_CONFIRM  | Hold request sent to Issuing Authority; awaiting confirmation        |
-| HELD                 | Work paused; selected isolations maintained                |
+| Status               | Meaning                                                               |
+|----------------------|-----------------------------------------------------------------------|
+| NOT_RUNNING          | PTW approved but work not yet started                                 |
+| WAITING_RUN_CONFIRM  | Run request sent to Issuing Authority; awaiting confirmation          |
+| RUNNING              | Work is actively in progress                                          |
+| WAITING_CLS_CONFIRM  | Close request sent to Issuing Authority; awaiting confirmation        |
+| CLOSED               | Work complete; permit closed                                          |
+| WAITING_HLD_CONFIRM  | Hold request sent to Issuing Authority; awaiting confirmation         |
+| HELD                 | Work paused; selected isolations maintained                           |
+| ARCHIVED             | Permit archived after closure (terminal state); stored separately     |
 
 ---
 
@@ -316,18 +325,40 @@ Maintenance and Work Instructions (MIWI) are PDF documents stored in `server/miw
 | DELETE | `/users`    | Delete a user                           | Admin only       |
 
 ### PTWs
-| Method | Endpoint                    | Description                               |
-|--------|-----------------------------|-------------------------------------------|
+| Method | Endpoint                    | Description                                |
+|--------|-----------------------------|--------------------------------------------|
 | GET    | `/ptws`                     | Get all PTWs (filterable by dept/requestor)|
-| POST   | `/ptws`                     | Create new PTW                            |
-| DELETE | `/ptws`                     | Delete a PTW                              |
-| POST   | `/ptws/approvals`           | Submit an approval action                 |
-| POST   | `/ptws/run-request`         | PA requests to start work          |
-| POST   | `/ptws/run`                 | IA accepts or rejects run request     |
-| POST   | `/ptws/hold-request`        | PA requests to hold work           |
-| POST   | `/ptws/hold`                | IA accepts or rejects hold request    |
-| POST   | `/ptws/close-request`       | PA requests to close permit        |
-| POST   | `/ptws/close`               | IA accepts or rejects close request   |
+| POST   | `/ptws`                     | Create new PTW                             |
+| DELETE | `/ptws`                     | Delete a PTW                               |
+| POST   | `/ptws/approvals`           | Submit an approval action                  |
+| POST   | `/ptws/run-request`         | PA requests to start work                  |
+| POST   | `/ptws/run`                 | IA accepts or rejects run request          |
+| POST   | `/ptws/hold-request`        | PA requests to hold work                   |
+| POST   | `/ptws/hold`                | IA accepts or rejects hold request         |
+| POST   | `/ptws/close-request`       | PA requests to close permit                |
+| POST   | `/ptws/close`               | IA accepts or rejects close request        |
+| GET    | `/ptws/archive`             | Get all archived PTWs                      |
+| POST   | `/ptws/archive`             | Archive a closed PTW                       |
+
+### Real-Time Events (SSE)
+| Method | Endpoint   | Description                                              |
+|--------|------------|----------------------------------------------------------|
+| GET    | `/events`  | SSE stream; pushes PTW change events to the client       |
+
+The server broadcasts role-filtered events over this stream. The client connects via `SSEListener` (a QThread). Event types:
+
+| Event               | Triggered by                                 |
+|---------------------|----------------------------------------------|
+| `new_ptw`           | New PTW created                              |
+| `ptw_deleted`       | PTW deleted                                  |
+| `ptw_approval`      | Approval action submitted                    |
+| `ptw_archived`      | PTW archived                                 |
+| `ptw_run_request`   | PA sends run request                         |
+| `ptw_run`           | IA accepts/rejects run request               |
+| `ptw_hold_request`  | PA sends hold request                        |
+| `ptw_hold`          | IA accepts/rejects hold request              |
+| `ptw_close_request` | PA sends close request                       |
+| `ptw_close`         | IA accepts/rejects close request             |
 
 ### Attachments
 | Method | Endpoint                    | Description                          |
@@ -444,37 +475,39 @@ The desktop client is structured around role-based main windows. After login, `M
 
 `GlobalData` maintains an in-memory cache of:
 - `allUsers` — dict of username → SecuredUser
-- `allPTWs` — list of PTWData objects
+- `allPTWs` — list of PTWData objects (non-archived)
+- `archivedPTWs` — list of PTWData objects (archived permits)
 - `activeIsolations` — dict of tag → ActiveIsolation
-- `allRisks` — list of RiskAssessment objects
-- `allMiwis` — list of MIWI filenames
+- `allRiskAssessments` — dict of title → RiskAssessment
+- `allMIWIs` — list of MIWI filenames
 
-The cache is refreshed on login and after any mutation operation.
+`allPTWs` is refreshed on login and after any mutation. `archivedPTWs` is fetched **on-demand only** (not automatically refreshed) to reduce server overhead — archived permits are stable and rarely queried.
 
 ### Key Client Modules
 
-| Module                      | Purpose                                            |
-|-----------------------------|---------------------------------------------------|
-| `main.py`                   | Entry point; launches QApplication                 |
-| `Login.py`                  | Login screen; handles password reset flow          |
-| `MainWindow.py`             | Post-login router; loads role-specific window      |
-| `clientRequests.py`         | HTTP wrapper; all server calls return `(err, data)`|
-| `GlobalData.py`             | Client-side data cache                             |
-| `PTWData.py`                | Mirrored data model classes (client-side copy)     |
-| `User.py`                   | User model                                         |
-| `WidgetPTW.py`              | Full PTW form (create/view/edit)                   |
-| `TablePTWs.py`              | Table listing all PTWs with filters                |
-| `TableUsers.py`             | Admin user management table                        |
-| `TableRisks.py`             | Risk assessment list and editor                    |
-| `TableIsolation.py`         | All available isolation points table               |
-| `TableActiveIsolations.py`  | Currently active (linked) isolations view          |
-| `TableAttachments.py`       | PTW attachment management                          |
-| `DialogUser.py`             | Create/edit user dialog                            |
-| `DialogIsolation.py`        | Create/edit isolation dialog                       |
-| `DialogRisk.py`             | Risk item creation dialog                          |
-| `DialogSelectIsolations.py` | Dialog to choose isolations when requesting hold   |
-| `DialogSettings.py`         | App settings (server URL, etc.)                    |
-| `ReportGenerator.py`        | Generates printable PDF permit reports             |
+| Module                      | Purpose                                                          |
+|-----------------------------|------------------------------------------------------------------|
+| `main.py`                   | Entry point; launches QApplication                               |
+| `Login.py`                  | Login screen; handles password reset flow                        |
+| `MainWindow.py`             | Post-login router; loads role-specific window                    |
+| `clientRequests.py`         | HTTP wrapper; all server calls return `(err, data)`              |
+| `GlobalData.py`             | Client-side data cache                                           |
+| `SSEListener.py`            | QThread that connects to `/events` and emits real-time PTW events|
+| `PTWData.py`                | Mirrored data model classes (client-side copy)                   |
+| `User.py`                   | User model                                                       |
+| `WidgetPTW.py`              | Full PTW form (create/view/edit)                                 |
+| `TablePTWs.py`              | Table listing all PTWs with filters; supports Excel export       |
+| `TableUsers.py`             | Admin user management table                                      |
+| `TableRisks.py`             | Risk assessment list and editor                                  |
+| `TableIsolation.py`         | All available isolation points table                             |
+| `TableActiveIsolations.py`  | Currently active (linked) isolations view                        |
+| `TableAttachments.py`       | PTW attachment management                                        |
+| `DialogUser.py`             | Create/edit user dialog                                          |
+| `DialogIsolation.py`        | Create/edit isolation dialog                                     |
+| `DialogRisk.py`             | Risk item creation dialog                                        |
+| `DialogSelectIsolations.py` | Dialog to choose isolations when requesting hold                 |
+| `DialogSettings.py`         | App settings (server URL, etc.)                                  |
+| `ReportGenerator.py`        | Generates printable PDF permit reports and Excel exports         |
 
 ### Role-Specific Windows (all inside `MainWindow.py`)
 

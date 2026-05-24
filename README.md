@@ -25,9 +25,12 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 - **Multi-stage approval workflow** — Coordinator → Issuing → Safety → Management chain (PDH → PGM → SOD → DFGM)
 - **Full running lifecycle** — Run / Hold / Close with two-party confirmation (Performing Authority + Issuing Authority)
 - **Equipment isolation management** — Tracks shared isolation points across multiple concurrent PTWs; enforces primary/latest ownership rules
-- **Color-coded permit types** — Cold Work (blue), Spark (yellow), Hot Work (red), HydroCarbon (black)
+- **Color-coded permit types** — Cold Work (blue), Spark (yellow), Hot Work (red), HydroCarbon (black), Excavation (gray), Confined Space (green)
 - **Risk assessment library** — Safety team maintains reusable risk assessment documents linked to permits
 - **PDF permit reports** — Printable PDF generation for each PTW
+- **Excel export** — Export the PTW list to a formatted, color-coded `.xlsx` spreadsheet
+- **Real-time notifications** — Server-Sent Events (SSE) push PTW changes to all connected clients instantly; no polling required
+- **Archived permits** — Closed PTWs can be archived; archived data is fetched on-demand only to reduce server overhead
 - **File attachments** — Per-permit document uploads (medical certificates, tool checklists, technical drawings)
 - **MIWI documents** — Shared Maintenance & Work Instruction PDFs referenced across permits
 - **Role-based UI** — Each of 10 roles gets a tailored interface showing only relevant actions and data
@@ -38,26 +41,29 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 
 ## Technology Stack
 
-| Layer | Technology |
-|---|---|
-| Client UI | Python 3.10+, PyQt6 |
-| HTTP Client | `requests` (Basic Auth) |
-| Server | Python 3.10+, Flask |
-| Database | PostgreSQL (psycopg2) |
-| Email | Flask-Mail (Gmail SMTP) |
-| Credentials | `keyring` |
-| Reports | ReportGenerator (custom PDF) |
+| Layer         | Technology                            |
+|---------------|---------------------------------------|
+| Client UI     | Python 3.10+, PyQt6                   |
+| HTTP Client   | `requests` (Basic Auth + SSE stream)  |
+| Server        | Python 3.10+, Flask                   |
+| Database      | PostgreSQL (psycopg2)                 |
+| Email         | Flask-Mail (Gmail SMTP)               |
+| Credentials   | `keyring`                             |
+| Reports       | ReportGenerator (custom PDF)          |
+| Excel Export  | `openpyxl`                            |
 
 ---
 
 ## PTW Types
 
-| Code | Name | Color | Use Case |
-|---|---|---|---|
-| CW | Cold Work | Blue | Non-spark generating work |
-| SP | Spark | Yellow/Black | Work that may produce sparks |
-| HT | Hot Work | Red | Open flame / welding |
-| HC | HydroCarbon | Black | Work near HC systems |
+| Code | Name           | Color  | Use Case                     |
+|------|----------------|--------|------------------------------|
+| CW   | Cold Work      | Blue   | Non-spark generating work    |
+| SP   | Spark          | Yellow | Work that may produce sparks |
+| HT   | Hot Work       | Red    | Open flame / welding         |
+| HC   | HydroCarbon    | Black  | Work near HC systems         |
+| EX   | Excavation     | Gray   | Ground excavation work       |
+| CS   | Confined Space | Green  | Work inside confined spaces  |
 
 ---
 
@@ -121,6 +127,11 @@ WAITING_RUN_CONFIRM
     │         │                                 │
     │         ▼                                 ▼
     │       CLOSED                           RUNNING (returns)
+    │         │
+    │         │ [Archive]
+    │         │
+    │         ▼
+    │      ARCHIVED
     │
     │
     └──── [PA sends hold request + selects keep_isolations]
@@ -164,28 +175,29 @@ Isolations are safety locks placed on equipment to prevent accidental energizati
 
 ```
 ptw/
-├── client/                     # PyQt6 desktop application
-│   ├── main.py                 # Entry point
-│   ├── Login.py                # Login & password reset
-│   ├── MainWindow.py           # Role-based window router
-│   ├── GlobalData.py           # Client-side data cache
-│   ├── clientRequests.py       # HTTP API wrapper
-│   ├── PTWData.py              # Client-side data models
-│   ├── WidgetPTW.py            # Full PTW form (create/view/edit)
-│   ├── TablePTWs.py            # PTW list with filters
-│   ├── TableActiveIsolations.py# Active isolations view
-│   ├── ReportGenerator.py      # PDF permit report generation
-│   └── ...                     # Dialogs, tables, assets
+├── client/                      # PyQt6 desktop application
+│   ├── main.py                  # Entry point
+│   ├── Login.py                 # Login & password reset
+│   ├── MainWindow.py            # Role-based window router
+│   ├── GlobalData.py            # Client-side data cache
+│   ├── clientRequests.py        # HTTP API wrapper
+│   ├── SSEListener.py           # Real-time event listener (QThread)
+│   ├── PTWData.py               # Client-side data models
+│   ├── WidgetPTW.py             # Full PTW form (create/view/edit)
+│   ├── TablePTWs.py             # PTW list with filters + Excel export
+│   ├── TableActiveIsolations.py # Active isolations view
+│   ├── ReportGenerator.py       # PDF and Excel report generation
+│   └── ...                      # Dialogs, tables, assets
 │
-└── server/                     # Flask REST API
-    ├── app.py                  # All route handlers
-    ├── PTWData.py              # Core data models & enums
-    ├── ptwDb.py                # PTW database operations
-    ├── usersDb.py              # User database operations
-    ├── IsolationDb.py          # Isolation database operations
-    ├── risksDb.py              # Risk assessment DB operations
-    ├── GlobalData.py           # Server-side in-memory cache
-    └── miwi/                   # MIWI PDF documents
+└── server/                      # Flask REST API
+    ├── app.py                   # All route handlers + SSE broadcast
+    ├── PTWData.py               # Core data models & enums
+    ├── ptwDb.py                 # PTW database operations
+    ├── usersDb.py               # User database operations
+    ├── IsolationDb.py           # Isolation database operations
+    ├── risksDb.py               # Risk assessment DB operations
+    ├── GlobalData.py            # Server-side in-memory cache
+    └── miwi/                    # MIWI PDF documents
 ```
 
 ---
@@ -222,7 +234,7 @@ Configure your DB connection and Gmail SMTP credentials inside `app.py`.
 
 ```bash
 cd client
-pip install PyQt6 requests keyring reportlab
+pip install PyQt6 requests keyring reportlab openpyxl
 python main.py
 ```
 
@@ -245,6 +257,8 @@ On first launch, open **Settings** and point the client at your server URL.
 | Isolations | `GET /isolations` |
 | Risks | `GET/POST/PUT/DELETE /risks` |
 | MIWI docs | `GET /miwi` · `GET /miwis` · `POST /miwi` |
+| Archive | `GET /ptws/archive` · `POST /ptws/archive` |
+| Events (SSE) | `GET /events` |
 
 Full API reference in [PROJECT.md](PROJECT.md).
 
