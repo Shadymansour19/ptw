@@ -368,10 +368,10 @@ class ClientRequests:
 
         return None
 
-    def archivePTW(loggedUser: User, ptwId: str) -> str:
+    def archivePTWs(loggedUser: User, ptwIds: list[str]) -> str:
         response = None
         try:
-            response = requests.post(f'{ClientRequests.SERVER_URL}/ptws/archive', json={'ptw-id': ptwId}, auth=(loggedUser.getUsername(), loggedUser.getPassword()))
+            response = requests.post(f'{ClientRequests.SERVER_URL}/ptws/archive', json={'ptw-ids': ptwIds}, auth=(loggedUser.getUsername(), loggedUser.getPassword()))
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:

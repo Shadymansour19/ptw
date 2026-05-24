@@ -40,7 +40,7 @@ class MainWindow(QMainWindow):
         self.viewOption = TablePTWs.MenuOption('View', self.viewPTW, qta.icon('fa6.eye'))
         self.requestPTWOption = TablePTWs.MenuOption('Re-Request PTW', self.requestPTW, qta.icon('fa6s.question'))
         self.dltOption  = TablePTWs.MenuOption('Delete', self.deletePTW, qta.icon('fa6s.trash-can'))
-        self.archiveOption  = TablePTWs.MenuOption('Archive', self.archivePTW, qta.icon('fa6s.box-archive'))
+        self.archiveOption  = TablePTWs.MenuOption('Archive', self.archivePTWs, qta.icon('fa6s.box-archive'), allAtOnce=True)
         self.runRequestOption  = TablePTWs.MenuOption('Run', self.requestToRunPTW, qta.icon('fa6s.play'))
         self.runAcceptOption  = TablePTWs.MenuOption('Run', self.runAcceptTW, qta.icon('fa6s.play'))
         self.runRejectOption  = TablePTWs.MenuOption('Reject', self.runRejectTW, qta.icon('fa5s.times'))
@@ -407,12 +407,13 @@ class MainWindow(QMainWindow):
     def deletePTW(self, row: int, ptw: PTWData):
         self.stack.currentWidget().deletePTW(row)
     
-    def archivePTW(self, row: int, ptw: PTWData):
-        err = ClientRequests.archivePTW(self.loggedUser, ptw.id)
+    def archivePTWs(self, rows: list, ptws: list[PTWData]):
+        err = ClientRequests.archivePTWs(self.loggedUser, [ptw.id for ptw in ptws])
         if err:
             QMessageBox.warning(self, 'Fail', err)
             return
-        ptw.running_status = PTWData.RunningStatus.ARCHIVED
+        for ptw in ptws:
+            ptw.running_status = PTWData.RunningStatus.ARCHIVED
         self.refreshGUI()
     
     def requestToRunPTW(self, row: int, ptw: PTWData):
@@ -909,6 +910,7 @@ class MainWindow(QMainWindow):
 
     def _formatSSEMessage(self, event_type: str, data: dict) -> str:
         ptw_id = data.get("ptw_id", "?")
+        ptw_ids = data.get("ptw_ids", "?")
         by = data.get("by", "?")
         if event_type == "new_ptw":
             return f"New PTW #{ptw_id} created by {by} (type: {data.get('type', '?')})"
@@ -932,7 +934,7 @@ class MainWindow(QMainWindow):
             verb = "CLOSED" if data.get("accepted") else "close rejected"
             return f"PTW #{ptw_id}: {verb} (by {by})"
         if event_type == "ptw_archived":
-            return f"PTW #{ptw_id} archived by {by}"
+            return f"PTWs #{ptw_ids} archived by {by}"
         return f"Update: {event_type} for PTW #{ptw_id}"
 
     def refreshWelcomePage(self):

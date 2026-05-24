@@ -148,9 +148,10 @@ class PtwsDb:
             self.conn.rollback()
             raise Exception("Error updating PTW in database: " + str(e))
         
-    def archivePTW(self, ptwId: str):
+    def archivePTWs(self, ptwIds: list[str]):
         try:
-            self.cursor.execute('UPDATE ptws SET running_status = %s WHERE id = %s', (PTWData.RunningStatus.ARCHIVED, ptwId))
+            placeholders = ', '.join(['%s'] * len(ptwIds))
+            self.cursor.execute(f'UPDATE ptws SET running_status = %s WHERE id IN ({placeholders})', (PTWData.RunningStatus.ARCHIVED, *ptwIds))
             self.conn.commit()
         except Exception as e:
             self.conn.rollback()
