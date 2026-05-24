@@ -239,6 +239,7 @@ class MainWindow(QMainWindow):
         
         for btn in self._sideBarBtnMap.keys():
             btn.setIconSize(QSize(32, 32))
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setStyleSheet(SIDEBAR_BTN_STYLE)
             if self._sideBarBtnMap[btn] is not None:
                 btn.clicked.connect(partial(self.stack.setCurrentWidget, self._sideBarBtnMap[btn]))
@@ -274,6 +275,9 @@ class MainWindow(QMainWindow):
                 margin: 4px 2px;
             }}
         """)
+        self.sideBarLayout.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.sideBarLayout.customContextMenuRequested.connect(self._sideBarMoveMenu)
+        self._sidebarDockActions: dict[Qt.ToolBarArea, QAction] = {}
         self.addToolBar(Qt.ToolBarArea.LeftToolBarArea, self.sideBarLayout)
 
         self.toolbar = QToolBar("ToolBar")
@@ -347,6 +351,28 @@ class MainWindow(QMainWindow):
     def resizeEvent(self, event):
         self.btnFABUpdatePosition()
         super().resizeEvent(event)
+
+    def _moveSidebar(self, area: Qt.ToolBarArea):
+        self.addToolBar(area, self.sideBarLayout)
+        self._updateSidebarDockActions()
+
+    def _updateSidebarDockActions(self):
+        current = self.toolBarArea(self.sideBarLayout)
+        for area, act in self._sidebarDockActions.items():
+            act.setChecked(area == current)
+
+    def _sideBarMoveMenu(self, pos):
+        current = self.toolBarArea(self.sideBarLayout)
+        menu = QMenu(self)
+        for area, label in [
+            (Qt.ToolBarArea.LeftToolBarArea,   "Move to Left"),
+            (Qt.ToolBarArea.RightToolBarArea,  "Move to Right"),
+            (Qt.ToolBarArea.BottomToolBarArea, "Move to Bottom"),
+        ]:
+            act = menu.addAction(label)
+            act.setEnabled(area != current)
+            act.triggered.connect(lambda _, a=area: self._moveSidebar(a))
+        menu.exec(self.sideBarLayout.mapToGlobal(pos))
 
     def createPopupMenu(self):
         return None
@@ -829,7 +855,29 @@ class MainWindow(QMainWindow):
         sidebarToggle.setCheckable(True)
         sidebarToggle.setChecked(True)
         sidebarToggle.toggled.connect(self.sideBarLayout.setVisible)
+
+        currentArea = self.toolBarArea(self.sideBarLayout)
+        sidebarDockGroup = QActionGroup(self)
+        sidebarDockGroup.setExclusive(True)
+        self._sidebarDockActions.clear()
+        sidebarDockActions = []
+        for area, label in [
+            (Qt.ToolBarArea.LeftToolBarArea,   "Navigation Sidebar: Left"),
+            (Qt.ToolBarArea.RightToolBarArea,  "Navigation Sidebar: Right"),
+            (Qt.ToolBarArea.BottomToolBarArea, "Navigation Sidebar: Bottom"),
+        ]:
+            act = QAction(label, self)
+            act.setCheckable(True)
+            act.setChecked(area == currentArea)
+            act.triggered.connect(lambda _, a=area: self._moveSidebar(a))
+            sidebarDockGroup.addAction(act)
+            self._sidebarDockActions[area] = act
+            sidebarDockActions.append(act)
+
         group_widgets["&View"].insert(0, sidebarToggle)
+        group_widgets["&View"].insert(1, None)
+        for act in sidebarDockActions[::-1]:
+            group_widgets["&View"].insert(1, act)
 
         aboutAction = QAction(qta.icon('fa6s.circle-info'), "About PTW", self)
         aboutAction.triggered.connect(self._showAboutPTW)
