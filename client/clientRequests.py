@@ -142,6 +142,26 @@ class ClientRequests:
             err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
             return f"Failed to fetch PTWs\n{err}", []
 
+    def getArchivedPTWs(loggedUser: User, department: UserDepartments = None) -> tuple[str, Iterable[PTWData]]:
+        response = None
+        try:
+            response = requests.get(
+                f'{ClientRequests.SERVER_URL}/ptws/archive',
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                json={'department': department}
+            )
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to fetch archived PTWs\n{err}", []
+
+        if data.get("success"):
+            return None, [PTWData().setAll(namespace=dictToObj(ptwDict)) for ptwDict in data["ptws"]]
+        else:
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to fetch archived PTWs\n{err}", []
+
     def addPTW(loggedUser: User, ptw: PTWData) -> tuple[str, str]:
         response = None
         try:

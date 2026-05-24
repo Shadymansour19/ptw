@@ -2,7 +2,8 @@ class GlobalData:
     def __init__(self):
         self.allUsers: dict = {}                # dict[str, SecuredUser]
         self.allRiskAssessments: dict = {}      # dict[str, RiskAssessment]
-        self.allPTWs: list = []                 # list[PTWData]
+        self.allPTWs: list = []                 # list[PTWData] - non-archived PTWs
+        self.archivedPTWs: list = []            # list[PTWData]
         self.allMIWIs: list = []                # list[str]
         self.activeIsolations: dict = {}        # dict[str, ActiveIsolation]
 
@@ -13,6 +14,7 @@ class GlobalData:
         refreshUsers: bool = False, 
         refreshRiskAssessments: bool = False, 
         refreshPTWs: bool = False, 
+        refreshArchivedPTWs: bool = False, 
         refreshMIWIs: bool = False, 
         refreshActiveIsolations: bool = False, 
         refreshAll: bool = False, 
@@ -36,6 +38,12 @@ class GlobalData:
             if err:
                 return err
             self.allPTWs = allPTWs
+
+        if refreshArchivedPTWs or refreshAll:
+            err, archivedPTWs = ClientRequests.getArchivedPTWs(loggedUser, department=department)
+            if err:
+                return err
+            self.archivedPTWs = archivedPTWs
 
         if refreshActiveIsolations or refreshAll:
             err, allIsolations = ClientRequests.getAllActiveIsolations(loggedUser)

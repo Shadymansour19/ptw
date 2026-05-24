@@ -245,7 +245,7 @@ class MainWindow(QMainWindow):
         
         self.btnSettings.clicked.connect(self.dlgSettings)
         self.btnLanguage.clicked.connect(self.chgLanguage)
-        self.btnRefresh.clicked.connect(self.refreshGUI)
+        self.btnRefresh.clicked.connect(lambda: self.refreshGUI(refreshArchivedPTWs=True))
         self.btnLogout.clicked.connect(self.logout)
 
         self.setCentralWidget(self.stack)
@@ -897,7 +897,7 @@ class MainWindow(QMainWindow):
             f"<small>Logged in as: <b>{self.loggedUser.getName()}</b> &mdash; {role}</small>"
         )
 
-    def refreshGUI(self):
+    def refreshGUI(self, refreshArchivedPTWs: bool = False):
         pass
 
     def _onSSEEvent(self, event_type: str, data: dict):
@@ -939,8 +939,14 @@ class MainWindow(QMainWindow):
         globalData.refresh(self.loggedUser, self.loggedUser.getDepartment() if self.loggedUser.getRole() == UserRoles.USER else None, refreshUsers=True)
         self.btnWelcomeName.setText(self.loggedUser.getRole() + ' ' + self.loggedUser.getName().upper() + '!')
 
-    def refreshPtwUserGUI(self):
-        globalData.refresh(self.loggedUser, self.loggedUser.getDepartment() if self.loggedUser.getRole() == UserRoles.USER else None, refreshAll=True)
+    def refreshPtwUserGUI(self, refreshArchivedPTWs: bool = False):
+        globalData.refresh(
+            self.loggedUser, 
+            self.loggedUser.getDepartment() if self.loggedUser.getRole() == UserRoles.USER else None, 
+            refreshUsers=True, refreshPTWs=True, refreshRiskAssessments=True, 
+            refreshMIWIs=True, refreshActiveIsolations=True, 
+        )
+
         tabs: list[TablePTWs] = [
             self.tabUnderReviewPTWs,
             self.tabApprovedPTWs,
@@ -952,7 +958,6 @@ class MainWindow(QMainWindow):
             self.tabHeldPTWs,
             self.tabWaitingClsConfirmationPTWs,
             self.tabClosedPTWs,
-            self.tabArchivedPTWs
         ]
 
         for tab in tabs:
@@ -974,8 +979,6 @@ class MainWindow(QMainWindow):
                 self.tabHeldPTWs.addPTWToGUI(ptw)
             elif runSt == PTWData.RunningStatus.CLOSED:
                 self.tabClosedPTWs.addPTWToGUI(ptw)
-            elif runSt == PTWData.RunningStatus.ARCHIVED:
-                self.tabArchivedPTWs.addPTWToGUI(ptw)
             elif st == PTWData.ApprovalStatus.APPROVED:
                 self.tabApprovedPTWs.addPTWToGUI(ptw)
             elif st == PTWData.ApprovalStatus.REJECTED:
@@ -989,6 +992,20 @@ class MainWindow(QMainWindow):
             tab.sort()
 
         self.tabIsolations.setIsolations(globalData.activeIsolations)
+
+        if refreshArchivedPTWs:
+            self.refreshArchivedPTWs()
+    
+    def refreshArchivedPTWs(self):
+        self.tabArchivedPTWs.clear()
+        globalData.refresh(
+            self.loggedUser, 
+            self.loggedUser.getDepartment() if self.loggedUser.getRole() == UserRoles.USER else None, 
+            refreshArchivedPTWs=True
+        )
+        for ptw in globalData.archivedPTWs:
+            self.tabArchivedPTWs.addPTWToGUI(ptw)
+        self.tabArchivedPTWs.sort()
 
     def acceptPTW(self, row: int, ptw: PTWData):
         approval = PTWData.Approval(PTWData.ApprovalActions.APPROVED, self.loggedUser.getUsername(), datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
@@ -1116,6 +1133,8 @@ class UserMainWindow(MainWindow):
         super().stackTabChanged()
         tab = self.stack.currentWidget()
         self.btnFAB.setVisible(tab in [self.tabUnderReviewPTWs, self.tabRegisteredPTWs])
+        if tab == self.tabArchivedPTWs and not globalData.archivedPTWs:
+            self.refreshArchivedPTWs()
 
     def addNewPTWDialog(self):
         if not self.btnFAB.isVisible():
@@ -1128,8 +1147,8 @@ class UserMainWindow(MainWindow):
     def btnFABHandler(self):
         self.addNewPTWDialog()
     
-    def refreshGUI(self):
-        super().refreshPtwUserGUI()
+    def refreshGUI(self, refreshArchivedPTWs: bool = False):
+        super().refreshPtwUserGUI(refreshArchivedPTWs=refreshArchivedPTWs)
 
 
 
@@ -1168,9 +1187,11 @@ class CoordinatorMainWindow(MainWindow):
         super().stackTabChanged()
         tab = self.stack.currentWidget()
         self.btnFAB.setVisible(tab != self.tabWelcome and tab != self.tabIsolations)
+        if tab == self.tabArchivedPTWs and not globalData.archivedPTWs:
+            self.refreshArchivedPTWs()
 
-    def refreshGUI(self):
-        super().refreshPtwUserGUI()
+    def refreshGUI(self, refreshArchivedPTWs: bool = False):
+        super().refreshPtwUserGUI(refreshArchivedPTWs=refreshArchivedPTWs)
 
     def btnFABHandler(self):
         if self.btnFAB.isVisible(): 
@@ -1211,9 +1232,11 @@ class IssuingMainWindow(MainWindow):
         super().stackTabChanged()
         tab = self.stack.currentWidget()
         self.btnFAB.setVisible(tab != self.tabWelcome and tab != self.tabIsolations)
+        if tab == self.tabArchivedPTWs and not globalData.archivedPTWs:
+            self.refreshArchivedPTWs()
 
-    def refreshGUI(self):
-        super().refreshPtwUserGUI()
+    def refreshGUI(self, refreshArchivedPTWs: bool = False):
+        super().refreshPtwUserGUI(refreshArchivedPTWs=refreshArchivedPTWs)
 
     def btnFABHandler(self):
         self.printPTWs()
@@ -1297,9 +1320,11 @@ class ManagerMainWindow(MainWindow):
         super().stackTabChanged()
         tab = self.stack.currentWidget()
         self.btnFAB.setVisible(tab != self.tabWelcome and tab != self.tabIsolations)
+        if tab == self.tabArchivedPTWs and not globalData.archivedPTWs:
+            self.refreshArchivedPTWs()
 
-    def refreshGUI(self):
-        super().refreshPtwUserGUI()
+    def refreshGUI(self, refreshArchivedPTWs: bool = False):
+        super().refreshPtwUserGUI(refreshArchivedPTWs=refreshArchivedPTWs)
 
     def btnFABHandler(self):
         self.printPTWs()

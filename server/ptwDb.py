@@ -81,9 +81,10 @@ class PtwsDb:
         try:
             self.cursor.execute('''
                 SELECT * FROM ptws WHERE 
+                running_status != %s AND
                 (%s IS NULL OR department ILIKE %s) AND
                 (%s IS NULL OR requestor  ILIKE %s)''', 
-                (department, department, requestor, requestor)
+                (PTWData.RunningStatus.ARCHIVED, department, department, requestor, requestor)
             )
             rows = self.cursor.fetchall()
             print(f"Fetched {len(rows)} PTWs from database with filters - Department: {department}, Requestor: {requestor}")
@@ -93,6 +94,25 @@ class PtwsDb:
         except Exception as e:
             self.conn.rollback()
             raise Exception("Error fetching PTWs from database: " + str(e))
+        return ptws
+    
+    def getArchivedPTWs(self, department: str = None):
+        ptws = []
+        try:
+            self.cursor.execute('''
+                SELECT * FROM ptws WHERE 
+                running_status = %s AND
+                (%s IS NULL OR department ILIKE %s)''', 
+                (PTWData.RunningStatus.ARCHIVED, department, department)
+            )
+            rows = self.cursor.fetchall()
+            print(f"Fetched {len(rows)} archived PTWs from database with filter - Department: {department}")
+            for row in rows:
+                ptws.append(PTWData().setAll(namespace=dictToObj(row)))
+
+        except Exception as e:
+            self.conn.rollback()
+            raise Exception("Error fetching archived PTWs from database: " + str(e))
         return ptws
     
     # def updatePTW(self, ptw: PTWData):

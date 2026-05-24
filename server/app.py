@@ -314,6 +314,19 @@ def getAllPTWs():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
+@app.route("/ptws/archive", methods=["GET"])
+def getArchivedPTWs():
+    user = getVerifiedUser(request.authorization)
+    if user is None:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    try:
+        data = request.get_json(silent=True) or {}
+        dep = data.get('department')
+        ptws = ptwDB.getArchivedPTWs(department=dep)
+        return jsonify({"success": True, "ptws": [objToDict(ptw) for ptw in ptws]})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
 @app.route("/ptws", methods=["POST"])
 def addPTWRequest():
     user = getVerifiedUser(request.authorization)
