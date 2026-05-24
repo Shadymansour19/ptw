@@ -12,6 +12,9 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 **PTW List:**
 ![PTW List](screenshots/ptw-list.png)
 
+**PTW List Filtered:**
+![PTW List](screenshots/ptw-list-filtered   .png)
+
 **Isolations:**
 ![Isolations](screenshots/isolations.png) 
 
