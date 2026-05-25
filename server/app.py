@@ -430,6 +430,7 @@ def runPTW():
     try:
         if ok:
             ptwDB.runAcceptPTW(ptwId, ia, ts)
+            ptw.keep_isolations = []
             for iso in ptw.isolations:
                 if iso.tag not in globalData.isolations:
                     globalData.isolations[iso.tag] = Isolation(type=iso.type, tag=iso.tag, description=iso.description)
@@ -492,13 +493,18 @@ def hldPTW():
         if ok:
             ptwDB.hldAcceptPTW(ptwId, ia, ts)
             for iso in ptw.isolations:
-                if iso.tag not in keepTags and iso.tag in globalData.isolations:
+                if iso.tag not in globalData.isolations:
+                    continue
+                if iso.tag in keepTags:
+                    globalData.isolations[iso.tag].holdPTW(ptwId)
+                else:
                     globalData.isolations[iso.tag].unlinkPTW(ptwId)
-                    isoDB.updateIsolation(globalData.isolations[iso.tag])
+                isoDB.updateIsolation(globalData.isolations[iso.tag])
             _broadcast("ptw_hold", {"ptw_id": ptwId, "accepted": True, "by": ia})
             return jsonify({"success": True})
         else:
             ptwDB.hldRejectPTW(ptwId, ia, ts)
+            ptw.keep_isolations = []
             _broadcast("ptw_hold", {"ptw_id": ptwId, "accepted": False, "by": ia})
             return jsonify({"success": True})
     except Exception as e:

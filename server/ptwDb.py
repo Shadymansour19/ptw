@@ -167,7 +167,7 @@ class PtwsDb:
         
     def runAcceptPTW(self, ptwId: str, ia: str, ts: str):
         try:
-            self.cursor.execute('UPDATE ptws SET issuing = %s, prev_running_status = running_status, running_status = %s, issuing_timestamp = %s WHERE id = %s', (ia, PTWData.RunningStatus.RUNNING, ts, ptwId))
+            self.cursor.execute('UPDATE ptws SET issuing = %s, prev_running_status = running_status, running_status = %s, issuing_timestamp = %s, keep_isolations = %s WHERE id = %s', (ia, PTWData.RunningStatus.RUNNING, ts, [], ptwId))
             self.conn.commit()
         except Exception as e:
             self.conn.rollback()

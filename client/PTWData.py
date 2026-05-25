@@ -128,11 +128,16 @@ class Isolation:
         return f"{self.type} - {self.description if self.description else ''} {self.tag}"
 
     def linkPTW(self, ptwId):
-        if not self.linked_ptws:
-            self.primary_ptw = str(ptwId)
-        if str(ptwId) not in self.linked_ptws:
-            self.linked_ptws.append(str(ptwId))
-            self.latest_ptw = str(ptwId)
+        ptwId = str(ptwId)
+        try:
+            self.held_by.remove(ptwId)
+        except ValueError:
+            pass
+        if not self.linked_ptws and not self.held_by:
+            self.primary_ptw = ptwId
+        if ptwId not in self.linked_ptws:
+            self.linked_ptws.append(ptwId)
+            self.latest_ptw = ptwId
         self.is_physically_isolated = True
 
     def holdPTW(self, ptwId):
@@ -145,17 +150,6 @@ class Isolation:
         if str(ptwId) not in self.held_by:
             self.held_by.append(str(ptwId))
         # is_physically_isolated stays True — held PTW keeps isolation in place
-        self.is_physically_isolated = True
-
-    def resumePTW(self, ptwId):
-        try:
-            self.held_by.remove(str(ptwId))
-        except Exception:
-            pass
-        if str(ptwId) not in self.linked_ptws:
-            self.linked_ptws.append(str(ptwId))
-            self.latest_ptw = str(ptwId)
-        # is_physically_isolated stays True
         self.is_physically_isolated = True
 
     def unlinkPTW(self, ptwId):

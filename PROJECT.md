@@ -443,14 +443,16 @@ isolations                  JSONB[]
 attachs                     TEXT[]
 ```
 
-### `active_isolations`
+### `isolations`
 ```sql
-tag          VARCHAR  PRIMARY KEY
-type         VARCHAR(100)
-description  VARCHAR(100)
-linked_ptws  TEXT[]
-primary_ptw  VARCHAR(100)
-latest_ptw   VARCHAR(100)
+tag                    VARCHAR(30)  PRIMARY KEY
+type                   VARCHAR(30)  NOT NULL
+description            VARCHAR(300) NOT NULL
+primary_ptw            VARCHAR(30)  NOT NULL
+latest_ptw             VARCHAR(30)  NOT NULL
+linked_ptws            TEXT[]       NOT NULL DEFAULT '{}'
+is_physically_isolated BOOLEAN      NOT NULL DEFAULT FALSE
+held_by                TEXT[]       NOT NULL DEFAULT '{}'
 ```
 
 ### `risks`

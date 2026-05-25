@@ -452,22 +452,18 @@ class ReportGenerator:
             except Exception:
                 pass
 
-            isolated_for = None
-            lastPTW = None
+            requiresIsolation = set()
             isReallyActive = False
             try:
-                lastPTW = globalData.isolations[iso.tag].latest_ptw
-                isolated_for = set(globalData.isolations[iso.tag].linked_ptws)
-                isolated_for.add(lastPTW)
-                isolated_for.discard(ptw.id)
-                isolated_for = list(isolated_for)
-                isReallyActive = globalData.isolations[iso.tag].isReallyActive()
+                iso_state = globalData.isolations[iso.tag]
+                requiresIsolation = set(iso_state.linked_ptws) | set(iso_state.held_by)
+                isReallyActive = iso_state.isReallyActive()
             except Exception:
                 pass
 
             ignore = (
-                (isolate and (iso.tag in ptw.keep_isolations or (isolated_on and str(ptw.id) != str(isolated_on)))) or 
-                (not isolate and (isReallyActive or str(lastPTW) != str(ptw.id)))
+                (isolate and (iso.tag in ptw.keep_isolations or (isolated_on and str(ptw.id) != str(isolated_on)))) or
+                (not isolate and isReallyActive)
             )
 
             if ignore:
@@ -475,7 +471,7 @@ class ReportGenerator:
                     Paragraph(str(i),                cel),
                     Paragraph(iso.tag or '',         cel),
                     Paragraph(_html.escape(iso.description or ''), cel),
-                    Paragraph(f'{ignore_message} {isolated_on if isolate else ', '.join(isolated_for)}', ignore_style),
+                    Paragraph(f'{ignore_message} {isolated_on if isolate else ", ".join(sorted(requiresIsolation))}', ignore_style),
                     Paragraph('', cel),
                     Paragraph('', cel),
                 ])
@@ -696,6 +692,7 @@ class ReportGenerator:
         TABLE_WIDTH_WEIGHTS_SUM = sum(TABLE_WIDTH_WEIGHTS)
         MARGIN = 0.35 * inch
 
+        risksTitles = [rt for rt in risksTitles if rt in globalData.allRiskAssessments] 
         if not risksTitles:
             return
 
