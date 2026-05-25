@@ -1,0 +1,203 @@
+from PyQt6.QtCore import *
+from PyQt6.QtWidgets import *
+from PyQt6.QtGui import *
+import qtawesome as qta
+
+from PTWData import Isolation
+from CheckableComboBox import CheckableComboBox
+
+
+class TableIsolations(QWidget):
+    def __init__(self, parent, loggedUser, label: str):
+        super().__init__(parent)
+        lyt = QVBoxLayout()
+        lyt.setContentsMargins(0, 0, 0, 0)
+        lyt.setSpacing(4)
+        self.tbl = QTableWidget()
+        self.isolationsData: list[Isolation] = []
+        self.loggedUser = loggedUser
+
+        self.summaryLabels = ['Type', 'Tag', 'Description', 'Primary PTW', 'Held By', 'Physical',               'Linked PTWs']
+        self.summeryFields = ['type', 'tag', 'description', 'primary_ptw', 'held_by', 'is_physically_isolated', 'linked_ptws']
+
+        lblLyt = QHBoxLayout()
+        lblLyt.setContentsMargins(10, 0, 10, 0)
+        lbl = QLabel(label)
+        lbl.setFont(QFont("Helvetica", 16, QFont.Weight.Bold))
+        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lblLyt.addStretch()
+        lblLyt.addWidget(lbl)
+
+        self._filterBtn = QPushButton(qta.icon('fa6s.filter'), "")
+        self._filterBtn.setToolTip("Filter")
+        self._filterBtn.setIconSize(QSize(32, 32))
+        self._filterBtn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._filterBtn.setStyleSheet("""
+            QPushButton { background: transparent; border: none; padding: 6px; border-radius: 6px; }
+            QPushButton:hover { background: rgba(255,255,255,40); }
+            QPushButton:pressed { background: rgba(255,255,255,80); }
+            QPushButton:checked { background: rgba(25,200,150,45); }
+            QPushButton:checked:hover { background: rgba(25,200,150,65); }
+        """)
+        self._filterBtn.setCheckable(True)
+        self._filterBtn.toggled.connect(self._toggleFilters)
+        lblLyt.addStretch()
+        lblLyt.addWidget(self._filterBtn)
+
+        self._filterBar = QWidget()
+        filterBarLayout = QHBoxLayout(self._filterBar)
+        filterBarLayout.setContentsMargins(0, 0, 0, 0)
+        filterBarLayout.setSpacing(0)
+        self._filterCombos = []
+        for _ in self.summaryLabels:
+            combo = CheckableComboBox()
+            combo.filterChanged.connect(self._applyFilters)
+            filterBarLayout.addWidget(combo)
+            self._filterCombos.append(combo)
+        self._filterBar.setVisible(False)
+
+        self.setLayout(lyt)
+        self.setAutoFillBackground(False)
+        lyt.addLayout(lblLyt)
+        lyt.addWidget(self._filterBar)
+        lyt.addWidget(self.tbl)
+
+        self.tbl.setColumnCount(len(self.summaryLabels))
+        self.tbl.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tbl.cellDoubleClicked.connect(self._onDoubleClick)
+        self.tbl.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tbl.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.tbl.setSortingEnabled(True)
+        self.tbl.setHorizontalHeaderLabels(self.summaryLabels)
+        self.tbl.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tbl.horizontalHeader().setStretchLastSection(True)
+        self.tbl.setAlternatingRowColors(True)
+        self.tbl.setStyleSheet("QTableWidget { background: transparent; }")
+        self.tbl.viewport().setAutoFillBackground(False)
+        self.tbl.verticalHeader().hide()
+        self.tbl.horizontalHeader().sectionResized.connect(self._syncFilterWidths)
+        self.tbl.horizontalHeader().sortIndicatorChanged.connect(self._onSorted)
+
+    
+    def isolationToRecord(self, isolation):
+        record = []
+        for field in self.summeryFields:
+            val = getattr(isolation, field)
+            if isinstance(val, bool):
+                val = "Yes" if val else "No"
+            elif isinstance(val, list):
+                val = ', '.join(str(v) for v in val) if val else '—'
+            record.append(val)
+        return record
+
+    def setIsolations(self, isolations: dict):
+        self.tbl.setSortingEnabled(False)
+        self.tbl.clearContents()
+        self.isolationsData.clear()
+        self.tbl.setRowCount(0)
+        for iso in isolations.values():
+            row = self.tbl.rowCount()
+            self.tbl.insertRow(row)
+            data = self.isolationToRecord(iso)
+            for i, d in enumerate(data):
+                cell = QTableWidgetItem(d)
+                self.tbl.setItem(row, i, cell)
+            self.isolationsData.append(iso)
+        self.tbl.setSortingEnabled(True)
+        self._sync()
+        if self._filterBar.isVisible():
+            self._populateFilters()
+            self._applyFilters()
+
+    def clear(self):
+        self.tbl.clearContents()
+        self.isolationsData.clear()
+        self.tbl.setRowCount(0)
+        for combo in self._filterCombos:
+            combo._model.clear()
+            combo._addSelectAllItem()
+            combo._updateText()
+
+    def _sync(self):
+        tag_to_iso = {iso.tag: iso for iso in self.isolationsData}
+        self.isolationsData = [tag_to_iso[self.tbl.item(r, 1).text()] for r in range(self.tbl.rowCount())]
+
+    def _toggleFilters(self, checked):
+        self._filterBar.setVisible(checked)
+        if checked:
+            self._populateFilters()
+            self._syncFilterWidths()
+            self._applyFilters()
+        else:
+            self._showAllRows()
+
+    def _populateFilters(self):
+        col_values = [set() for _ in self.summaryLabels]
+        for row in range(self.tbl.rowCount()):
+            for col in range(len(self.summaryLabels)):
+                item = self.tbl.item(row, col)
+                if item:
+                    col_values[col].add(item.text())
+        for col, combo in enumerate(self._filterCombos):
+            combo.setItems(col_values[col], preserve_selection=True)
+
+    def _syncFilterWidths(self):
+        if not self._filterBar.isVisible():
+            return
+        header = self.tbl.horizontalHeader()
+        for i, combo in enumerate(self._filterCombos[:-1]):
+            combo.setFixedWidth(header.sectionSize(i))
+        self._filterCombos[-1].setMinimumWidth(header.sectionSize(len(self._filterCombos) - 1))
+
+    def _applyFilters(self):
+        active = [
+            (col, combo.checkedItems())
+            for col, combo in enumerate(self._filterCombos)
+            if combo.isFiltering()
+        ]
+        for row in range(self.tbl.rowCount()):
+            hide = any(
+                (item := self.tbl.item(row, col)) is not None and item.text() not in allowed
+                for col, allowed in active
+            )
+            self.tbl.setRowHidden(row, hide)
+
+    def _showAllRows(self):
+        for row in range(self.tbl.rowCount()):
+            self.tbl.setRowHidden(row, False)
+
+    def _onSorted(self):
+        self._sync()
+        if self._filterBar.isVisible():
+            self._applyFilters()
+
+    def _onDoubleClick(self, row, col):
+        iso = self.isolationsData[row]
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Isolation — {iso.tag}")
+        dlg.setMinimumWidth(420)
+
+        lyt = QFormLayout(dlg)
+        lyt.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        lyt.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+
+        for label, value in [
+            ("Type",                str(iso.type)),
+            ("Tag",                 str(iso.tag)),
+            ("Description",         str(iso.description)),
+            ("Primary PTW",         str(iso.primary_ptw)),
+            ("Latest PTW",          str(iso.latest_ptw)),
+            ("Linked PTWs",         ', '.join(str(p) for p in iso.linked_ptws) or '—'),
+            ("Held By",             ', '.join(str(p) for p in iso.held_by) or '—'),
+            ("Physically Isolated", 'Yes' if iso.is_physically_isolated else 'No'),
+        ]:
+            val_lbl = QLabel(value)
+            val_lbl.setWordWrap(True)
+            lyt.addRow(f"<b>{label}:</b>", val_lbl)
+
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        btns.rejected.connect(dlg.reject)
+        lyt.addRow(btns)
+
+        dlg.exec()

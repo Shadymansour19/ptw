@@ -12,7 +12,7 @@ from DialogUser import DialogUser
 from DialogSelectIsolations import DialogSelectIsolations
 from TableUsers import TableUsers
 from TableRisks import TableRisks
-from TableActiveIsolations import TableActiveIsolations
+from TableIsolations import TableIsolations
 from DialogSettings import DialogSettings
 from clientRequests import ClientRequests
 from GlobalData import globalData
@@ -38,7 +38,7 @@ class MainWindow(QMainWindow):
 
         self.editOption = TablePTWs.MenuOption('Edit', self.editPTW, qta.icon('fa6s.pen'))
         self.viewOption = TablePTWs.MenuOption('View', self.viewPTW, qta.icon('fa6.eye'))
-        self.requestPTWOption = TablePTWs.MenuOption('Re-Request PTW', self.requestPTW, qta.icon('fa6s.question'))
+        self.requestPTWOption = TablePTWs.MenuOption('Re-Request PTW', self.addPTWDialog, qta.icon('fa6s.question'))
         self.dltOption  = TablePTWs.MenuOption('Delete', self.deletePTW, qta.icon('fa6s.trash-can'))
         self.archiveOption  = TablePTWs.MenuOption('Archive', self.archivePTWs, qta.icon('fa6s.box-archive'), allAtOnce=True)
         self.runRequestOption  = TablePTWs.MenuOption('Run', self.requestToRunPTW, qta.icon('fa6s.play'))
@@ -82,7 +82,7 @@ class MainWindow(QMainWindow):
         self.tabArchivedPTWs = TablePTWs(self.stack, self.loggedUser, "Archived PTWs")
         self.tabAllUsers = TableUsers(self.stack, self.loggedUser, "All Users")
         self.tabRisks = TableRisks(self.stack, self.loggedUser, "All Risks", readonly=False, selectable=False)
-        self.tabIsolations = TableActiveIsolations(self.stack, self.loggedUser, "Isolations")
+        self.tabIsolations = TableIsolations(self.stack, self.loggedUser, "Isolations")
 
         lytWelcome = QVBoxLayout()
         self.lytWelcomeBtns = QGridLayout()
@@ -141,7 +141,7 @@ class MainWindow(QMainWindow):
         # self.btnLogout = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ArrowLeft), "")
         # self.btnUsers = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView), "")
         # self.btnRisks = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxCritical), "")
-        # self.btnActiveIsolations = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolumeMuted), "")
+        # self.btnIsolations = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolumeMuted), "")
         # self.btnLanguage = QPushButton("ع")
 
         self.btnWelcome = QPushButton(qta.icon('fa5s.home'), "")
@@ -162,7 +162,7 @@ class MainWindow(QMainWindow):
         self.btnUsers = QPushButton(qta.icon('fa6s.users-gear'), "")
         # self.btnRisks = QPushButton(qta.icon('fa5s.exclamation-triangle'), "")
         self.btnRisks = QPushButton(qta.icon('mdi.shield-check-outline'), "")
-        self.btnActiveIsolations = QPushButton(qta.icon('fa6s.unlock-keyhole'), "")
+        self.btnIsolations = QPushButton(qta.icon('fa6s.unlock-keyhole'), "")
         self.btnLanguage = QPushButton(qta.icon('fa5s.language'), "")
 
         self.btnWelcome.setToolTip("Home [Ctrl+H]")
@@ -182,7 +182,7 @@ class MainWindow(QMainWindow):
         self.btnLogout.setToolTip("Logout [Ctrl+X]")
         self.btnUsers.setToolTip("All Users")
         self.btnRisks.setToolTip("Risks")
-        self.btnActiveIsolations.setToolTip("Isolations")
+        self.btnIsolations.setToolTip("Isolations")
         self.btnLanguage.setToolTip("Switch Language")
 
         self._sideBarBtnMap = {
@@ -200,7 +200,7 @@ class MainWindow(QMainWindow):
             self.btnArchivedPTWs:               self.tabArchivedPTWs,
             self.btnUsers:                      self.tabAllUsers,
             self.btnRisks:                      self.tabRisks,
-            self.btnActiveIsolations:           self.tabIsolations,
+            self.btnIsolations:           self.tabIsolations,
             self.btnRefresh:                    None, 
             self.btnSettings:                   None,
             self.btnLogout:                     None,
@@ -493,13 +493,27 @@ class MainWindow(QMainWindow):
             ptw = toEditPtw
             self.stack.currentWidget().updatePTW(row, ptw)
 
-    def requestPTW(self, row: int, ptw: PTWData):
-        newPTW = copy.deepcopy(ptw)
-        newPTW.setId(None).clearApprovals()
-        newPTWDialog = DialogPTW(self, self.loggedUser, newPTW, ptw, True, False, "Re-request PTW")
-        if newPTWDialog.exec() == QDialog.DialogCode.Accepted:
-            self.tabUnderReviewPTWs.addPTW(newPTW, newPTWDialog.attachsToBeUploaded)
+    def addPTWDialog(self, row: int = None, ptw: PTWData = None):
+        newPTW = copy.deepcopy(ptw) if ptw else PTWData()
+        if ptw:
+            newPTW.setId(None).clearApprovals()
+        title = "Re-request PTW" if ptw else "New PTW"
+        dlg = DialogPTW(self, self.loggedUser, newPTW, ptw, True, False, title)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        err, ptwId = ClientRequests.addPTW(self.loggedUser, newPTW)
+        if err:
+            QMessageBox.warning(self, "Fail", err)
+            return
+        newPTW.setId(ptwId)
+        if dlg.attachsToBeUploaded:
+            err = ClientRequests.addPtwAttachments(self.loggedUser, newPTW.id, dlg.attachsToBeUploaded)
+            if err:
+                QMessageBox.warning(self, "Error", f"Failed to upload attachments: {err}")
+                return
+        if ptw:
             ClientRequests.copyPtwAttachments(self.loggedUser, ptw.id, newPTW.id)
+        # self.refreshGUI()  # SSE event handles refresh
 
     def deletePTW(self, row: int, ptw: PTWData):
         self.stack.currentWidget().deletePTW(row)
@@ -509,9 +523,7 @@ class MainWindow(QMainWindow):
         if err:
             QMessageBox.warning(self, 'Fail', err)
             return
-        for ptw in ptws:
-            ptw.running_status = PTWData.RunningStatus.ARCHIVED
-        self.refreshGUI()
+        # self.refreshGUI()  # SSE event handles refresh
     
     def requestToRunPTW(self, row: int, ptw: PTWData):
         for p in globalData.allPTWs:
@@ -525,10 +537,7 @@ class MainWindow(QMainWindow):
         if err:
             QMessageBox.warning(self, 'Fail', err)
             return
-        ptw.performing = pa
-        ptw.performing_timestamp = ts
-        ptw.running_status = PTWData.RunningStatus.WAITING_RUN_CONFIRM
-        self.refreshGUI()
+        # self.refreshGUI()  # SSE event handles refresh
     
     def runAcceptTW(self, row: int, ptw: PTWData):
         ia = self.loggedUser.getUsername()
@@ -537,11 +546,8 @@ class MainWindow(QMainWindow):
         if err:
             QMessageBox.warning(self, 'Fail', err)
             return
-        ptw.issuing = ia
-        ptw.issuing_timestamp = ts
-        ptw.running_status = PTWData.RunningStatus.RUNNING
-        self.refreshGUI()
-    
+        # self.refreshGUI()  # SSE event handles refresh
+
     def runRejectTW(self, row: int, ptw: PTWData):
         ia = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
@@ -549,12 +555,7 @@ class MainWindow(QMainWindow):
         if err:
             QMessageBox.warning(self, 'Fail', err)
             return 
-        ptw.issuing = ''
-        ptw.issuing_timestamp = ''
-        ptw.performing = ''
-        ptw.performing_timestamp = ''
-        ptw.running_status = PTWData.RunningStatus.NOT_RUNNING
-        self.refreshGUI()
+        # self.refreshGUI()  # SSE event handles refresh
 
     def requestToClsPTW(self, row: int, ptw: PTWData):
         # QMessageBox.aboutQt(self)
@@ -568,10 +569,7 @@ class MainWindow(QMainWindow):
         if err:
             QMessageBox.warning(self, 'Fail', err)
             return
-        ptw.close_performing = pa
-        ptw.close_performing_timestamp = ts
-        ptw.running_status = PTWData.RunningStatus.WAITING_CLS_CONFIRM
-        self.refreshGUI()
+        # self.refreshGUI()  # SSE event handles refresh
     
     def clsAcceptPTW(self, row: int, ptw: PTWData):
         ia = self.loggedUser.getUsername()
@@ -580,14 +578,7 @@ class MainWindow(QMainWindow):
         if err:
             QMessageBox.warning(self, 'Fail', err)
             return
-        ptw.close_issuing = ia
-        ptw.close_issuing_timestamp = ts
-        ptw.running_status = PTWData.RunningStatus.CLOSED
-        ptw.issuing = ''
-        ptw.issuing_timestamp = ''
-        ptw.performing = ''
-        ptw.performing_timestamp = ''
-        self.refreshGUI()
+        # self.refreshGUI()  # SSE event handles refresh
     
     def clsRejectPTW(self, row: int, ptw: PTWData):
         ia = self.loggedUser.getUsername()
@@ -596,12 +587,7 @@ class MainWindow(QMainWindow):
         if err:
             QMessageBox.warning(self, 'Fail', err)
             return 
-        ptw.close_issuing = ''
-        ptw.close_issuing_timestamp = ''
-        ptw.close_performing = ''
-        ptw.close_performing_timestamp = ''
-        ptw.running_status = PTWData.RunningStatus.RUNNING
-        self.refreshGUI()
+        # self.refreshGUI()  # SSE event handles refresh
 
     def requestToHldPTW(self, row: int, ptw: PTWData):
         dlg = DialogSelectIsolations(self, ptw.isolations, selectable=True, title=f"Hold PTW# {ptw.id} - Select Isolations to Keep")
@@ -615,11 +601,7 @@ class MainWindow(QMainWindow):
         if err:
             QMessageBox.warning(self, 'Fail', err)
             return
-        ptw.keep_isolations = keptTags
-        ptw.hold_performing = pa
-        ptw.hold_performing_timestamp = ts
-        ptw.running_status = PTWData.RunningStatus.WAITING_HLD_CONFIRM
-        self.refreshGUI()
+        # self.refreshGUI()  # SSE event handles refresh
 
     def hldAcceptPTW(self, row: int, ptw: PTWData):
         ia = self.loggedUser.getUsername()
@@ -628,15 +610,7 @@ class MainWindow(QMainWindow):
         if err:
             QMessageBox.warning(self, 'Fail', err)
             return
-        ptw.issuing = ''
-        ptw.issuing_timestamp = ''
-        ptw.performing = ''
-        ptw.performing_timestamp = ''
-        ptw.hold_issuing = ia
-        ptw.hold_issuing_timestamp = ts
-        ptw.keep_isolations = []
-        ptw.running_status = PTWData.RunningStatus.NOT_RUNNING
-        self.refreshGUI()
+        # self.refreshGUI()  # SSE event handles refresh
 
     def hldRejectPTW(self, row: int, ptw: PTWData):
         ia = self.loggedUser.getUsername()
@@ -645,13 +619,7 @@ class MainWindow(QMainWindow):
         if err:
             QMessageBox.warning(self, 'Fail', err)
             return
-        ptw.keep_isolations = []
-        ptw.hold_performing = ''
-        ptw.hold_performing_timestamp = ''
-        ptw.hold_issuing = ''
-        ptw.hold_issuing_timestamp = ''
-        ptw.running_status = PTWData.RunningStatus.RUNNING
-        self.refreshGUI()
+        # self.refreshGUI()  # SSE event handles refresh
 
     def hldTakeAction(self, row: int, ptw: PTWData):
         if ptw.running_status != PTWData.RunningStatus.WAITING_HLD_CONFIRM:
@@ -1065,7 +1033,7 @@ class MainWindow(QMainWindow):
             self.loggedUser, 
             self.loggedUser.getDepartment() if self.loggedUser.getRole() == UserRoles.USER else None, 
             refreshUsers=True, refreshPTWs=True, refreshRiskAssessments=True, 
-            refreshMIWIs=True, refreshActiveIsolations=True, 
+            refreshMIWIs=True, refreshIsolations=True, 
         )
 
         tabs: list[TablePTWs] = [
@@ -1112,7 +1080,7 @@ class MainWindow(QMainWindow):
         for tab in tabs:
             tab.sort()
 
-        self.tabIsolations.setIsolations(globalData.activeIsolations)
+        self.tabIsolations.setIsolations(globalData.isolations)
 
         if refreshArchivedPTWs:
             self.refreshArchivedPTWs()
@@ -1241,14 +1209,14 @@ class UserMainWindow(MainWindow):
             [self.btnWelcome],
             [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs, self.btnRejectedPTWs],
             [self.btnWaitingRunConfirmationPTWs, self.btnRunningPTWs, self.btnWaitingHldConfirmationPTWs, self.btnHeldPTWs, self.btnWaitingClsConfirmationPTWs, self.btnClosedPTWs, self.btnArchivedPTWs],
-            [self.btnActiveIsolations],
+            [self.btnIsolations],
         ])
 
         self.btnFAB.setToolTip("New PTW [Ctrl+N]")
         self.btnFAB.setText("+")
 
         shortcut = QShortcut(QKeySequence("Ctrl+N"), self)
-        shortcut.activated.connect(self.addNewPTWDialog)
+        shortcut.activated.connect(self.btnFABHandler)
 
     def stackTabChanged(self):
         super().stackTabChanged()
@@ -1257,16 +1225,9 @@ class UserMainWindow(MainWindow):
         if tab == self.tabArchivedPTWs and not globalData.archivedPTWs:
             self.refreshArchivedPTWs()
 
-    def addNewPTWDialog(self):
-        if not self.btnFAB.isVisible():
-            return
-        newPTW = PTWData()
-        newPTWDialog = DialogPTW(self, self.loggedUser, newPTW, None, True, False, "New PTW")
-        if newPTWDialog.exec() == QDialog.DialogCode.Accepted:
-            self.stack.currentWidget().addPTW(newPTW, newPTWDialog.attachsToBeUploaded)
-
     def btnFABHandler(self):
-        self.addNewPTWDialog()
+        if self.btnFAB.isVisible():
+            self.addPTWDialog()
     
     def refreshGUI(self, refreshArchivedPTWs: bool = False):
         super().refreshPtwUserGUI(refreshArchivedPTWs=refreshArchivedPTWs)
@@ -1294,7 +1255,7 @@ class CoordinatorMainWindow(MainWindow):
             [self.btnWelcome],
             [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs, self.btnRejectedPTWs],
             [self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs, self.btnArchivedPTWs],
-            [self.btnActiveIsolations],
+            [self.btnIsolations],
         ])
 
         # Create Floating Option Button
@@ -1342,7 +1303,7 @@ class IssuingMainWindow(MainWindow):
             [self.btnWelcome],
             [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs, self.btnRejectedPTWs],
             [self.btnWaitingRunConfirmationPTWs, self.btnRunningPTWs, self.btnWaitingHldConfirmationPTWs, self.btnHeldPTWs, self.btnWaitingClsConfirmationPTWs, self.btnClosedPTWs, self.btnArchivedPTWs],
-            [self.btnActiveIsolations],
+            [self.btnIsolations],
         ])
 
         # Create Floating Option Button
@@ -1376,7 +1337,7 @@ class SafetyMainWindow(MainWindow):
         self.setAvailableTabs([
             [self.btnWelcome],
             [self.btnUnderReviewPTWs, self.btnRunningPTWs],
-            [self.btnActiveIsolations],
+            [self.btnIsolations],
             [self.btnRisks],
         ])
 
@@ -1430,7 +1391,7 @@ class ManagerMainWindow(MainWindow):
             [self.btnWelcome],
             [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs, self.btnRejectedPTWs],
             [self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs],
-            [self.btnActiveIsolations],
+            [self.btnIsolations],
         ])
 
         # Create Floating Option Button

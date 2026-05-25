@@ -25,7 +25,7 @@ from risksDb import RisksDb
 from IsolationDb import IsolationDb
 from User import User, UserRoles
 from GlobalData import globalData
-from PTWData import objToDict, PTWData, ActiveIsolation
+from PTWData import objToDict, PTWData, Isolation
 
 app = Flask(__name__)
 app.config.update(
@@ -431,10 +431,10 @@ def runPTW():
         if ok:
             ptwDB.runAcceptPTW(ptwId, ia, ts)
             for iso in ptw.isolations:
-                if iso.tag not in globalData.activeIsolations:
-                    globalData.activeIsolations[iso.tag] = ActiveIsolation(type=iso.type, tag=iso.tag, description=iso.description)
-                globalData.activeIsolations[iso.tag].linkPTW(ptwId)
-                isoDB.updateIsolation(globalData.activeIsolations[iso.tag])
+                if iso.tag not in globalData.isolations:
+                    globalData.isolations[iso.tag] = Isolation(type=iso.type, tag=iso.tag, description=iso.description)
+                globalData.isolations[iso.tag].linkPTW(ptwId)
+                isoDB.updateIsolation(globalData.isolations[iso.tag])
             _broadcast("ptw_run", {"ptw_id": ptwId, "accepted": True, "by": ia})
             return jsonify({"success": True})
         else:
@@ -492,9 +492,9 @@ def hldPTW():
         if ok:
             ptwDB.hldAcceptPTW(ptwId, ia, ts)
             for iso in ptw.isolations:
-                if iso.tag not in keepTags and iso.tag in globalData.activeIsolations:
-                    globalData.activeIsolations[iso.tag].unlinkPTW(ptwId)
-                    isoDB.updateIsolation(globalData.activeIsolations[iso.tag])
+                if iso.tag not in keepTags and iso.tag in globalData.isolations:
+                    globalData.isolations[iso.tag].unlinkPTW(ptwId)
+                    isoDB.updateIsolation(globalData.isolations[iso.tag])
             _broadcast("ptw_hold", {"ptw_id": ptwId, "accepted": True, "by": ia})
             return jsonify({"success": True})
         else:
@@ -545,9 +545,9 @@ def clsPTW():
         if ok:
             ptwDB.clsAcceptPTW(ptwId, ia, ts)
             for iso in ptw.isolations:
-                if iso.tag in globalData.activeIsolations:
-                    globalData.activeIsolations[iso.tag].unlinkPTW(ptwId)
-                    isoDB.updateIsolation(globalData.activeIsolations[iso.tag])
+                if iso.tag in globalData.isolations:
+                    globalData.isolations[iso.tag].unlinkPTW(ptwId)
+                    isoDB.updateIsolation(globalData.isolations[iso.tag])
                 else:
                     print(f"Isolation {iso.tag} not found in active isolations")
             _broadcast("ptw_close", {"ptw_id": ptwId, "accepted": True, "by": ia})

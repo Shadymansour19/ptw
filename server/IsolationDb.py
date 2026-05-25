@@ -1,7 +1,7 @@
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from PTWData import dictToObj, objToDict, ActiveIsolation
+from PTWData import dictToObj, objToDict, Isolation
 from commonDb import CommonDB
 
 class IsolationDb:
@@ -16,12 +16,12 @@ class IsolationDb:
     
     def updateIsolation(self, iso):
         try:
-            self.cursor.execute("SELECT EXISTS(SELECT 1 FROM active_isolations WHERE tag = %s)", (iso.tag,))
+            self.cursor.execute("SELECT EXISTS(SELECT 1 FROM isolations WHERE tag = %s)", (iso.tag,))
             exists = self.cursor.fetchone()['exists']
             if exists:
-                CommonDB.updateRecordFromDict(self.conn, 'active_isolations', objToDict(iso), 'tag')
+                CommonDB.updateRecordFromDict(self.conn, 'isolations', objToDict(iso), 'tag')
             else:
-                CommonDB.addRecordFromDict(self.conn, 'active_isolations', objToDict(iso))
+                CommonDB.addRecordFromDict(self.conn, 'isolations', objToDict(iso))
             return None
         except Exception as e:
             print(str(e))
@@ -29,10 +29,10 @@ class IsolationDb:
 
     def getIsolation(self, tag: str):
         try:
-            self.cursor.execute("SELECT * FROM active_isolations WHERE tag = %s", (tag,))
+            self.cursor.execute("SELECT * FROM isolations WHERE tag = %s", (tag,))
             row = self.cursor.fetchone()
             if row:
-                iso = ActiveIsolation().setAll(namespace=dictToObj(row))
+                iso = Isolation().setAll(namespace=dictToObj(row))
                 return iso
             else:
                 return None
@@ -43,10 +43,10 @@ class IsolationDb:
     def getAllIsolations(self, ptwId: str = None):
         isos = {}
         try:
-            self.cursor.execute('''SELECT * FROM active_isolations WHERE (%s IS NULL OR %s = ANY(linked_ptws))''', (ptwId, ptwId))
+            self.cursor.execute('''SELECT * FROM isolations WHERE (%s IS NULL OR %s = ANY(linked_ptws))''', (ptwId, ptwId))
             rows = self.cursor.fetchall()
             for row in rows:
-                iso = ActiveIsolation().setAll(namespace=dictToObj(row))
+                iso = Isolation().setAll(namespace=dictToObj(row))
                 isos[iso.tag] = iso
         except Exception as e:
             self.conn.rollback()
@@ -55,7 +55,7 @@ class IsolationDb:
     
     def deleteIsolation(self, tag: str):
         try:
-            CommonDB.deleteRecord(self.conn, 'active_isolations', 'tag', tag)
+            CommonDB.deleteRecord(self.conn, 'isolations', 'tag', tag)
             return None
         except Exception as e:
             return e

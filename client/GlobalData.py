@@ -5,7 +5,7 @@ class GlobalData:
         self.allPTWs: list = []                 # list[PTWData] - non-archived PTWs
         self.archivedPTWs: list = []            # list[PTWData]
         self.allMIWIs: list = []                # list[str]
-        self.activeIsolations: dict = {}        # dict[str, ActiveIsolation]
+        self.isolations: dict = {}        # dict[str, Isolation]
 
     def refresh(
         self, 
@@ -16,7 +16,7 @@ class GlobalData:
         refreshPTWs: bool = False, 
         refreshArchivedPTWs: bool = False, 
         refreshMIWIs: bool = False, 
-        refreshActiveIsolations: bool = False, 
+        refreshIsolations: bool = False, 
         refreshAll: bool = False, 
     ) -> str:
         from clientRequests import ClientRequests
@@ -45,11 +45,11 @@ class GlobalData:
                 return err
             self.archivedPTWs = archivedPTWs
 
-        if refreshActiveIsolations or refreshAll:
-            err, allIsolations = ClientRequests.getAllActiveIsolations(loggedUser)
+        if refreshIsolations or refreshAll:
+            err, allIsolations = ClientRequests.getAllIsolations(loggedUser)
             if err:
                 return err
-            self.activeIsolations = allIsolations
+            self.isolations = allIsolations
 
         if refreshMIWIs or refreshAll:
             err, allMIWIs = ClientRequests.getAllMIWIs(loggedUser)

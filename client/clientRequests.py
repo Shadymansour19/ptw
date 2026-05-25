@@ -1,6 +1,6 @@
 import requests
 from User import User, SecuredUser, UserDepartments
-from PTWData import PTWData, RiskAssessment, dictToObj, objToDict, Attachment, ActiveIsolation
+from PTWData import PTWData, RiskAssessment, dictToObj, objToDict, Attachment, Isolation
 from typing import Iterable
 import tempfile
 
@@ -506,7 +506,7 @@ class ClientRequests:
         return None
 
 
-    def getAllActiveIsolations(loggedUser: User):
+    def getAllIsolations(loggedUser: User):
         response = None
         try:
             response = requests.get(
@@ -523,7 +523,7 @@ class ClientRequests:
             err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
             return f"Failed to get active isolations\n{err}", None
 
-        return None, {iso['tag']: ActiveIsolation().setAll(namespace=dictToObj(iso)) for iso in data.get("isolations", [])}
+        return None, {iso['tag']: Isolation().setAll(namespace=dictToObj(iso)) for iso in data.get("isolations", [])}
 
 
     def getAllRiskAssessments(loggedUser: User) -> tuple[str, dict[str, RiskAssessment]]:

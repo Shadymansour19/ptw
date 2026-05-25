@@ -2,7 +2,7 @@ class GlobalData:
     def __init__(self):
         self.allUsers: dict = {}                # dict[str, SecuredUser]
         self.allPTWs: list = []                 # list[PTWData]
-        self.activeIsolations: dict = {}        # dict[str, ActiveIsolation]
+        self.isolations: dict = {}        # dict[str, Isolation]
 
     def refresh(self) -> str:
         from usersDb import UsersDb
@@ -18,7 +18,7 @@ class GlobalData:
 
         self.allUsers = userDB.getAllSecuredUsers()
         self.allPTWs = ptwDB.getAllPTWs()
-        self.activeIsolations = isoDB.getAllIsolations()
+        self.isolations = isoDB.getAllIsolations()
 
         return None
 

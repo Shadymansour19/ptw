@@ -100,57 +100,75 @@ class Isolation:
         SELF       = 'Self'
         PROTECTIVE = 'Protective System'
         OTHER      = 'Other'
-    
+
     def __init__(self, type: str = '', tag: str = '', description: str = ''):
         self.type = type
         self.tag = tag
         self.description = description
-    
-    def setAll(self, data: dict):
-            for k,v in data.items():
+        self.linked_ptws: list = []
+        self.primary_ptw: str = ''
+        self.latest_ptw: str = ''
+        self.is_physically_isolated: bool = False
+        self.held_by: list = []
+
+    def setAll(self, data: dict = None, namespace: SimpleNamespace = None):
+        if namespace:
+            self.__dict__.update(vars(namespace))
+        elif data:
+            for k, v in data.items():
                 if hasattr(self, k):
                     try:
                         setattr(self, k, v)
-                    except Exception as e:
+                    except Exception:
                         pass
-            return self
-    
+        return self
+
     def __str__(self):
         return f"{self.type} - {self.description if self.description else ''} {self.tag}"
-    
 
-class ActiveIsolation(Isolation):
-    def __init__(self, type: str = '', tag: str = '', description: str = ''):
-        super().__init__(type, tag, description)
-        self.linked_ptws = []
-        self.primary_ptw = ''
-        self.latest_ptw = ''
-
-    def __str__(self):
-        return f"{super().__str__()} | Linked PTWs: {self.linked_ptws} | Primary PTW: {self.primary_ptw} | Latest PTW: {self.latest_ptw}"
-    
-    def setAll(self, data: dict = {}, namespace : SimpleNamespace = None):
-        if namespace:
-            self.__dict__.update(vars(namespace))
-        return self
-    
     def linkPTW(self, ptwId):
-        if not bool(self.linked_ptws):
-            self.primary_ptw = ptwId
+        if not self.linked_ptws:
+            self.primary_ptw = str(ptwId)
         if str(ptwId) not in self.linked_ptws:
-            self.linked_ptws.append(ptwId)
-        self.latest_ptw = ptwId
-    
+            self.linked_ptws.append(str(ptwId))
+            self.latest_ptw = str(ptwId)
+        self.is_physically_isolated = True
+
+    def holdPTW(self, ptwId):
+        try:
+            self.linked_ptws.remove(str(ptwId))
+        except Exception:
+            pass
+        if self.linked_ptws:
+            self.latest_ptw = self.linked_ptws[-1]
+        if str(ptwId) not in self.held_by:
+            self.held_by.append(str(ptwId))
+        # is_physically_isolated stays True — held PTW keeps isolation in place
+        self.is_physically_isolated = True
+
+    def resumePTW(self, ptwId):
+        try:
+            self.held_by.remove(str(ptwId))
+        except Exception:
+            pass
+        if str(ptwId) not in self.linked_ptws:
+            self.linked_ptws.append(str(ptwId))
+            self.latest_ptw = str(ptwId)
+        # is_physically_isolated stays True
+        self.is_physically_isolated = True
+
     def unlinkPTW(self, ptwId):
         try:
             self.linked_ptws.remove(str(ptwId))
         except Exception as e:
             print(f"couldn't remove PTW# {ptwId} from linked PTWs to isolation {self.tag}: {e}")
-        if bool(self.linked_ptws):
+        if self.linked_ptws:
             self.latest_ptw = self.linked_ptws[-1]
+        if not self.linked_ptws and not self.held_by:
+            self.is_physically_isolated = False
 
     def isReallyActive(self):
-        return bool(self.linked_ptws)
+        return self.is_physically_isolated
 
 
 class PTWData:

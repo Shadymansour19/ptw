@@ -448,7 +448,7 @@ class ReportGenerator:
             row_idx = len(rows)
             isolated_on = None
             try:
-                isolated_on = globalData.activeIsolations[iso.tag].primary_ptw
+                isolated_on = globalData.isolations[iso.tag].primary_ptw
             except Exception:
                 pass
 
@@ -456,12 +456,12 @@ class ReportGenerator:
             lastPTW = None
             isReallyActive = False
             try:
-                lastPTW = globalData.activeIsolations[iso.tag].latest_ptw
-                isolated_for = set(globalData.activeIsolations[iso.tag].linked_ptws)
+                lastPTW = globalData.isolations[iso.tag].latest_ptw
+                isolated_for = set(globalData.isolations[iso.tag].linked_ptws)
                 isolated_for.add(lastPTW)
                 isolated_for.discard(ptw.id)
                 isolated_for = list(isolated_for)
-                isReallyActive = globalData.activeIsolations[iso.tag].isReallyActive()
+                isReallyActive = globalData.isolations[iso.tag].isReallyActive()
             except Exception:
                 pass
 
