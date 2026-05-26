@@ -6,13 +6,11 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Pyinstalller
-dist/
-build/
+# Pyinstalller - Nuitka
+*dist/
+*build/
 *.spec
 client/pyinstaller*
-
-# Nuitka
 client/nuitka*
 
 # Root-level duplicate/stale files (the real copies are in client/ and server/)
