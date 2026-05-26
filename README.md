@@ -46,14 +46,15 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 
 | Layer         | Technology                            |
 |---------------|---------------------------------------|
-| Client UI     | Python 3.10+, PyQt6                   |
+| Client UI     | Python 3.12+, PyQt6, qtawesome        |
 | HTTP Client   | `requests` (Basic Auth + SSE stream)  |
-| Server        | Python 3.10+, Flask                   |
+| Server        | Python 3.12+, Flask                   |
 | Database      | PostgreSQL (psycopg2)                 |
 | Email         | Flask-Mail (Gmail SMTP)               |
 | Credentials   | `keyring`                             |
-| Reports       | ReportGenerator (custom PDF)          |
+| Reports       | ReportLab (PDF), Pillow, qrcode       |
 | Excel Export  | `openpyxl`                            |
+| Distribution  | Nuitka (Windows + Linux binaries)     |
 
 ---
 
@@ -178,6 +179,7 @@ Isolations are safety locks placed on equipment to prevent accidental energizati
 
 ```
 ptw/
+├── .github/workflows/build.yml  # CI/CD — builds Windows + Linux binaries via Nuitka
 ├── client/                      # PyQt6 desktop application
 │   ├── main.py                  # Entry point
 │   ├── Login.py                 # Login & password reset
@@ -186,15 +188,18 @@ ptw/
 │   ├── clientRequests.py        # HTTP API wrapper
 │   ├── SSEListener.py           # Real-time event listener (QThread)
 │   ├── PTWData.py               # Client-side data models
+│   ├── utils.py                 # Shared helpers (resource_path, objToDict, dictToObj)
 │   ├── WidgetPTW.py             # Full PTW form (create/view/edit)
 │   ├── TablePTWs.py             # PTW list with filters + Excel export
-│   ├── TableActiveIsolations.py # Active isolations view
 │   ├── ReportGenerator.py       # PDF and Excel report generation
-│   └── ...                      # Dialogs, tables, assets
+│   ├── assets/                  # Bundled images and icons
+│   ├── fonts/                   # Bundled fonts
+│   └── ...                      # Dialogs, tables
 │
 └── server/                      # Flask REST API
     ├── app.py                   # All route handlers + SSE broadcast
     ├── PTWData.py               # Core data models & enums
+    ├── utils.py                 # Shared helpers (objToDict, dictToObj)
     ├── ptwDb.py                 # PTW database operations
     ├── usersDb.py               # User database operations
     ├── IsolationDb.py           # Isolation database operations
@@ -237,7 +242,7 @@ Configure your DB connection and Gmail SMTP credentials inside `app.py`.
 
 ```bash
 cd client
-pip install PyQt6 requests keyring reportlab openpyxl
+pip install PyQt6 qtawesome requests keyring reportlab pillow qrcode pypdf openpyxl bcrypt
 python main.py
 ```
 
@@ -264,6 +269,21 @@ On first launch, open **Settings** and point the client at your server URL.
 | Events (SSE) | `GET /events` |
 
 Full API reference in [PROJECT.md](PROJECT.md).
+
+---
+
+## Building for Distribution
+
+Pre-built binaries for Windows and Linux are produced automatically via GitHub Actions on every version tag:
+
+```bash
+git tag v1.x.x
+git push origin v1.x.x
+```
+
+Download `PTW.exe` (Windows) and `PTW` (Linux) from the **Actions** tab → completed run → **Artifacts**.
+
+Builds use **Nuitka** for native compilation. To trigger a manual build without a tag: **Actions → Build PTW → Run workflow**.
 
 ---
 

@@ -12,14 +12,15 @@ The application runs as a **PyQt6 desktop client** communicating with a **Flask 
 
 | Layer        | Technology                          |
 |--------------|-------------------------------------|
-| Client UI    | Python 3.10+, PyQt6                 |
+| Client UI    | Python 3.12+, PyQt6, qtawesome      |
 | HTTP Client  | requests (Basic Auth + SSE stream)  |
-| Server       | Python 3.10+, Flask                 |
+| Server       | Python 3.12+, Flask                 |
 | Database     | PostgreSQL (psycopg2)               |
 | Email        | Flask-Mail (Gmail SMTP)             |
 | Credentials  | keyring                             |
-| Reports      | ReportGenerator (custom PDF)        |
+| Reports      | ReportLab (PDF), Pillow, qrcode     |
 | Excel Export | openpyxl                            |
+| Distribution | Nuitka (Windows + Linux binaries)   |
 
 ---
 
@@ -479,7 +480,7 @@ The desktop client is structured around role-based main windows. After login, `M
 - `allUsers` — dict of username → SecuredUser
 - `allPTWs` — list of PTWData objects (non-archived)
 - `archivedPTWs` — list of PTWData objects (archived permits)
-- `activeIsolations` — dict of tag → ActiveIsolation
+- `isolations` — dict of tag → Isolation
 - `allRiskAssessments` — dict of title → RiskAssessment
 - `allMIWIs` — list of MIWI filenames
 
@@ -496,13 +497,13 @@ The desktop client is structured around role-based main windows. After login, `M
 | `GlobalData.py`             | Client-side data cache                                           |
 | `SSEListener.py`            | QThread that connects to `/events` and emits real-time PTW events|
 | `PTWData.py`                | Mirrored data model classes (client-side copy)                   |
+| `utils.py`                  | Shared helpers: `resource_path`, `objToDict`, `dictToObj`        |
 | `User.py`                   | User model                                                       |
 | `WidgetPTW.py`              | Full PTW form (create/view/edit)                                 |
 | `TablePTWs.py`              | Table listing all PTWs with filters; supports Excel export       |
 | `TableUsers.py`             | Admin user management table                                      |
 | `TableRisks.py`             | Risk assessment list and editor                                  |
-| `TableIsolation.py`         | All available isolation points table                             |
-| `TableActiveIsolations.py`  | Currently active (linked) isolations view                        |
+| `TableIsolations.py`        | All available isolation points table                             |
 | `TableAttachments.py`       | PTW attachment management                                        |
 | `DialogUser.py`             | Create/edit user dialog                                          |
 | `DialogIsolation.py`        | Create/edit isolation dialog                                     |
