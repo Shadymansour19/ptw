@@ -19,6 +19,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: 'pip'          # caches pip downloads across runs
+
+      - name: Cache Nuitka
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\Nuitka\Nuitka
+          key: nuitka-windows-${{ hashFiles('client/**/*.py') }}
+          restore-keys: nuitka-windows-
 
       - name: Install dependencies
         run: pip install nuitka pyqt6 qtawesome reportlab pillow qrcode requests pypdf openpyxl bcrypt keyring
@@ -54,6 +62,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: 'pip'          # caches pip downloads across runs
+
+      - name: Cache Nuitka
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/Nuitka
+          key: nuitka-linux-${{ hashFiles('client/**/*.py') }}
+          restore-keys: nuitka-linux-
 
       - name: Install system dependencies
         run: sudo apt-get install -y patchelf libgl1 libegl1
