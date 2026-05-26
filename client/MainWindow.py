@@ -337,7 +337,7 @@ class MainWindow(QMainWindow):
         sb.show()
         sb.setStyleSheet("QStatusBar { background: rgba(0,0,0,40); color: #ccc; padding: 0 8px; font-size: 14px; border-top: 1px solid rgba(255,255,255,20); }")
 
-        self._trayIcon = QSystemTrayIcon(QIcon("sh-logo-bw.png"), self)
+        self._trayIcon = QSystemTrayIcon(QIcon("sh-logo-trans.png"), self)
         self._trayIcon.show()
 
         self._sseListener = SSEListener(ClientRequests.SERVER_URL, loggedUser.getUsername(), loggedUser.getPassword())
@@ -451,8 +451,8 @@ class MainWindow(QMainWindow):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        painter.setOpacity(0.02 if self.stack.currentWidget() == self.tabWelcome else 0.01)
-        painter.drawPixmap(self.rect(), QPixmap('./sh-logo-bw.png'))
+        painter.setOpacity(0.2 if self.stack.currentWidget() == self.tabWelcome else 0.1)
+        painter.drawPixmap(self.rect(), QPixmap('./sh-logo-trans.png'))
         painter.setOpacity(1.0)
         super().paintEvent(event)
 

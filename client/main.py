@@ -6,7 +6,7 @@ from PyQt6.QtGui import *
 from Login import LoginWindow
 
 app = QApplication([])
-app.setWindowIcon(QIcon('./sh-logo.png'))
+app.setWindowIcon(QIcon('./sh-logo-trans.png'))
 
 _pixmap = qta.icon('fa5s.check', color='white').pixmap(16, 16)
 _tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)

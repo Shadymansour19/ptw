@@ -433,7 +433,6 @@ class ReportGenerator:
         colWeightsSum  = sum(colWeights)
 
         ignore_style = ParagraphStyle('IsoIgn', parent=styles['Normal'], fontSize=12, leading=14, alignment=TA_CENTER, textColor=colors.Color(0.6, 0, 0))
-        ignore_message = 'Already isolated on PTW:' if isolate else 'Keep isolated for PTW:'
 
         rows = [[
             Paragraph('No.',         hdr),
@@ -454,8 +453,10 @@ class ReportGenerator:
 
             requiresIsolation = set()
             isReallyActive = False
+            latestPTW = None
             try:
                 iso_state = globalData.isolations[iso.tag]
+                latestPTW = iso_state.latest_ptw
                 requiresIsolation = set(iso_state.linked_ptws) | set(iso_state.held_by)
                 isReallyActive = iso_state.isReallyActive()
             except Exception:
@@ -463,15 +464,23 @@ class ReportGenerator:
 
             ignore = (
                 (isolate and (iso.tag in ptw.keep_isolations or (isolated_on and str(ptw.id) != str(isolated_on)))) or
-                (not isolate and isReallyActive)
+                (not isolate and (isReallyActive or str(ptw.id) != str(latestPTW)))
             )
 
             if ignore:
+                if not isolate:
+                    ignore_message = 'Keep isolated for PTW: ' + ", ".join(sorted(requiresIsolation))
+                # elif iso.tag in ptw.keep_isolations:
+                #     ignore_message = 'Held isolated on this PTW: ' + isolated_on
+                else:
+                    ignore_message = 'Already isolated on PTW: ' + isolated_on
+                if not requiresIsolation:
+                    requiresIsolation.add(str(latestPTW))
                 rows.append([
                     Paragraph(str(i),                cel),
                     Paragraph(iso.tag or '',         cel),
                     Paragraph(_html.escape(iso.description or ''), cel),
-                    Paragraph(f'{ignore_message} {isolated_on if isolate else ", ".join(sorted(requiresIsolation))}', ignore_style),
+                    Paragraph(ignore_message, ignore_style),
                     Paragraph('', cel),
                     Paragraph('', cel),
                 ])
