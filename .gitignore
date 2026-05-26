@@ -12,6 +12,7 @@ __pycache__/
 *.spec
 client/pyinstaller*
 client/nuitka*
+*.bin
 
 # Root-level duplicate/stale files (the real copies are in client/ and server/)
 /PTWData.py
