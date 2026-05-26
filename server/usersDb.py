@@ -14,45 +14,47 @@ class UsersDb:
             user=os.environ.get('DB_USER', 'postgres'),
             password=os.environ.get('DB_PASSWORD')
         )
-        self.cursor = self.conn.cursor(cursor_factory=RealDictCursor)
         try:
-            self.cursor.execute("""
-                CREATE TABLE IF NOT EXISTS users (
-                    username VARCHAR(50) PRIMARY KEY,
-                    password VARCHAR(100) NOT NULL,
-                    name VARCHAR(100) NOT NULL,
-                    role VARCHAR(50) NOT NULL,
-                    department VARCHAR(100),
-                    email VARCHAR(100)
-                )
-            """)
-            self.cursor.execute("SELECT COUNT(*) FROM users")
-            if self.cursor.fetchone()['count'] == 0:
-                self.cursor.execute('''
-                    INSERT INTO users (username, password, name, role, department, email) 
-                    VALUES (%s, %s, %s, %s, %s, %s)''', 
-                    ("admin", "admin", "Administrator", UserRoles.ADMIN, "Admin", "")
-                )
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS users (
+                        username VARCHAR(50) PRIMARY KEY,
+                        password VARCHAR(100) NOT NULL,
+                        name VARCHAR(100) NOT NULL,
+                        role VARCHAR(50) NOT NULL,
+                        department VARCHAR(100),
+                        email VARCHAR(100)
+                    )
+                """)
+                cursor.execute("SELECT COUNT(*) FROM users")
+                if cursor.fetchone()['count'] == 0:
+                    cursor.execute('''
+                        INSERT INTO users (username, password, name, role, department, email)
+                        VALUES (%s, %s, %s, %s, %s, %s)''',
+                        ("admin", "admin", "Administrator", UserRoles.ADMIN, "Admin", "")
+                    )
             self.conn.commit()
         except Exception as e:
             self.conn.rollback()
             raise Exception("Error initializing users database: " + str(e))
-    
+
     def isUsernameExists(self, username: str):
         try:
-            self.cursor.execute("SELECT username FROM users WHERE username = %s", (username,))
-            return self.cursor.fetchone() is not None
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute("SELECT username FROM users WHERE username = %s", (username,))
+                return cursor.fetchone() is not None
         except Exception as e:
             return False
-        
+
     def updateUserPassword(self, username: str, newPassword: str):
         try:
-            self.cursor.execute('''
-                UPDATE users 
-                SET password = %s
-                WHERE username = %s''', 
-                (newPassword, username)
-            )
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute('''
+                    UPDATE users
+                    SET password = %s
+                    WHERE username = %s''',
+                    (newPassword, username)
+                )
             self.conn.commit()
         except Exception as e:
             self.conn.rollback()
@@ -60,8 +62,9 @@ class UsersDb:
 
     def getSecuredUser(self, username: str):
         try:
-            self.cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
-            row = self.cursor.fetchone()
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
+                row = cursor.fetchone()
             return SecuredUser().setAll(row)
         except Exception as e:
             self.conn.rollback()
@@ -70,20 +73,22 @@ class UsersDb:
     def getAllUsers(self):
         users = []
         try:
-            self.cursor.execute("SELECT * FROM users")
-            rows = self.cursor.fetchall()
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute("SELECT * FROM users")
+                rows = cursor.fetchall()
             for row in rows:
                 users.append(User().setAll(row))
         except Exception as e:
             self.conn.rollback()
             raise Exception("Error fetching users from database")
         return users
-    
+
     def getAllSecuredUsers(self) -> dict[str, SecuredUser]:
         users = {}
         try:
-            self.cursor.execute("SELECT * FROM users")
-            rows = self.cursor.fetchall()
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute("SELECT * FROM users")
+                rows = cursor.fetchall()
             for row in rows:
                 user = SecuredUser().setAll(row)
                 users[user.getUsername()] = user
@@ -91,26 +96,27 @@ class UsersDb:
             self.conn.rollback()
             raise Exception("Error fetching users from database")
         return users
-    
+
     def getAllUsernames(self):
         usernames = []
         try:
-            self.cursor.execute("SELECT username FROM users")
-            rows = self.cursor.fetchall()
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute("SELECT username FROM users")
+                rows = cursor.fetchall()
             for row in rows:
                 usernames.append(row['username'])
         except Exception as e:
             self.conn.rollback()
             raise Exception("Error fetching users from database")
         return usernames
-    
+
     def addUserFromDict(self, userDict: dict):
         try:
             CommonDB.addRecordFromDict(self.conn, 'users', userDict)
             return None
         except Exception as e:
             return e
-    
+
     def updateUserFromDict(self, userDict: dict):
         try:
             CommonDB.updateRecordFromDict(self.conn, 'users', userDict, 'username')
@@ -121,13 +127,14 @@ class UsersDb:
     def addUser(self, user: User):
         if self.isUsernameExists(user.getUsername()):
             raise Exception(f"Username {user.getUsername()} already exists")
-        
+
         try:
-            self.cursor.execute('''
-                INSERT INTO users (username, password, name, role, department, email) 
-                VALUES (%s, %s, %s, %s, %s, %s)''', 
-                (user.getUsername(), user.getPassword(), user.getName(), user.getRole(), user.getDepartment(), user.getEmail())
-            )
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute('''
+                    INSERT INTO users (username, password, name, role, department, email)
+                    VALUES (%s, %s, %s, %s, %s, %s)''',
+                    (user.getUsername(), user.getPassword(), user.getName(), user.getRole(), user.getDepartment(), user.getEmail())
+                )
             self.conn.commit()
         except Exception as e:
             self.conn.rollback()
@@ -139,20 +146,21 @@ class UsersDb:
 
         try:
             varsToSet = f'''
-                password = '{user.getPassword()}', 
-                name = '{user.getName()}', 
-                department = '{user.getDepartment()}', 
+                password = '{user.getPassword()}',
+                name = '{user.getName()}',
+                department = '{user.getDepartment()}',
                 email = '{user.getEmail()}'
             '''
             if user.getRole():
                 varsToSet += f", role = '{user.getRole()}'"
 
-            self.cursor.execute('''
-                UPDATE users 
-                SET ''' + varsToSet + ''' 
-                WHERE username = %s''', 
-                (user.getUsername(),)
-            )
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute('''
+                    UPDATE users
+                    SET ''' + varsToSet + '''
+                    WHERE username = %s''',
+                    (user.getUsername(),)
+                )
             self.conn.commit()
         except Exception as e:
             self.conn.rollback()
@@ -163,7 +171,8 @@ class UsersDb:
             raise Exception(f"User {user.getUsername()} does not exist")
 
         try:
-            self.cursor.execute("DELETE FROM users WHERE username = %s", (user.getUsername(),))
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute("DELETE FROM users WHERE username = %s", (user.getUsername(),))
             self.conn.commit()
         except Exception as e:
             self.conn.rollback()

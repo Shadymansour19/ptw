@@ -13,12 +13,12 @@ class RisksDb:
             user=os.environ.get('DB_USER', 'postgres'),
             password=os.environ.get('DB_PASSWORD')
         )
-        self.cursor = self.conn.cursor(cursor_factory=RealDictCursor)
 
         try:
             riskItemSample = RiskItem()
             columns = list(riskItemSample.__dict__.keys())
-            self.cursor.execute("CREATE TABLE IF NOT EXISTS risks (" + ", ".join(col + ' VARCHAR(300) NOT NULL' for col in columns) + ")")
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute("CREATE TABLE IF NOT EXISTS risks (" + ", ".join(col + ' VARCHAR(300) NOT NULL' for col in columns) + ")")
             self.conn.commit()
         except Exception as e:
             self.conn.rollback()
@@ -35,11 +35,10 @@ class RisksDb:
             return None
         except Exception as e:
             return str(e)
-        
 
     def updateRiskAssessmentFromDict(self, riskAssessment: dict):
         return (
-            self.deleteRiskAssessment(riskAssessment['title']) or 
+            self.deleteRiskAssessment(riskAssessment['title']) or
             self.addRiskAssessmentFromDict(riskAssessment)
         )
 
@@ -50,12 +49,12 @@ class RisksDb:
         except Exception as e:
             return str(e)
 
-
     def getAllRiskAssessments(self) -> dict[str, RiskAssessment]:
         risks: dict[str, RiskAssessment] = {}
         try:
-            self.cursor.execute("SELECT * FROM risks")
-            rows = self.cursor.fetchall()
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute("SELECT * FROM risks")
+                rows = cursor.fetchall()
             for row in rows:
                 riskItem = RiskItem().setAll(row)
                 title = row['title']

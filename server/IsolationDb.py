@@ -12,12 +12,12 @@ class IsolationDb:
             user=os.environ.get('DB_USER', 'postgres'),
             password=os.environ.get('DB_PASSWORD')
         )
-        self.cursor = self.conn.cursor(cursor_factory=RealDictCursor)
-    
+
     def updateIsolation(self, iso):
         try:
-            self.cursor.execute("SELECT EXISTS(SELECT 1 FROM isolations WHERE tag = %s)", (iso.tag,))
-            exists = self.cursor.fetchone()['exists']
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute("SELECT EXISTS(SELECT 1 FROM isolations WHERE tag = %s)", (iso.tag,))
+                exists = cursor.fetchone()['exists']
             if exists:
                 CommonDB.updateRecordFromDict(self.conn, 'isolations', objToDict(iso), 'tag')
             else:
@@ -29,22 +29,22 @@ class IsolationDb:
 
     def getIsolation(self, tag: str):
         try:
-            self.cursor.execute("SELECT * FROM isolations WHERE tag = %s", (tag,))
-            row = self.cursor.fetchone()
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute("SELECT * FROM isolations WHERE tag = %s", (tag,))
+                row = cursor.fetchone()
             if row:
-                iso = Isolation().setAll(namespace=dictToObj(row))
-                return iso
-            else:
-                return None
+                return Isolation().setAll(namespace=dictToObj(row))
+            return None
         except Exception as e:
             self.conn.rollback()
             raise Exception("Error fetching PTW from database: " + str(e))
-    
+
     def getAllIsolations(self, ptwId: str = None):
         isos = {}
         try:
-            self.cursor.execute('''SELECT * FROM isolations WHERE (%s IS NULL OR %s = ANY(linked_ptws))''', (ptwId, ptwId))
-            rows = self.cursor.fetchall()
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute('''SELECT * FROM isolations WHERE (%s IS NULL OR %s = ANY(linked_ptws))''', (ptwId, ptwId))
+                rows = cursor.fetchall()
             for row in rows:
                 iso = Isolation().setAll(namespace=dictToObj(row))
                 isos[iso.tag] = iso
@@ -52,11 +52,10 @@ class IsolationDb:
             self.conn.rollback()
             raise Exception("Error fetching PTWs from database: " + str(e))
         return isos
-    
+
     def deleteIsolation(self, tag: str):
         try:
             CommonDB.deleteRecord(self.conn, 'isolations', 'tag', tag)
             return None
         except Exception as e:
             return e
-    

@@ -42,6 +42,21 @@ resetCodes = {}
 _sse_clients: dict[UserRoles, list[queue.Queue]] = {}   # role -> connected queues
 _sse_lock = threading.Lock()
 
+_request_lock = threading.Lock()
+
+@app.before_request
+def _acquire_request_lock():
+    if request.endpoint != 'sse_stream':
+        _request_lock.acquire()
+
+@app.teardown_request
+def _release_request_lock(exc):
+    if request.endpoint != 'sse_stream':
+        try:
+            _request_lock.release()
+        except RuntimeError:
+            pass
+
 def _broadcast(event_type: str, data: dict, roles: list[UserRoles] = None):
     """Broadcast an SSE event. roles=None sends to all connected roles."""
     msg = f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
@@ -430,7 +445,6 @@ def runPTW():
     try:
         if ok:
             ptwDB.runAcceptPTW(ptwId, ia, ts)
-            ptw.keep_isolations = []
             for iso in ptw.isolations:
                 if iso.tag not in globalData.isolations:
                     globalData.isolations[iso.tag] = Isolation(type=iso.type, tag=iso.tag, description=iso.description)
