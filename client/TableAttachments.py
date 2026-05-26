@@ -1,7 +1,8 @@
-import copy
-from PyQt6.QtCore import *
-from PyQt6.QtWidgets import *
-from PyQt6.QtGui import *
+from PyQt6.QtCore import Qt, pyqtSignal, QDir, QFileInfo
+from PyQt6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel,
+                              QListWidget, QListWidgetItem, QApplication, QStyle,
+                              QFileDialog, QMessageBox)
+from PyQt6.QtGui import QFont
 
 from clientRequests import ClientRequests
 from User import User

@@ -1,7 +1,8 @@
 import copy
-from PyQt6.QtCore import *
-from PyQt6.QtWidgets import *
-from PyQt6.QtGui import *
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QCheckBox, QPushButton,
+                              QLabel, QListWidget, QListWidgetItem, QMessageBox, QDialog)
+from PyQt6.QtGui import QFont
 
 from clientRequests import ClientRequests
 from DialogRisk import DialogRiskAssessment

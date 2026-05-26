@@ -6,6 +6,12 @@ __pycache__/
 *.pyc
 *.pyo
 
+# Pyinstalller
+dist/
+build/
+*.spec
+client/pyinstaller*
+
 # Root-level duplicate/stale files (the real copies are in client/ and server/)
 /PTWData.py
 /User.py

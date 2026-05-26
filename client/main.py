@@ -1,12 +1,14 @@
-import os, tempfile
+import tempfile
 import qtawesome as qta
-from PyQt6.QtCore import *
-from PyQt6.QtWidgets import *
-from PyQt6.QtGui import *
+from PyQt6.QtWidgets import QApplication
+from PyQt6.QtGui import QIcon
 from Login import LoginWindow
+from utils import resource_path
 
 app = QApplication([])
-app.setWindowIcon(QIcon('./sh-logo-trans.png'))
+app.setApplicationName("PTW")
+app.setDesktopFileName("ptw")
+app.setWindowIcon(QIcon(resource_path('assets/sh-logo-trans.png')))
 
 _pixmap = qta.icon('fa5s.check', color='white').pixmap(16, 16)
 _tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)

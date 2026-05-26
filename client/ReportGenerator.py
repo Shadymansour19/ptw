@@ -5,7 +5,7 @@ from reportlab.lib import colors
 from reportlab.lib.styles import *
 from reportlab.lib.enums import *
 from reportlab.platypus import *
-from reportlab.lib.units import *
+from reportlab.lib.units import mm, inch
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 import qrcode
@@ -14,7 +14,7 @@ import webbrowser
 from datetime import datetime
 from typing import Iterable
 from GlobalData import globalData
-from PTWData import PTWData, Isolation
+from PTWData import PTWData
 import io
 import tempfile
 import platform
@@ -22,6 +22,7 @@ import os
 import subprocess
 from clientRequests import ClientRequests
 from pypdf import PdfWriter, PdfReader
+from utils import resource_path
 
 
 class ReportGenerator:
@@ -48,7 +49,7 @@ class ReportGenerator:
 
         logo_size = qr_w // 3
         padding = logo_size // 32
-        logo = PILImage.open("./sh-logo-bw.png").convert("RGB").resize((logo_size, logo_size), PILImage.LANCZOS)
+        logo = PILImage.open(resource_path("assets/sh-logo-bw.png")).convert("RGB").resize((logo_size, logo_size), PILImage.LANCZOS)
         logo_mask = PILImage.new("L", (logo_size, logo_size), 0)
         PILImageDraw.Draw(logo_mask).ellipse((0, 0, logo_size - 1, logo_size - 1), fill=255)
         total_size = logo_size + 2 * padding
@@ -57,7 +58,9 @@ class ReportGenerator:
         PILImageDraw.Draw(bg_mask).ellipse((0, 0, total_size - 1, total_size - 1), fill=255)
         bg.paste(logo, (padding, padding), logo_mask)
         qrImg.paste(bg, ((qr_w - total_size) // 2, (qr_h - total_size) // 2), bg_mask)
-        qrImg.save(f"qr-summery-{ptw.id}.png")
+        with tempfile.NamedTemporaryFile(delete=False, prefix=f'qr-{ptw.id}-', suffix='.png') as qrFile:
+            qrImg.save(qrFile.name)
+            return qrFile.name
         
 
     def ptwReport(loggedUser, ptw: PTWData):
@@ -125,7 +128,7 @@ class ReportGenerator:
             ['Description', str(ptw.description)], 
         ]
 
-        ReportGenerator._makeQrWithLogo(ptw)
+        qrPath = ReportGenerator._makeQrWithLogo(ptw)
 
         elements = []
 
@@ -205,7 +208,7 @@ class ReportGenerator:
         #         ])
 
         try:
-            pdfmetrics.registerFont(TTFont('Satisfy', './fonts/Satisfy/Satisfy-Regular.ttf'))
+            pdfmetrics.registerFont(TTFont('Satisfy', resource_path('fonts/Satisfy/Satisfy-Regular.ttf')))
             sig_font = 'Satisfy'
         except Exception:
             sig_font = 'Helvetica-Oblique'
@@ -312,8 +315,8 @@ class ReportGenerator:
         def pageHeaderAndWatermark(canvas: canvas.Canvas, doc):
             canvas.saveState()
 
-            canvas.drawImage("./rashpetco-logo.png", 0.7 * MARGIN + (QR_CODE_WIDTH - LOGO_IMG_WIDTH) / 2, (pageHeight - LOGO_IMG_WIDTH) / 2.0 + pageHeight / 3.5, LOGO_IMG_WIDTH, LOGO_IMG_WIDTH, mask='auto')
-            canvas.drawImage("./burullus-logo.png",  0.7 * MARGIN + (QR_CODE_WIDTH - LOGO_IMG_WIDTH) / 2, (pageHeight - LOGO_IMG_WIDTH) / 2.0 - pageHeight / 3.5, LOGO_IMG_WIDTH, LOGO_IMG_WIDTH, mask='auto')
+            canvas.drawImage(resource_path("assets/rashpetco-logo.png"), 0.7 * MARGIN + (QR_CODE_WIDTH - LOGO_IMG_WIDTH) / 2, (pageHeight - LOGO_IMG_WIDTH) / 2.0 + pageHeight / 3.5, LOGO_IMG_WIDTH, LOGO_IMG_WIDTH, mask='auto')
+            canvas.drawImage(resource_path("assets/burullus-logo.png"),  0.7 * MARGIN + (QR_CODE_WIDTH - LOGO_IMG_WIDTH) / 2, (pageHeight - LOGO_IMG_WIDTH) / 2.0 - pageHeight / 3.5, LOGO_IMG_WIDTH, LOGO_IMG_WIDTH, mask='auto')
 
             canvas.setFont('Helvetica-Bold', 50)
             canvas.setFillColorRGB(0, 0, 0, 0.2)
@@ -322,7 +325,7 @@ class ReportGenerator:
             canvas.drawCentredString(0, 0, f'Printed @ {timestamp}')
 
             canvas.restoreState()
-            canvas.drawImage(f"qr-summery-{ptw.id}.png", 0.7 * MARGIN, (pageHeight - QR_CODE_WIDTH) / 2.0, QR_CODE_WIDTH, QR_CODE_WIDTH)
+            canvas.drawImage(qrPath, 0.7 * MARGIN, (pageHeight - QR_CODE_WIDTH) / 2.0, QR_CODE_WIDTH, QR_CODE_WIDTH)
 
         # toolsTitle = Paragraph('Tools:', styles["Title"])
         # toolsBullets = [ListItem(Paragraph(tool, styles['Normal']), bulletType='bullet', bulletFontSize=styles['Normal'].fontSize) for tool in ptw.tools]
@@ -391,23 +394,22 @@ class ReportGenerator:
             else:
                 ReportGenerator.openPDF(filepath)
         ReportGenerator.riskAssessmentReport(ptw.risks, ptw.id, ptw.description)
-        
+
         err, attachs = ClientRequests.getPtwAttachmentNames(loggedUser, ptw.id)
         if err:
             attachs = []
-        
+
         for attachment in attachs:
             err, filepath = ClientRequests.getPtwAttachment(loggedUser, ptw.id, attachment)
             if err:
                 print(f"Failed to fetch attachment '{attachment}': {err}")
             else:
                 ReportGenerator.openPDF(filepath)
-            
+
         for doc in ptw.requiredDocsToPrint():
             continue
             ReportGenerator.openPDF(doc)
 
-        os.remove(f"qr-summery-{ptw.id}.png")
         return None
     
 
@@ -469,6 +471,8 @@ class ReportGenerator:
 
             if ignore:
                 if not isolate:
+                    if not requiresIsolation:
+                        requiresIsolation.add(str(latestPTW))
                     ignore_message = 'Keep isolated for PTW: ' + ", ".join(sorted(requiresIsolation))
                 # elif iso.tag in ptw.keep_isolations:
                 #     ignore_message = 'Held isolated on this PTW: ' + isolated_on
@@ -643,8 +647,8 @@ class ReportGenerator:
         def pageHeaderAndWatermark(canvas: canvas.Canvas, doc):
             canvas.saveState()
 
-            logo1 = Image("./rashpetco-logo.png", LOGO_IMG_WIDTH, LOGO_IMG_WIDTH)
-            logo2 = Image("./burullus-logo.png",  LOGO_IMG_WIDTH, LOGO_IMG_WIDTH)
+            logo1 = Image(resource_path("assets/rashpetco-logo.png"), LOGO_IMG_WIDTH, LOGO_IMG_WIDTH)
+            logo2 = Image(resource_path("assets/burullus-logo.png"),  LOGO_IMG_WIDTH, LOGO_IMG_WIDTH)
             label = Paragraph(f'MOS for PTW# {ptwId} <br/>' + ptwTitle, styles['Title'])
 
             table = Table([[logo1, label, logo2]], colWidths=[1.1*LOGO_IMG_WIDTH, headerTableWidth - 2.2*LOGO_IMG_WIDTH, 1.1*LOGO_IMG_WIDTH])
@@ -828,8 +832,8 @@ class ReportGenerator:
             # canvas.drawImage("./rashpetco-logo.png", MARGIN + 2.0 * pageWidth / 3.0, pageHeight - MARGIN - LOGO_IMG_WIDTH, LOGO_IMG_WIDTH, LOGO_IMG_WIDTH, mask='auto')
             # canvas.drawImage("./burullus-logo.png",  MARGIN + 1.0 * pageWidth / 3.0, pageHeight - MARGIN - LOGO_IMG_WIDTH, LOGO_IMG_WIDTH, LOGO_IMG_WIDTH, mask='auto')
 
-            logo1 = Image("./rashpetco-logo.png", LOGO_IMG_WIDTH, LOGO_IMG_WIDTH)
-            logo2 = Image("./burullus-logo.png",  LOGO_IMG_WIDTH, LOGO_IMG_WIDTH)
+            logo1 = Image(resource_path("assets/rashpetco-logo.png"), LOGO_IMG_WIDTH, LOGO_IMG_WIDTH)
+            logo2 = Image(resource_path("assets/burullus-logo.png"),  LOGO_IMG_WIDTH, LOGO_IMG_WIDTH)
             label = Paragraph(f'RA for PTW# {ptwId} <br/>' + _html.escape(ptwTitle), styles['Title'])
 
             table = Table([[logo1, label, logo2]], colWidths=[1.2*LOGO_IMG_WIDTH, dataTableWidth - 2.4*LOGO_IMG_WIDTH, 1.2*LOGO_IMG_WIDTH])
@@ -888,7 +892,7 @@ class ReportGenerator:
         styles['Heading3'].leading = 18
         styles['Heading3'].fontName = 'Helvetica-Bold'
 
-        ReportGenerator._makeQrWithLogo(ptw)
+        qrPath = ReportGenerator._makeQrWithLogo(ptw)
 
         isolationsByType = {}
         for iso in ptw.isolations:
@@ -897,7 +901,7 @@ class ReportGenerator:
             isolationsByType[iso.type].append(iso)
 
         try:
-            pdfmetrics.registerFont(TTFont('Satisfy', './fonts/Satisfy/Satisfy-Regular.ttf'))
+            pdfmetrics.registerFont(TTFont('Satisfy', resource_path('fonts/Satisfy/Satisfy-Regular.ttf')))
             sig_font = 'Satisfy'
         except Exception:
             sig_font = 'Helvetica-Oblique'
@@ -957,15 +961,15 @@ class ReportGenerator:
 
         def pageHeaderAndWatermark(canv, doc):
             canv.saveState()
-            canv.drawImage('./rashpetco-logo.png', 0.7 * MARGIN + (QR_CODE_WIDTH - LOGO_IMG_WIDTH) / 2, (pageHeight - LOGO_IMG_WIDTH) / 2.0 + pageHeight / 3.5, LOGO_IMG_WIDTH, LOGO_IMG_WIDTH, mask='auto')
-            canv.drawImage('./burullus-logo.png',  0.7 * MARGIN + (QR_CODE_WIDTH - LOGO_IMG_WIDTH) / 2, (pageHeight - LOGO_IMG_WIDTH) / 2.0 - pageHeight / 3.5, LOGO_IMG_WIDTH, LOGO_IMG_WIDTH, mask='auto')
+            canv.drawImage(resource_path('assets/rashpetco-logo.png'), 0.7 * MARGIN + (QR_CODE_WIDTH - LOGO_IMG_WIDTH) / 2, (pageHeight - LOGO_IMG_WIDTH) / 2.0 + pageHeight / 3.5, LOGO_IMG_WIDTH, LOGO_IMG_WIDTH, mask='auto')
+            canv.drawImage(resource_path('assets/burullus-logo.png'),  0.7 * MARGIN + (QR_CODE_WIDTH - LOGO_IMG_WIDTH) / 2, (pageHeight - LOGO_IMG_WIDTH) / 2.0 - pageHeight / 3.5, LOGO_IMG_WIDTH, LOGO_IMG_WIDTH, mask='auto')
             canv.setFont('Helvetica-Bold', 50)
             canv.setFillColorRGB(0, 0, 0, 0.2)
             canv.translate(pageWidth / 2.0, pageHeight / 2.0)
             canv.rotate(35)
             canv.drawCentredString(0, 0, f'Printed @ {timestamp}')
             canv.restoreState()
-            canv.drawImage(f'qr-summery-{ptw.id}.png', 0.7 * MARGIN, (pageHeight - QR_CODE_WIDTH) / 2.0, QR_CODE_WIDTH, QR_CODE_WIDTH)
+            canv.drawImage(qrPath, 0.7 * MARGIN, (pageHeight - QR_CODE_WIDTH) / 2.0, QR_CODE_WIDTH, QR_CODE_WIDTH)
 
             sig_flowables = [
                 Paragraph('De-Isolation Confirmations:', styles['Title']),

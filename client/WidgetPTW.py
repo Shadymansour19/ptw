@@ -1,7 +1,11 @@
 from datetime import date
-from PyQt6.QtCore import *
-from PyQt6.QtWidgets import *
-from PyQt6.QtGui import *
+from PyQt6.QtCore import Qt, QSize, QDir, QFileInfo
+from PyQt6.QtWidgets import (QToolButton, QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
+                              QGridLayout, QStackedWidget, QWidget, QLineEdit, QComboBox,
+                              QTextEdit, QPushButton, QCheckBox, QRadioButton, QButtonGroup,
+                              QDialogButtonBox, QMessageBox, QApplication, QStyle,
+                              QFileDialog)
+from PyQt6.QtGui import QFont, QKeySequence, QIcon, QShortcut
 import re
 
 from PTWData import PTWData, Attachment
@@ -10,7 +14,7 @@ from TableAttachments import TableAttachments
 from GlobalData import globalData
 from ReportGenerator import ReportGenerator
 from clientRequests import ClientRequests
-from TableIsolation import TableIsolation
+from TableIsolations import TablePTWIsolations
 from functools import partial
 import qtawesome as qta
 
@@ -235,7 +239,7 @@ class DialogPTW(QDialog):
             btn = QCheckBox(DialogPTW.checkboxDisplayName(tool))
             btn.setChecked(DialogPTW.formatCheckBoxText(btn.text()) in ptw.tools)
             btn.setEnabled(not readOnly)
-            # btn.setStyleSheet('QCheckBox::inkodicator {width: 20px; height: 20px}')
+            # btn.setStyleSheet('QCheckBox::indicator {width: 20px; height: 20px}')
             lytTools.addWidget(btn, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS)
             self.btnsTools.append(btn)
         i += 1
@@ -299,7 +303,7 @@ class DialogPTW(QDialog):
                 self.tabRisks.checkRisk(riskTitle)
         
 
-        self.tableIsolation = TableIsolation(self.tabIsolation, self.ptw.isolations, readOnly)
+        self.tableIsolation = TablePTWIsolations(self.tabIsolation, self.ptw.isolations, readOnly)
         lytIsolation.addWidget(self.tableIsolation, stretch=1)
 
         self.btnMiwi = QRadioButton("MIWI")

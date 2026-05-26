@@ -1,9 +1,13 @@
 from datetime import datetime
 import copy
 import re
-from PyQt6.QtCore import *
-from PyQt6.QtWidgets import *
-from PyQt6.QtGui import *
+from PyQt6.QtCore import Qt, QSize, QEvent, QPropertyAnimation, QEasingCurve
+from PyQt6.QtWidgets import (QMainWindow, QWidget, QStackedWidget, QVBoxLayout, QGridLayout,
+                              QFormLayout, QLabel, QPushButton, QToolButton,
+                              QToolBar, QDialog, QDialogButtonBox, QTextEdit, QListWidget,
+                              QListWidgetItem, QMenu, QSizePolicy, QSystemTrayIcon,
+                              QMessageBox, QApplication, QGraphicsOpacityEffect)
+from PyQt6.QtGui import QFont, QIcon, QPalette, QKeySequence, QPainter, QPixmap, QAction, QActionGroup, QShortcut
 
 from PTWData import PTWData
 from TablePTWs import TablePTWs
@@ -12,7 +16,7 @@ from DialogUser import DialogUser
 from DialogSelectIsolations import DialogSelectIsolations
 from TableUsers import TableUsers
 from TableRisks import TableRisks
-from TableIsolations import TableIsolations
+from TableIsolations import TableIsolationsBrowser
 from DialogSettings import DialogSettings
 from clientRequests import ClientRequests
 from GlobalData import globalData
@@ -21,6 +25,7 @@ from SSEListener import SSEListener
 from User import User, UserRoles
 from functools import partial
 import qtawesome as qta
+from utils import resource_path
 
 
 class MainWindow(QMainWindow):
@@ -28,6 +33,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.loggedUser = loggedUser
         self.setWindowTitle("PTW (Permit To Work)")
+        self.setWindowIcon(QIcon(resource_path('assets/sh-logo-trans.png')))
         self.setMinimumSize(1200, 900)
 
         frame = self.frameGeometry()
@@ -82,7 +88,7 @@ class MainWindow(QMainWindow):
         self.tabArchivedPTWs = TablePTWs(self.stack, self.loggedUser, "Archived PTWs")
         self.tabAllUsers = TableUsers(self.stack, self.loggedUser, "All Users")
         self.tabRisks = TableRisks(self.stack, self.loggedUser, "All Risks", readonly=False, selectable=False)
-        self.tabIsolations = TableIsolations(self.stack, self.loggedUser, "Isolations")
+        self.tabIsolations = TableIsolationsBrowser(self.stack, self.loggedUser, "Isolations")
 
         lytWelcome = QVBoxLayout()
         self.lytWelcomeBtns = QGridLayout()
@@ -337,7 +343,7 @@ class MainWindow(QMainWindow):
         sb.show()
         sb.setStyleSheet("QStatusBar { background: rgba(0,0,0,40); color: #ccc; padding: 0 8px; font-size: 14px; border-top: 1px solid rgba(255,255,255,20); }")
 
-        self._trayIcon = QSystemTrayIcon(QIcon("sh-logo-trans.png"), self)
+        self._trayIcon = QSystemTrayIcon(QIcon(resource_path("assets/sh-logo-trans.png")), self)
         self._trayIcon.show()
 
         self._sseListener = SSEListener(ClientRequests.SERVER_URL, loggedUser.getUsername(), loggedUser.getPassword())
@@ -452,7 +458,7 @@ class MainWindow(QMainWindow):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         painter.setOpacity(0.2 if self.stack.currentWidget() == self.tabWelcome else 0.1)
-        painter.drawPixmap(self.rect(), QPixmap('./sh-logo-trans.png'))
+        painter.drawPixmap(self.rect(), QPixmap(resource_path('assets/sh-logo-trans.png')))
         painter.setOpacity(1.0)
         super().paintEvent(event)
 

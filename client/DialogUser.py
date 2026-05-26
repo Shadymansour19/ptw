@@ -1,6 +1,5 @@
-from PyQt6.QtCore import *
-from PyQt6.QtWidgets import *
-from PyQt6.QtGui import *
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QDialog, QFormLayout, QLineEdit, QComboBox, QLabel, QDialogButtonBox, QMessageBox
 
 from User import User, SecuredUser, UserRoles, UserDepartments
 from GlobalData import globalData

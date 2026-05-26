@@ -1,6 +1,8 @@
-from PyQt6.QtCore import *
-from PyQt6.QtWidgets import *
-from PyQt6.QtGui import *
+from PyQt6.QtCore import Qt, QStringListModel, QRect
+from PyQt6.QtWidgets import (QStyledItemDelegate, QApplication, QStyle, QStyleOptionViewItem,
+                              QCompleter, QDialog, QFormLayout, QComboBox, QTextEdit,
+                              QDialogButtonBox, QMessageBox)
+from PyQt6.QtGui import QColor, QFont
 
 from PTWData import Isolation, PTWData
 

@@ -1,6 +1,7 @@
 import requests
 from User import User, SecuredUser, UserDepartments
-from PTWData import PTWData, RiskAssessment, dictToObj, objToDict, Attachment, Isolation
+from PTWData import PTWData, RiskAssessment, Attachment, Isolation
+from utils import dictToObj, objToDict
 from typing import Iterable
 import tempfile
 

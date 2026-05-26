@@ -1,10 +1,11 @@
-from PyQt6.QtCore import *
-from PyQt6.QtWidgets import *
-from PyQt6.QtGui import *
+from PyQt6.QtCore import Qt, QSize, QPoint
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
+                              QLabel, QPushButton, QAbstractItemView, QHeaderView, QFrame,
+                              QMenu, QMessageBox)
+from PyQt6.QtGui import QFont, QBrush, QAction
 from typing import Iterable
 from functools import partial
 import qtawesome as qta
-import tempfile
 
 from clientRequests import ClientRequests
 from PTWData import PTWData

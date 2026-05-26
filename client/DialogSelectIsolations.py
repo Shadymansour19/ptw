@@ -1,6 +1,8 @@
-from PyQt6.QtCore import *
-from PyQt6.QtWidgets import *
-from PyQt6.QtGui import *
+from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget,
+                              QTableWidgetItem, QHeaderView, QAbstractItemView,
+                              QPushButton, QDialogButtonBox)
+from PyQt6.QtGui import QFont
 
 from PTWData import Isolation
 
@@ -54,6 +56,8 @@ class DialogSelectIsolations(QDialog):
         self.tbl.setColumnWidth(0, 40)
         self.tbl.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.tbl.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tbl.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.tbl.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         self.tbl.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         if not selectable or review_mode or view_only:

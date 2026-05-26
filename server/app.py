@@ -14,8 +14,7 @@ if _env_path.exists():
             _k, _v = _line.split('=', 1)
             os.environ.setdefault(_k.strip(), _v.strip())
 
-from requests import *
-from flask import *
+from flask import Flask, request, jsonify, Response, stream_with_context, send_file
 from flask_mail import Mail, Message
 from random import randint
 
@@ -25,7 +24,8 @@ from risksDb import RisksDb
 from IsolationDb import IsolationDb
 from User import User, UserRoles
 from GlobalData import globalData
-from PTWData import objToDict, PTWData, Isolation
+from PTWData import PTWData, Isolation
+from utils import objToDict
 
 app = Flask(__name__)
 app.config.update(

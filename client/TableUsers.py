@@ -1,10 +1,9 @@
 import copy
-from PyQt6.QtCore import *
-from PyQt6.QtWidgets import *
-from PyQt6.QtGui import *
+from PyQt6.QtCore import Qt, QPoint
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QTableWidget, QLabel, QAbstractItemView,
+                              QHeaderView, QTableWidgetItem, QMenu, QDialog, QMessageBox)
+from PyQt6.QtGui import QFont, QAction
 from typing import Iterable
-
-from matplotlib.table import table
 
 from DialogUser import DialogUser
 from clientRequests import ClientRequests

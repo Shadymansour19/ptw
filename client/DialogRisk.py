@@ -1,7 +1,9 @@
 from datetime import datetime
-from PyQt6.QtCore import *
-from PyQt6.QtWidgets import *
-from PyQt6.QtGui import *
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (QDialog, QWidget, QFormLayout, QVBoxLayout, QHBoxLayout,
+                              QStackedWidget, QTextEdit, QLineEdit, QPushButton, QLabel,
+                              QDialogButtonBox, QMessageBox, QApplication, QStyle)
+from PyQt6.QtGui import QFont
 import re
 
 from PTWData import RiskAssessment, RiskItem

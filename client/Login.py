@@ -1,6 +1,7 @@
-from PyQt6.QtCore import *
-from PyQt6.QtWidgets import *
-from PyQt6.QtGui import *
+from PyQt6.QtCore import Qt, pyqtSignal, QObject, QThread, QSize
+from PyQt6.QtWidgets import (QLineEdit, QToolButton, QDialog, QFormLayout, QLabel,
+                              QStackedWidget, QPushButton, QCheckBox, QDialogButtonBox,
+                              QMessageBox, QMainWindow, QWidget, QSizePolicy, QApplication, QStyle)
 import keyring
 from keyring.errors import KeyringError
 import qtawesome as qta

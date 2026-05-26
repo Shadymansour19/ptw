@@ -1,6 +1,6 @@
-from PyQt6.QtCore import *
-from PyQt6.QtWidgets import *
-from PyQt6.QtGui import *
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtWidgets import QComboBox, QStyle, QStylePainter, QStyleOptionComboBox
+from PyQt6.QtGui import QStandardItemModel, QStandardItem
 
 _SELECT_ALL = "(Select All)"
 
