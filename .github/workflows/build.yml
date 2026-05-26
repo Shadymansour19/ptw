@@ -27,6 +27,7 @@ jobs:
         run: >
           python -m nuitka
           --onefile
+          --assume-yes-for-downloads
           --enable-plugin=pyqt6
           --include-data-dir=assets=assets
           --include-data-dir=fonts=fonts
