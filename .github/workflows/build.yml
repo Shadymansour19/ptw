@@ -1,0 +1,76 @@
+name: Build PTW
+
+on:
+  workflow_dispatch:        # manual trigger from GitHub UI
+  push:
+    tags:
+      - 'v*'               # auto-trigger on version tags like v1.0.0
+
+jobs:
+
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install nuitka pyqt6 qtawesome reportlab pillow qrcode requests pypdf openpyxl bcrypt keyring
+
+      - name: Build
+        run: >
+          python -m nuitka
+          --onefile
+          --enable-plugin=pyqt6
+          --include-data-dir=assets=assets
+          --include-data-dir=fonts=fonts
+          --windows-icon-from-ico=assets/sh-logo-trans.ico
+          --windows-console-mode=disable
+          --output-filename=PTW.exe
+          main.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PTW-windows
+          path: client/PTW.exe
+
+
+  build-linux:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install system dependencies
+        run: sudo apt-get install -y patchelf libgl1 libegl1
+
+      - name: Install dependencies
+        run: pip install nuitka pyqt6 qtawesome reportlab pillow qrcode requests pypdf openpyxl bcrypt keyring
+
+      - name: Build
+        run: >
+          python -m nuitka
+          --onefile
+          --enable-plugin=pyqt6
+          --include-data-dir=assets=assets
+          --include-data-dir=fonts=fonts
+          --linux-onefile-icon=assets/sh-logo-trans.png
+          --output-filename=PTW
+          main.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PTW-linux
+          path: client/PTW

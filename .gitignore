@@ -12,6 +12,9 @@ build/
 *.spec
 client/pyinstaller*
 
+# Nuitka
+client/nuitka*
+
 # Root-level duplicate/stale files (the real copies are in client/ and server/)
 /PTWData.py
 /User.py
