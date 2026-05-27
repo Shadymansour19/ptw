@@ -2,17 +2,8 @@ import os
 import json
 import queue
 import threading
-from pathlib import Path
 from time import time, sleep
-
-# Load .env if present (keeps secrets out of source code)
-_env_path = Path(__file__).parent / '.env'
-if _env_path.exists():
-    for _line in _env_path.read_text().splitlines():
-        _line = _line.strip()
-        if _line and not _line.startswith('#') and '=' in _line:
-            _k, _v = _line.split('=', 1)
-            os.environ.setdefault(_k.strip(), _v.strip())
+from dotenv import load_dotenv
 
 from flask import Flask, request, jsonify, Response, stream_with_context, send_file
 from flask_mail import Mail, Message
@@ -27,6 +18,7 @@ from GlobalData import globalData
 from PTWData import PTWData, Isolation
 from utils import objToDict
 
+load_dotenv()
 app = Flask(__name__)
 app.config.update(
     MAIL_SERVER='smtp.gmail.com',
