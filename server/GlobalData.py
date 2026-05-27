@@ -1,14 +1,14 @@
 class GlobalData:
     def __init__(self):
         self.allUsers: dict = {}                # dict[str, SecuredUser]
-        self.allPTWs: list = []                 # list[PTWData]
-        self.isolations: dict = {}        # dict[str, Isolation]
+        self.allPTWs: dict = {}                 # dict[int, PTWData]
+        self.isolations: dict = {}              # dict[str, Isolation]
 
     def refresh(self) -> str:
         from usersDb import UsersDb
         from ptwDb import PtwsDb
         from IsolationDb import IsolationDb
-        
+
         try:
             userDB = UsersDb()
             ptwDB = PtwsDb()

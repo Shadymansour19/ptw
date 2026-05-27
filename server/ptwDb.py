@@ -60,8 +60,8 @@ class PtwsDb:
             self.conn.rollback()
             raise Exception("Error fetching PTW from database: " + str(e))
 
-    def getAllPTWs(self, department: str = None, requestor: str = None):
-        ptws = []
+    def getAllPTWs(self, department: str = None, requestor: str = None) -> dict:
+        ptws = {}
         try:
             with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 cursor.execute('''
@@ -72,9 +72,9 @@ class PtwsDb:
                     (PTWData.RunningStatus.ARCHIVED, department, department, requestor, requestor)
                 )
                 rows = cursor.fetchall()
-            print(f"Fetched {len(rows)} PTWs from database with filters - Department: {department}, Requestor: {requestor}")
             for row in rows:
-                ptws.append(PTWData().setAll(namespace=dictToObj(row)))
+                ptw = PTWData().setAll(namespace=dictToObj(row))
+                ptws[ptw.id] = ptw
         except Exception as e:
             self.conn.rollback()
             raise Exception("Error fetching PTWs from database: " + str(e))
@@ -91,7 +91,6 @@ class PtwsDb:
                     (PTWData.RunningStatus.ARCHIVED, department, department)
                 )
                 rows = cursor.fetchall()
-            print(f"Fetched {len(rows)} archived PTWs from database with filter - Department: {department}")
             for row in rows:
                 ptws.append(PTWData().setAll(namespace=dictToObj(row)))
         except Exception as e:
@@ -158,7 +157,6 @@ class PtwsDb:
                 cursor.execute('UPDATE ptws SET close_performing = %s, prev_running_status = running_status, running_status = %s, close_performing_timestamp = %s WHERE id = %s', (pa, PTWData.RunningStatus.WAITING_CLS_CONFIRM, ts, ptwId))
             self.conn.commit()
         except Exception as e:
-            print(str(e))
             self.conn.rollback()
             raise Exception("Error updating PTW in database: " + str(e))
 

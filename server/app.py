@@ -3,7 +3,7 @@ import json
 import queue
 import threading
 from pathlib import Path
-from time import time
+from time import time, sleep
 
 # Load .env if present (keeps secrets out of source code)
 _env_path = Path(__file__).parent / '.env'
@@ -77,6 +77,20 @@ try:
     globalData.refresh()
 except Exception as e:
     exit(1)
+
+def _sync_ptw(ptw_id):
+    updated = ptwDB.getPTWById(ptw_id)
+    if updated:
+        globalData.allPTWs[updated.id] = updated
+
+def _periodic_refresh():
+    while True:
+        sleep(5 * 60)
+        with _request_lock:
+            globalData.refresh()
+        print("Server-DB Resync Done")
+
+threading.Thread(target=_periodic_refresh, daemon=True, name="globaldata-refresh").start()
 
 
 def getVerifiedUser(auth) -> User:
@@ -286,6 +300,13 @@ def newUserRequest():
     userDataDict = request.get_json(silent=True) or {}
     try:
         err = userDB.addUserFromDict(userDataDict)
+        if err is None:
+            username = userDataDict.get('username')
+            if username:
+                try:
+                    globalData.allUsers[username] = userDB.getSecuredUser(username)
+                except Exception:
+                    pass
         return jsonify({"success": True, "error": err})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
@@ -298,7 +319,15 @@ def updateUserRequest():
     userDataDict = request.get_json(silent=True) or {}
     try:
         if authUser.getRole() == UserRoles.ADMIN or authUser.getUsername() == userDataDict["username"]:
-            return jsonify({"success": True, "user": userDB.updateUserFromDict(userDataDict)})
+            result = userDB.updateUserFromDict(userDataDict)
+            if result is None:
+                username = userDataDict.get('username')
+                if username:
+                    try:
+                        globalData.allUsers[username] = userDB.getSecuredUser(username)
+                    except Exception:
+                        pass
+            return jsonify({"success": True, "user": result})
         else:
             return jsonify({"success": False, "error": "Unauthorized"}), 401
     except Exception as e:
@@ -327,7 +356,10 @@ def deleteUserRequest():
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     data = request.get_json(silent=True) or {}
     try:
-        return jsonify({"success": True, "user": userDB.deleteUser(User(username=data["username"]))})
+        username = data["username"]
+        userDB.deleteUser(User(username=username))
+        globalData.allUsers.pop(username, None)
+        return jsonify({"success": True, "user": None})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
@@ -341,7 +373,7 @@ def getAllPTWs():
         dep = data.get('department')
         req = data.get('requestor')
         ptws = ptwDB.getAllPTWs(department=dep, requestor=req)
-        return jsonify({"success": True, "ptws": [objToDict(ptw) for ptw in ptws]})
+        return jsonify({"success": True, "ptws": [objToDict(ptw) for ptw in ptws.values()]})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
@@ -366,6 +398,9 @@ def addPTWRequest():
     ptwDict = request.get_json(silent=True) or {}
     try:
         ptw_id = ptwDB.addPTWFromDict(ptwDict)
+        new_ptw = ptwDB.getPTWById(ptw_id)
+        if new_ptw:
+            globalData.allPTWs[new_ptw.id] = new_ptw
         _broadcast("new_ptw", {"ptw_id": ptw_id, "type": ptwDict.get("type", ""), "by": user.getUsername()}, roles=[UserRoles.USER, UserRoles.COORDINATOR])
         return jsonify({"success": True, "ptw-id": ptw_id})
     except Exception as e:
@@ -381,6 +416,7 @@ def deletePTWRequest():
     try:
         ptw_id = payload.get('ptw-id')
         result = ptwDB.deletePTW(ptw_id)
+        globalData.allPTWs.pop(ptw_id, None)
         _broadcast("ptw_deleted", {"ptw_id": ptw_id, "by": user.getUsername()})
         return jsonify({"success": True, "ptw": result})
     except Exception as e:
@@ -398,6 +434,7 @@ def updatePTWApprovals():
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     try:
         result = ptwDB.updatePTWApprovals(ptwId, approval)
+        _sync_ptw(ptwId)
         _broadcast("ptw_approval", {"ptw_id": ptwId, "action": str(approval.action), "by": user.getUsername()})
         return jsonify({"success": True, "ptw": result})
     except Exception as e:
@@ -414,6 +451,8 @@ def archivePTWs():
         return jsonify({"success": False, "error": "Missing required field: ptw-ids"}), 400
     try:
         result = ptwDB.archivePTWs(ptwIds)
+        for pid in ptwIds:
+            globalData.allPTWs.pop(pid, None)
         _broadcast("ptw_archived", {"ptw_ids": ptwIds, "by": user.getUsername()})
         return jsonify({"success": True, "ptw": result})
     except Exception as e:
@@ -432,6 +471,7 @@ def requestToRunPTW():
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     try:
         result = ptwDB.requestToRunPTW(ptwId, pa, ts)
+        _sync_ptw(ptwId)
         _broadcast("ptw_run_request", {"ptw_id": ptwId, "by": pa}, roles=[UserRoles.USER, UserRoles.ISSUING])
         return jsonify({"success": True, "message": result})
     except Exception as e:
@@ -451,10 +491,7 @@ def runPTW():
     if ptwId is None or ia is None or ts is None or ok is None:
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     
-    ptw = None
-    for p in globalData.allPTWs:
-        if p.id == ptwId:
-            ptw = p
+    ptw = globalData.allPTWs.get(ptwId)
     if ptw is None:
         return jsonify({"success": False, "error": f"PTW# {ptwId} not found"}), 400
 
@@ -466,10 +503,12 @@ def runPTW():
                     globalData.isolations[iso.tag] = Isolation(type=iso.type, tag=iso.tag, description=iso.description)
                 globalData.isolations[iso.tag].linkPTW(ptwId)
                 isoDB.updateIsolation(globalData.isolations[iso.tag])
+            _sync_ptw(ptwId)
             _broadcast("ptw_run", {"ptw_id": ptwId, "accepted": True, "by": ia})
             return jsonify({"success": True})
         else:
             ptwDB.runRejectPTW(ptwId, ia, ts)
+            _sync_ptw(ptwId)
             _broadcast("ptw_run", {"ptw_id": ptwId, "accepted": False, "by": ia})
             return jsonify({"success": True})
     except Exception as e:
@@ -490,11 +529,7 @@ def requestToHldPTW():
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     try:
         ptwDB.requestToHldPTW(ptwId, pa, ts, keepTags)
-        for p in globalData.allPTWs:
-            if p.id == ptwId:
-                p.keep_isolations = keepTags
-                p.running_status = PTWData.RunningStatus.WAITING_HLD_CONFIRM
-                break
+        _sync_ptw(ptwId)
         _broadcast("ptw_hold_request", {"ptw_id": ptwId, "by": pa}, roles=[UserRoles.USER, UserRoles.ISSUING])
         return jsonify({"success": True})
     except Exception as e:
@@ -514,7 +549,7 @@ def hldPTW():
     if ptwId is None or ia is None or ts is None or ok is None:
         return jsonify({"success": False, "error": "Missing required fields"}), 400
 
-    ptw = next((p for p in globalData.allPTWs if p.id == ptwId), None)
+    ptw = globalData.allPTWs.get(ptwId)
     if ptw is None:
         return jsonify({"success": False, "error": f"PTW# {ptwId} not found"}), 400
 
@@ -530,11 +565,12 @@ def hldPTW():
                 else:
                     globalData.isolations[iso.tag].unlinkPTW(ptwId)
                 isoDB.updateIsolation(globalData.isolations[iso.tag])
+            _sync_ptw(ptwId)
             _broadcast("ptw_hold", {"ptw_id": ptwId, "accepted": True, "by": ia})
             return jsonify({"success": True})
         else:
             ptwDB.hldRejectPTW(ptwId, ia, ts)
-            ptw.keep_isolations = []
+            _sync_ptw(ptwId)
             _broadcast("ptw_hold", {"ptw_id": ptwId, "accepted": False, "by": ia})
             return jsonify({"success": True})
     except Exception as e:
@@ -554,6 +590,7 @@ def requestToClsPTW():
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     try:
         result = ptwDB.requestToClsPTW(ptwId, pa, ts)
+        _sync_ptw(ptwId)
         _broadcast("ptw_close_request", {"ptw_id": ptwId, "by": pa}, roles=[UserRoles.USER, UserRoles.ISSUING])
         return jsonify({"success": True, "message": result})
     except Exception as e:
@@ -573,7 +610,7 @@ def clsPTW():
     if ptwId is None or ia is None or ts is None or ok is None:
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     
-    ptw = next((p for p in globalData.allPTWs if p.id == ptwId), None)
+    ptw = globalData.allPTWs.get(ptwId)
     if ptw is None:
         return jsonify({"success": False, "error": f"PTW# {ptwId} not found"}), 400
     
@@ -586,10 +623,12 @@ def clsPTW():
                     isoDB.updateIsolation(globalData.isolations[iso.tag])
                 else:
                     print(f"Isolation {iso.tag} not found in active isolations")
+            _sync_ptw(ptwId)
             _broadcast("ptw_close", {"ptw_id": ptwId, "accepted": True, "by": ia})
             return jsonify({"success": True})
         else:
             ptwDB.clsRejectPTW(ptwId, ia, ts)
+            _sync_ptw(ptwId)
             _broadcast("ptw_close", {"ptw_id": ptwId, "accepted": False, "by": ia})
             return jsonify({"success": True})
     except Exception as e:
