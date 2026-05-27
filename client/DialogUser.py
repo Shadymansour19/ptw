@@ -28,7 +28,7 @@ class DialogUser(QDialog):
         self.txtEmail = QLineEdit()
         self.txtExt = QLineEdit()
         self.lblUserExists = QLabel()
-        self.lblUserExists.setStyleSheet('QLabel {border: none; color: red;}')
+        self.lblUserExists.setStyleSheet('QLabel { border: none; color: red; }')
         self.lblUserExists.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.txtRole.addItems([role for role in UserRoles])
@@ -43,7 +43,7 @@ class DialogUser(QDialog):
 
         self.txtUsername.setEnabled(isNew)
         self.txtPassword.setEnabled(isNew)
-        self.txtUsername.setStyleSheet("QLineEdit[error='True'] {border: 1px solid red; border-radius: 2px;}")
+        self.txtUsername.setStyleSheet("QLineEdit[error='True'] { border: 1px solid red; border-radius: 2px; }")
 
         if readonly:
             self.txtUsername.setReadOnly(True)

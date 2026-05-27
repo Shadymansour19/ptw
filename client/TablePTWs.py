@@ -48,10 +48,10 @@ class TablePTWs(QWidget):
         self._filterBtn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._filterBtn.setStyleSheet("""
             QPushButton { background: transparent; border: none; padding: 6px; border-radius: 6px; }
-            QPushButton:hover { background: rgba(255,255,255,40); }
-            QPushButton:pressed { background: rgba(255,255,255,80); }
-            QPushButton:checked { background: rgba(25,200,150,45); }
-            QPushButton:checked:hover { background: rgba(25,200,150,65); }
+            QPushButton:hover { background: rgba(128, 128, 128, 0.15); }
+            QPushButton:pressed { background: rgba(128, 128, 128, 0.30); }
+            QPushButton:checked { background: palette(highlight); }
+            QPushButton:checked:hover { background: palette(link); }
         """)
         self._filterBtn.setObjectName("filterBtn")
 

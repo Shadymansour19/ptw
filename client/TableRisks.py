@@ -3,6 +3,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QCheckBox, QPushButton,
                               QLabel, QListWidget, QListWidgetItem, QMessageBox, QDialog)
 from PyQt6.QtGui import QFont
+import qtawesome as qta
 
 from clientRequests import ClientRequests
 from DialogRisk import DialogRiskAssessment
@@ -26,11 +27,11 @@ class TableRisks(QWidget):
 
             self.riskTitle = riskTitle
             self.btnCheck = QCheckBox()
-            self.btnView = QPushButton('View')
-            self.btnEdit = QPushButton('Edit')
-            # self.btnDelete = QPushButton('Delete')
+            self.btnView = QPushButton(qta.icon('fa6s.eye'), 'View')
+            self.btnEdit = QPushButton(qta.icon('fa6s.pen'), 'Edit')
+            # self.btnDelete = QPushButton(qta.icon('fa6s.trash'), 'Delete')
 
-            self.btnCheck.setStyleSheet('QCheckBox::indicator {width: 20px; height: 20px}')
+            self.btnCheck.setStyleSheet('QCheckBox::indicator { width: 20px; height: 20px }')
 
             self.btnCheck.clicked.connect(lambda: self.checkRiskChanged.emit(riskTitle))
             self.btnView.clicked.connect(lambda: self.viewRiskClicked.emit(riskTitle))

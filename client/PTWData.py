@@ -203,12 +203,16 @@ class PTWData:
         'Extreme Temperature':              [],
         'Excavation':                       [],
         'Rotating Machinery':               [],
-        'Noise':                            [],
+        'Noise':                            [
+            Requirement(type=Requirement.Types.CONTROL, description='Hearing Protection'),
+        ],
         'Vibration':                        [],
         'Dropped Objects':                  [
             Requirement(type=Requirement.Types.CONTROL, description='Housekeeping'), 
         ],
-        'Scaffolding':                      [],
+        'Scaffolding':                      [
+            Requirement(type=Requirement.Types.HAZARD, description='Working at Height'), 
+        ],
         'Working at Height':                [
             Requirement(type=Requirement.Types.ATTACH, description='Working at Height Medical Checks'), 
             Requirement(type=Requirement.Types.DOC, description='Working at Height IOGP'), 
@@ -1366,21 +1370,21 @@ class PTWData:
     
 
     __backgroundColors = {
-        Types.CW:   QColor(0, 0, 255, 100),
-        Types.SP:   QColor(255, 255, 0, 100),
-        Types.HT:   QColor(255, 0, 0, 100),
-        Types.HC:   QColor(0, 0, 0, 100),
-        Types.EX:   QColor(128, 128, 128, 100),
-        Types.CS:   QColor(0, 255, 0, 100),
+        Types.CW:   QColor( 30,  90, 160, 200),  # blue
+        Types.SP:   QColor(200, 165,   0, 200),  # near-yellow
+        Types.HT:   QColor(200,  30,  30, 200),  # red
+        Types.HC:   QColor( 20,  20,  20, 200),  # near-black (higher alpha for visibility)
+        Types.EX:   QColor(100, 100, 100, 200),  # gray
+        Types.CS:   QColor( 30, 160, 100, 200),  # green
     }
-    
+
     __foregroundColors = {
-        Types.CW:   QColor('white'), 
-        Types.SP:   QColor('black'), 
-        Types.HT:   QColor('white'), 
-        Types.HC:   QColor('white'), 
-        Types.EX:   QColor('white'), 
-        Types.CS:   QColor('white'),
+        Types.CW:   QColor('black'),
+        Types.SP:   QColor('black'),
+        Types.HT:   QColor('black'),
+        Types.HC:   QColor('white'),
+        Types.EX:   QColor('black'),
+        Types.CS:   QColor('black'),
     }
 
     def __init__(self, data: dict = {}):
@@ -1552,18 +1556,27 @@ class PTWData:
             elif requirement.type == PTWData.Requirement.Types.RISK:
                 self.addRisk(requirement.description)
         
-        for tool in self.tools:
+        i = 0
+        while i < len(self.tools):
+            tool = self.tools[i]
             for requirement in PTWData.ALL_TOOLS.get(tool, []):
                 __handleRequirement(requirement)
+            i += 1
 
-        for ctrl in self.controls:
-            for requirement in PTWData.ALL_CONTROLS.get(ctrl, []):
-                __handleRequirement(requirement)
-        
-        for hazard in self.hazards:
+        i = 0
+        while i < len(self.hazards):
+            hazard = self.hazards[i]
             for requirement in PTWData.ALL_HAZARDS.get(hazard, []):
                 __handleRequirement(requirement)
-        
+            i += 1
+
+        i = 0
+        while i < len(self.controls):
+            ctrl = self.controls[i]
+            for requirement in PTWData.ALL_CONTROLS.get(ctrl, []):
+                __handleRequirement(requirement)
+            i += 1
+
     def requiredAttachs(self) -> list[str]:
         docs = []
         for tool in self.tools:

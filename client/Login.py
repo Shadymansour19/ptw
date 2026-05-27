@@ -202,9 +202,9 @@ class LoginWindow(QMainWindow):
         self.boxUsername.setPlaceholderText("Enter username")
         self.boxPassword.setPlaceholderText("Enter password")
         self.btnForgotPassword.setStyleSheet('''
-            QPushButton { border: none; background: transparent; color: #3b82f6; }
+            QPushButton { border: none; background: transparent; color: palette(link); }
             QPushButton:hover { text-decoration: underline;}
-            QPushButton:pressed { color: #1e40af; }
+            QPushButton:pressed { color: palette(highlight); }
         ''')
         self.btnForgotPassword.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btnForgotPassword.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)

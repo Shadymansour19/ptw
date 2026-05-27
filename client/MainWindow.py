@@ -100,7 +100,11 @@ class MainWindow(QMainWindow):
             alignment=Qt.AlignmentFlag.AlignCenter, 
         ))
         self.btnWelcomeName = QPushButton(self.loggedUser.getRole() + ' ' + self.loggedUser.getName().upper() + '!')
-        self.btnWelcomeName.setStyleSheet('QPushButton { background-color: transparent; border: none; color: green; } QPushButton:hover { color: lightgreen; } ')
+        self.btnWelcomeName.setStyleSheet('''
+            QPushButton { border: none; background: transparent; color: palette(link); }
+            QPushButton:hover { text-decoration: underline;}
+            QPushButton:pressed { color: palette(highlight); }
+        ''')
         self.btnWelcomeName.setFont(QFont("Helvetica", 40, QFont.Weight.Bold, italic=True))
         self.btnWelcomeName.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btnWelcomeName.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
@@ -170,6 +174,7 @@ class MainWindow(QMainWindow):
         self.btnRisks = QPushButton(qta.icon('mdi.shield-check-outline'), "")
         self.btnIsolations = QPushButton(qta.icon('fa6s.unlock-keyhole'), "")
         self.btnLanguage = QPushButton(qta.icon('fa5s.language'), "")
+        self.btnTheme = QPushButton(qta.icon('fa6s.circle-half-stroke'), "")
 
         self.btnWelcome.setToolTip("Home [Ctrl+H]")
         self.btnUnderReviewPTWs.setToolTip("Under Review PTWs")
@@ -190,6 +195,7 @@ class MainWindow(QMainWindow):
         self.btnRisks.setToolTip("Risks")
         self.btnIsolations.setToolTip("Isolations")
         self.btnLanguage.setToolTip("Switch Language")
+        self.btnTheme.setToolTip("Toggle Light/Dark Mode")
 
         self._sideBarBtnMap = {
             self.btnWelcome:                    self.tabWelcome,
@@ -211,6 +217,7 @@ class MainWindow(QMainWindow):
             self.btnSettings:                   None,
             self.btnLogout:                     None,
             self.btnLanguage:                   None,
+            self.btnTheme:                      None,
         }
 
         self._sidebarBtnStyle = """
@@ -223,12 +230,12 @@ class MainWindow(QMainWindow):
 
             /* Hover */
             QPushButton:hover {
-                background: rgba(255,255,255,40);
+                background: rgba(128, 128, 128, 0.15);
             }
 
             /* Pressed */
             QPushButton:pressed {
-                background: rgba(255,255,255,80);
+                background: rgba(128, 128, 128, 0.30);
             }
 
             /* Selected */
@@ -254,29 +261,28 @@ class MainWindow(QMainWindow):
         self.btnLanguage.clicked.connect(self.chgLanguage)
         self.btnRefresh.clicked.connect(lambda: self.refreshGUI(refreshArchivedPTWs=True))
         self.btnLogout.clicked.connect(self.logout)
+        self.btnTheme.clicked.connect(self.toggleTheme)
 
         self.setCentralWidget(self.stack)
 
-        sideBarColor = self.palette().color(QPalette.ColorRole.Window).darker(130)
         self.sideBarLayout = QToolBar("SideBar Navigator")
-        self.sideBarLayout.setMovable(True)
-        self.sideBarLayout.setAllowedAreas(Qt.ToolBarArea.LeftToolBarArea | Qt.ToolBarArea.RightToolBarArea | Qt.ToolBarArea.BottomToolBarArea)
+        self.sideBarLayout.setMovable(False)
+        # self.sideBarLayout.setAllowedAreas(Qt.ToolBarArea.LeftToolBarArea | Qt.ToolBarArea.RightToolBarArea | Qt.ToolBarArea.BottomToolBarArea)
         self.sideBarLayout.setFloatable(False)
         self.sideBarLayout.setIconSize(QSize(32, 32))
         self.sideBarLayout.setStyleSheet(f"""
             QToolBar {{
-                background-color: {sideBarColor.name()};
-                border: none;
+                background: palette(dark);
                 spacing: 2px;
                 padding: 4px 2px;
             }}
             QToolBar::separator:vertical {{
-                background: rgba(255, 255, 255, 40);
+                background: palette(mid);
                 height: 2px;
                 margin: 2px 4px;
             }}
             QToolBar::separator:horizontal {{
-                background: rgba(255, 255, 255, 40);
+                background: palette(mid);
                 width: 2px;
                 margin: 4px 2px;
             }}
@@ -291,8 +297,7 @@ class MainWindow(QMainWindow):
         self.toolbar.setMovable(False)
         self.toolbar.setStyleSheet("""
             QToolBar {
-                background: rgba(0, 0, 0, 0.25);
-                border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+                background: palette(dark);
                 spacing: 4px;
                 padding: 2px 4px;
             }
@@ -301,14 +306,14 @@ class MainWindow(QMainWindow):
                 border: none;
                 border-radius: 6px;
                 padding: 4px 8px;
-                color: white;
+                color: palette(window-text);
                 font-size: 13px;
             }
             QToolButton:hover {
-                background: rgba(255, 255, 255, 0.12);
+                background: rgba(128, 128, 128, 0.20);
             }
             QToolButton:pressed {
-                background: rgba(255, 255, 255, 0.22);
+                background: rgba(128, 128, 128, 0.38);
             }
         """)
         self.addToolBar(self.toolbar)
@@ -341,7 +346,15 @@ class MainWindow(QMainWindow):
 
         sb = self.statusBar()
         sb.show()
-        sb.setStyleSheet("QStatusBar { background: rgba(0,0,0,40); color: #ccc; padding: 0 8px; font-size: 14px; border-top: 1px solid rgba(255,255,255,20); }")
+        sb.setStyleSheet("""
+            QStatusBar { 
+                background: palette(dark); 
+                color: palette(window-text); 
+                padding: 0 8px; 
+                font-size: 14px; 
+                border-top: 2px solid palette(mid); 
+            }
+        """)
 
         self._trayIcon = QSystemTrayIcon(QIcon(resource_path("assets/sh-logo-trans.png")), self)
         self._trayIcon.show()
@@ -349,6 +362,13 @@ class MainWindow(QMainWindow):
         self._sseListener = SSEListener(ClientRequests.SERVER_URL, loggedUser.getUsername(), loggedUser.getPassword())
         self._sseListener.eventReceived.connect(self._onSSEEvent)
         self._sseListener.start()
+
+    def toggleTheme(self):
+        hints = QApplication.styleHints()
+        if hints.colorScheme() == Qt.ColorScheme.Dark:
+            hints.setColorScheme(Qt.ColorScheme.Light)
+        else:
+            hints.setColorScheme(Qt.ColorScheme.Dark)
 
     def _sideBarStretch(self):
         spacer = QWidget()
@@ -425,11 +445,21 @@ class MainWindow(QMainWindow):
             return
         self._sidebarExpanded = True
         expanded_style = self._sidebarBtnStyle + "QPushButton { text-align: left; padding-left: 8px; }"
-        for btn in self._sideBarBtnMap:
+        current = self.stack.currentWidget()
+        for btn, tab in self._sideBarBtnMap.items():
+            is_selected = (tab is current)
             tip = btn.toolTip()
             if tip:
                 btn.setText(tip.split(" [")[0])
             btn.setStyleSheet(expanded_style)
+            effect = btn.graphicsEffect()
+            if not isinstance(effect, QGraphicsOpacityEffect):
+                effect = QGraphicsOpacityEffect(btn)
+                btn.setGraphicsEffect(effect)
+            effect.setOpacity(1.0 if is_selected or tab is None else 0.5)
+            btn.update()
+
+
         self._sidebarAnim.stop()
         self._sidebarAnim.setStartValue(self.sideBarLayout.maximumWidth())
         self._sidebarAnim.setEndValue(self._sidebarExpandedW)
@@ -443,6 +473,16 @@ class MainWindow(QMainWindow):
         self._sidebarAnim.setStartValue(self.sideBarLayout.maximumWidth())
         self._sidebarAnim.setEndValue(self._sidebarCollapsedW)
         self._sidebarAnim.start()
+        current = self.stack.currentWidget()
+        for btn, tab in self._sideBarBtnMap.items():
+            is_selected = (tab is current)
+            effect = btn.graphicsEffect()
+            if not isinstance(effect, QGraphicsOpacityEffect):
+                effect = QGraphicsOpacityEffect(btn)
+                btn.setGraphicsEffect(effect)
+            effect.setOpacity(1.0 if is_selected or tab is None else 0.2)
+            btn.update()
+
 
     def _onSidebarAnimFinished(self):
         if not self._sidebarExpanded:
@@ -703,7 +743,7 @@ class MainWindow(QMainWindow):
                 lst.addItem(item)
                 lst.setItemWidget(item, approvalWidget)
             
-            lst.setStyleSheet("QListWidget::item { border-bottom: 1px solid #cccccc; }")
+            lst.setStyleSheet("QListWidget::item { border-bottom: 2px solid palette(mid); }")
 
         dlg.setLayout(lyt)
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
@@ -743,7 +783,7 @@ class MainWindow(QMainWindow):
         self.btnFAB.move(x, y)
     
     def setAvailableTabs(self, groups: list[list[QPushButton]]):
-        FOOTER_BTNS: list[QPushButton] = [self.btnSettings, self.btnRefresh, self.btnLogout]
+        FOOTER_BTNS: list[QPushButton] = [self.btnTheme, self.btnSettings, self.btnRefresh, self.btnLogout]
 
         # --- Sidebar ---
         self.sideBarLayout.clear()
@@ -779,18 +819,18 @@ class MainWindow(QMainWindow):
             tile.clicked.connect(btn.click)
             tile.setStyleSheet("""
                 QToolButton {
-                    background: rgba(255, 255, 255, 0.10);
-                    border: 1px solid rgba(255, 255, 255, 0.30);
+                    background: rgba(128, 128, 128, 0.15);
+                    border: 1px solid rgba(128, 128, 128, 0.30);
                     border-radius: 10px;
                     padding: 10px 6px;
-                    color: white;
+                    color: palette(window-text);
                 }
                 QToolButton:hover {
-                    background: rgba(255, 255, 255, 0.15);
-                    border: 1px solid rgba(255, 255, 255, 0.45);
+                    background: rgba(128, 128, 128, 0.25);
+                    border: 1px solid rgba(128, 128, 128, 0.50);
                 }
                 QToolButton:pressed {
-                    background: rgba(255, 255, 255, 0.20);
+                    background: rgba(128, 128, 128, 0.38);
                 }
             """)
             tiles.append(tile)
@@ -813,12 +853,12 @@ class MainWindow(QMainWindow):
         # --- Top toolbar (grouped) ---
         TOOLBAR_BTN_STYLE = """
             QToolButton {
-                color: white; background: transparent; border: none;
+                color: palette(window-text); background: transparent; border: none;
                 border-radius: 4px; padding: 5px 14px;
                 font-size: 13px; font-weight: 500;
             }
-            QToolButton:hover { background: rgba(255, 255, 255, 0.12); }
-            QToolButton:pressed { background: rgba(255, 255, 255, 0.22); }
+            QToolButton:hover { background: rgba(128, 128, 128, 0.15); }
+            QToolButton:pressed { background: rgba(128, 128, 128, 0.30); }
             QToolButton::menu-indicator { image: none; width: 0px; }
         """
 
@@ -863,7 +903,7 @@ class MainWindow(QMainWindow):
         TOOLBAR_GROUPS = ["&PTWs", "&Risks", "&Isolations", "&Users", "&View", "&Help"]
 
         def getToolbarGroup(tip):
-            if "Home" in tip or "Refresh" in tip:
+            if "Home" in tip or "Refresh" in tip or "Light/Dark" in tip:
                 return "&View"
             for group in TOOLBAR_GROUPS:
                 if group[1:] in tip:

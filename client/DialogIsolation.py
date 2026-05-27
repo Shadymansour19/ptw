@@ -2,7 +2,7 @@ from PyQt6.QtCore import Qt, QStringListModel, QRect
 from PyQt6.QtWidgets import (QStyledItemDelegate, QApplication, QStyle, QStyleOptionViewItem,
                               QCompleter, QDialog, QFormLayout, QComboBox, QTextEdit,
                               QDialogButtonBox, QMessageBox)
-from PyQt6.QtGui import QColor, QFont
+from PyQt6.QtGui import QColor, QFont, QPalette
 
 from PTWData import Isolation, PTWData
 
@@ -38,7 +38,7 @@ class FuzzyHighlightDelegate(QStyledItemDelegate):
 
         is_selected = bool(opt.state & QStyle.StateFlag.State_Selected)
         text_color = opt.palette.highlightedText().color() if is_selected else opt.palette.text().color()
-        highlight_color = QColor('yellow')
+        highlight_color = opt.palette.color(QPalette.ColorRole.Highlight)
 
         margin = style.pixelMetric(QStyle.PixelMetric.PM_FocusFrameHMargin, None, opt.widget) + 1
         x = opt.rect.x() + margin

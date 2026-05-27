@@ -4,8 +4,11 @@ from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
 from Login import LoginWindow
 from utils import resource_path
+from qdarktheme import load_palette, load_stylesheet
 
 app = QApplication([])
+# app.setPalette(load_palette('dark'))
+# app.setStyleSheet(load_stylesheet('dark'))
 app.setApplicationName("PTW")
 app.setDesktopFileName("ptw")
 app.setWindowIcon(QIcon(resource_path('assets/sh-logo-trans.png')))
@@ -18,9 +21,9 @@ _checkmark_path = _tmp.name.replace('\\', '/')
 
 app.setStyleSheet(f"""
     QRadioButton::indicator {{width: 20px; height: 20px; border: 2px solid gray; border-radius: 6px;}}
-    QRadioButton::indicator:checked {{background-color: green; border-color: green; image: url({_checkmark_path});}}
+    QRadioButton::indicator:checked {{background-color: palette(highlight); border-color: palette(highlight); image: url({_checkmark_path});}}
     QCheckBox::indicator {{width: 20px; height: 20px; border: 2px solid gray; border-radius: 6px;}}
-    QCheckBox::indicator:checked {{background-color: green; border-color: green; image: url({_checkmark_path});}}
+    QCheckBox::indicator:checked {{background-color: palette(highlight); border-color: palette(highlight); image: url({_checkmark_path});}}
 """)
 loginWindow = LoginWindow()
 loginWindow.show()

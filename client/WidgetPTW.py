@@ -4,8 +4,8 @@ from PyQt6.QtWidgets import (QToolButton, QDialog, QVBoxLayout, QHBoxLayout, QFo
                               QGridLayout, QStackedWidget, QWidget, QLineEdit, QComboBox,
                               QTextEdit, QPushButton, QCheckBox, QRadioButton, QButtonGroup,
                               QDialogButtonBox, QMessageBox, QApplication, QStyle,
-                              QFileDialog)
-from PyQt6.QtGui import QFont, QKeySequence, QIcon, QShortcut
+                              QFileDialog, QSizePolicy)
+from PyQt6.QtGui import QFont, QKeySequence, QIcon, QPalette, QShortcut
 import re
 
 from PTWData import PTWData, Attachment
@@ -25,16 +25,20 @@ class TabButton(QToolButton):
             border: none;
             border-radius: 12px;
             padding: 10px 20px;
-            color: #d0d0d0;
+            color: palette(window-text);
         }
 
         QToolButton:hover {
-            background: rgba(255,255,255,0.08);
+            background: rgba(128, 128, 128, 0.15);
+        }
+
+        QToolButton:pressed {
+            background: rgba(128, 128, 128, 0.30);
         }
 
         QToolButton[selected="true"] {
-            background: rgba(107,206,107,0.18);
-            color: #6BCE6B;
+            background: palette(highlight);
+            color: palette(highlighted-text);
             font-weight: bold;
         }
     """
@@ -43,8 +47,9 @@ class TabButton(QToolButton):
         super().__init__(parent)
         self.setText(text)
         self.setFont(QFont("Helvetica", 12, QFont.Weight.Bold))
+        highlighted_text = QApplication.palette().color(QPalette.ColorRole.HighlightedText).name()
         self.icon = qta.icon(icon) if icon else None
-        self.selection_icon = qta.icon(icon, color="#6BCE6B") if icon else None
+        self.selection_icon = qta.icon(icon, color=highlighted_text) if icon else None
         self.setStyleSheet(TabButton.TAB_BTN_STYLE)
         self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
         self.setIconSize(QSize(32, 32))
@@ -98,16 +103,32 @@ class DialogPTW(QDialog):
                 attachs.extend([Attachment(remoteName=name, uploaded=True) for name in refAttachNames])
 
         lyt = QVBoxLayout()
-        lytTabs = QHBoxLayout()
+        lyt.setContentsMargins(0, 0, 0, 0)
+        
+        tabsContainer = QWidget()
+        tabsContainer.setStyleSheet("""
+            QWidget {
+                background: palette(dark);
+                border-bottom: 4px solid rgba(128, 128, 128, 0.5);
+                border-right: 4px solid rgba(128, 128, 128, 0.5);
+                border-bottom-right-radius: 20px;
+            }
+        """)
+        lytTabs = QHBoxLayout(tabsContainer)
+        lytTabs.setSpacing(2)
+        lytTabs.setContentsMargins(8, 8, 8, 8)
+
         lytBtns = QHBoxLayout()
+        lytBtns.setContentsMargins(8, 8, 8, 8)
+        
         self.stack = QStackedWidget()
         self.btnBack = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ArrowBack), 'Back')
         self.btnNext = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ArrowForward), 'Next')
         self.btnFinish = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_DialogOkButton), 'Finish')
         self.btnCancel = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_DialogCancelButton), 'Cancel')
-        
+
         self.setLayout(lyt)
-        lyt.addLayout(lytTabs)
+        lyt.addWidget(tabsContainer)
         lyt.addWidget(self.stack)
         lyt.addLayout(lytBtns)
 
@@ -132,8 +153,7 @@ class DialogPTW(QDialog):
         lytHazards = QGridLayout()
         lytControls = QGridLayout()
         lytIsolation = QVBoxLayout()
-        lytMiwiMos = QFormLayout()
-        lytMiwiMos.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        lytMiwiMos = QGridLayout()
         lytAttachments = QVBoxLayout()
 
         self.tabBasicInfo.setLayout(lytBasicInfo)
@@ -239,7 +259,7 @@ class DialogPTW(QDialog):
             btn = QCheckBox(DialogPTW.checkboxDisplayName(tool))
             btn.setChecked(DialogPTW.formatCheckBoxText(btn.text()) in ptw.tools)
             btn.setEnabled(not readOnly)
-            # btn.setStyleSheet('QCheckBox::indicator {width: 20px; height: 20px}')
+            # btn.setStyleSheet('QCheckBox::indicator { width: 20px; height: 20px; }')
             lytTools.addWidget(btn, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS)
             self.btnsTools.append(btn)
         i += 1
@@ -256,7 +276,7 @@ class DialogPTW(QDialog):
             btn = QCheckBox(DialogPTW.checkboxDisplayName(hazard))
             btn.setChecked(DialogPTW.formatCheckBoxText(btn.text()) in ptw.hazards)
             btn.setEnabled(not readOnly)
-            # btn.setStyleSheet('QCheckBox::indicator {width: 20px; height: 20px}')
+            # btn.setStyleSheet('QCheckBox::indicator { width: 20px; height: 20px; }')
             lytHazards.addWidget(btn, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS)
             self.btnsHazard.append(btn)
         i += 1
@@ -273,7 +293,7 @@ class DialogPTW(QDialog):
             btn = QCheckBox(DialogPTW.checkboxDisplayName(ctrl))
             btn.setChecked(DialogPTW.formatCheckBoxText(btn.text()) in ptw.controls)
             btn.setEnabled(not readOnly)
-            # btn.setStyleSheet('QCheckBox::indicator {width: 20px; height: 20px;}')
+            # btn.setStyleSheet('QCheckBox::indicator { width: 20px; height: 20px; }')
             lytControls.addWidget(btn, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS)
             self.btnsControls.append(btn)
         i += 1
@@ -344,8 +364,12 @@ class DialogPTW(QDialog):
         miwiLyt.addWidget(self.btnViewMiwi, stretch=0)
         miwiLyt.addWidget(self.btnNewMiwi, stretch=0)
 
-        lytMiwiMos.addRow(self.btnMos, self.boxMOS)
-        lytMiwiMos.addRow(self.btnMiwi, miwiLyt)
+        lytMiwiMos.setColumnStretch(1, 1)
+        lytMiwiMos.setRowStretch(0, 1)
+        lytMiwiMos.addWidget(self.btnMos, 0, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignCenter)
+        lytMiwiMos.addWidget(self.boxMOS, 0, 1)
+        lytMiwiMos.addWidget(self.btnMiwi, 1, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        lytMiwiMos.addLayout(miwiLyt, 1, 1)
 
         self.tableAttachments = TableAttachments(self.tabAttachments, loggedUser, self.ptw.id, referencePTW.id if referencePTW else None, attachs, readOnly)
 
@@ -424,7 +448,7 @@ class DialogPTW(QDialog):
             self.boxFileName.setMinimumWidth(self.parent().width() // 3)
             self.btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
             self.boxFileName.textChanged.connect(self.checkSaveName)
-            self.boxFileName.setStyleSheet("QLineEdit[error='True'] {border: 1px solid red; border-radius: 2px;}")
+            self.boxFileName.setStyleSheet("QLineEdit[error='True'] { border: 1px solid red; border-radius: 2px; }")
 
             lyt.addRow("Save on Server as:", self.boxFileName)
             lyt.addRow(self.btns)

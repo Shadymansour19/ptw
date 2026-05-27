@@ -125,7 +125,7 @@ class DialogRiskAssessment(QDialog):
 
         self.txtTitle.setPlaceholderText('Risk Assessment Title')
         self.txtTitle.setToolTip('Risk Assessment Title')
-        self.txtTitle.setStyleSheet("QLineEdit[error='True'] {border: 1px solid red; border-radius: 2px;}")
+        self.txtTitle.setStyleSheet("QLineEdit[error='True'] { border: 1px solid red; border-radius: 2px; }")
         
         self.txtDate.setPlaceholderText('Last Update Date')
         self.txtDate.setToolTip('Last Update Date')

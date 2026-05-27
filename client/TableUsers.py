@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QTableWidget, QLabel, QAbstra
                               QHeaderView, QTableWidgetItem, QMenu, QDialog, QMessageBox)
 from PyQt6.QtGui import QFont, QAction
 from typing import Iterable
+import qtawesome as qta
 
 from DialogUser import DialogUser
 from clientRequests import ClientRequests
@@ -96,9 +97,9 @@ class TableUsers(QWidget):
         row = row.row()
         menu = QMenu(self.tbl)
         
-        actionView = QAction('View', self.tbl)
-        actionEdit = QAction('Edit', self.tbl)
-        # actionDelete = QAction('Delete', self.tbl)
+        actionView = QAction(qta.icon('fa6s.eye'), 'View', self.tbl)
+        actionEdit = QAction(qta.icon('fa6s.pen'), 'Edit', self.tbl)
+        # actionDelete = QAction(qta.icon('fa5s.trash'), 'Delete', self.tbl)
         
         actionView.triggered.connect(lambda: self.viewUser(row))
         actionEdit.triggered.connect(lambda: self.updateUser(row))
