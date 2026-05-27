@@ -45,10 +45,11 @@ jobs:
           --output-filename=PTW.exe
           main.py
 
-      - uses: actions/upload-artifact@v4.6.2
+      - name: Publish to GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
         with:
-          name: PTW-windows
-          path: client/PTW.exe
+          files: client/PTW.exe
 
 
   build-linux:
@@ -90,7 +91,8 @@ jobs:
           --output-filename=PTW
           main.py
 
-      - uses: actions/upload-artifact@v4.6.2
+      - name: Publish to GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
         with:
-          name: PTW-linux
-          path: client/PTW
+          files: client/PTW
