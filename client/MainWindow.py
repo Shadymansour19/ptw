@@ -847,7 +847,7 @@ class MainWindow(QMainWindow):
             self.sideBarLayout.addWidget(btn)
 
         # --- Collect nav buttons ---
-        nav_btns = [btn for group in groups for btn in group] + FOOTER_BTNS
+        nav_btns = [btn for group in groups for btn in group]
 
         # --- Welcome grid ---
         col_count = 3
