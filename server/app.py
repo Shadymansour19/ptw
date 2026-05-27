@@ -304,6 +304,22 @@ def updateUserRequest():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
+@app.route("/users/theme", methods=["PATCH"])
+def updateUserTheme():
+    authUser = getVerifiedUser(request.authorization)
+    if authUser is None:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    username = data.get('username')
+    theme = data.get('theme')
+    if authUser.getUsername() != username:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    try:
+        userDB.updateTheme(username, theme)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
 @app.route("/users", methods=["DELETE"])
 def deleteUserRequest():
     user = getVerifiedUser(request.authorization)

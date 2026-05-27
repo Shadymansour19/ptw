@@ -166,6 +166,15 @@ class UsersDb:
             self.conn.rollback()
             raise Exception(f"Error updating user {user.getUsername()} in database")
 
+    def updateTheme(self, username: str, theme: str | None):
+        try:
+            with self.conn.cursor() as cursor:
+                cursor.execute("UPDATE users SET theme = %s WHERE username = %s", (theme, username))
+            self.conn.commit()
+        except Exception as e:
+            self.conn.rollback()
+            raise Exception(f"Error updating theme for user {username}")
+
     def deleteUser(self, user: User):
         if not self.isUsernameExists(user.getUsername()):
             raise Exception(f"User {user.getUsername()} does not exist")

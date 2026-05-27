@@ -1,7 +1,7 @@
 from datetime import datetime
 import copy
 import re
-from PyQt6.QtCore import Qt, QSize, QEvent, QPropertyAnimation, QEasingCurve
+from PyQt6.QtCore import Qt, QSize, QEvent, QPropertyAnimation, QEasingCurve, QTimer
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QStackedWidget, QVBoxLayout, QGridLayout,
                               QFormLayout, QLabel, QPushButton, QToolButton,
                               QToolBar, QDialog, QDialogButtonBox, QTextEdit, QListWidget,
@@ -175,6 +175,29 @@ class MainWindow(QMainWindow):
         self.btnIsolations = QPushButton(qta.icon('fa6s.unlock-keyhole'), "")
         self.btnLanguage = QPushButton(qta.icon('fa5s.language'), "")
         self.btnTheme = QPushButton(qta.icon('fa6s.circle-half-stroke'), "")
+
+        self._btnIcons = {
+            self.btnWelcome:                    'fa5s.home',
+            self.btnUnderReviewPTWs:            'fa6s.magnifying-glass-chart',
+            self.btnReturnedPTWs:               'fa5s.undo',
+            self.btnApprovedPTWs:               'fa6s.check',
+            self.btnRejectedPTWs:               'fa5s.times',
+            self.btnWaitingRunConfirmationPTWs: 'fa6.clock',
+            self.btnRunningPTWs:                'fa6s.play',
+            self.btnWaitingHldConfirmationPTWs: 'fa5s.hourglass-half',
+            self.btnHeldPTWs:                   'fa6s.pause',
+            self.btnWaitingClsConfirmationPTWs: 'fa6s.clock',
+            self.btnClosedPTWs:                 'fa6s.stop',
+            self.btnArchivedPTWs:               'fa6s.box-archive',
+            self.btnSettings:                   'fa6s.gear',
+            self.btnRefresh:                    'fa6s.rotate-right',
+            self.btnLogout:                     'fa6s.arrow-right-from-bracket',
+            self.btnUsers:                      'fa6s.users-gear',
+            self.btnRisks:                      'mdi.shield-check-outline',
+            self.btnIsolations:                 'fa6s.unlock-keyhole',
+            self.btnLanguage:                   'fa5s.language',
+            self.btnTheme:                      'fa6s.circle-half-stroke',
+        }
 
         self.btnWelcome.setToolTip("Home [Ctrl+H]")
         self.btnUnderReviewPTWs.setToolTip("Under Review PTWs")
@@ -365,10 +388,33 @@ class MainWindow(QMainWindow):
 
     def toggleTheme(self):
         hints = QApplication.styleHints()
-        if hints.colorScheme() == Qt.ColorScheme.Dark:
-            hints.setColorScheme(Qt.ColorScheme.Light)
-        else:
-            hints.setColorScheme(Qt.ColorScheme.Dark)
+        is_dark = hints.colorScheme() == Qt.ColorScheme.Dark
+        new_theme = 'light' if is_dark else 'dark'
+        self._applyThemeChange(new_theme)
+
+    def _applyThemeChange(self, new_theme: str | None):
+        import os, sys
+        label = new_theme.capitalize() if new_theme else "Default (System)"
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Switch Theme")
+        msg.setText(f"Switching to {label} mode requires a full-application restart.")
+        btn_restart = msg.addButton("Restart Now", QMessageBox.ButtonRole.AcceptRole)
+        btn_later   = msg.addButton("Later",        QMessageBox.ButtonRole.DestructiveRole)
+        btn_cancel  = msg.addButton("Cancel Change", QMessageBox.ButtonRole.RejectRole)
+        msg.setDefaultButton(btn_restart)
+        msg.exec()
+
+        if msg.clickedButton() == btn_cancel:
+            return
+
+        self.loggedUser.setTheme(new_theme)
+        err = ClientRequests.updateTheme(self.loggedUser, new_theme)
+        if err:
+            QMessageBox.warning(self, "Error", f"Failed to save theme preference:\n{err}")
+            return
+
+        if msg.clickedButton() == btn_restart:
+            self.logout()
 
     def _sideBarStretch(self):
         spacer = QWidget()
@@ -764,17 +810,21 @@ class MainWindow(QMainWindow):
 
     def dlgSettings(self):
         user = copy.deepcopy(self.loggedUser)
+        old_theme = self.loggedUser.getTheme()
         dlg = DialogSettings(self, user)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
-        
+
         err = ClientRequests.updateUser(self.loggedUser, user)
         if err:
             QMessageBox.warning(self, "Fail", err)
             return
-        
+
         self.loggedUser = user
         MainWindow.refreshWelcomePage(self)
+
+        if dlg.new_theme != old_theme:
+            self._applyThemeChange(dlg.new_theme)
         
     def btnFABUpdatePosition(self):
         margin = 40

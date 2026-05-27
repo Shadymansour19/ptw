@@ -109,6 +109,18 @@ class ClientRequests:
             err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
             return f"Failed to update user!\n{err}"
 
+    def updateTheme(loggedUser: User, theme: str | None):
+        response = None
+        try:
+            response = requests.patch(f'{ClientRequests.SERVER_URL}/users/theme', json={'username': loggedUser.getUsername(), 'theme': theme}, auth=(loggedUser.getUsername(), loggedUser.getPassword()))
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            err = response.json().get("error", response.text) if response is not None else str(e)
+            return f"Failed to update theme\n{err}"
+        if not data.get("success"):
+            return data.get("error", "Failed to update theme")
+
     def deleteUser(loggedUser: User, username: str):
         response = None
         try:

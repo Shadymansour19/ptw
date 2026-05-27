@@ -88,10 +88,18 @@ class User(SecuredUser):
     def __init__(self, username = '', password = '', name = '', role = None, department = '', email = ''):
         super().__init__(username, name, role, department, email)
         self.password = password
-    
+        self.theme: str | None = None
+
     def setPassword(self, password: str):
         self.password = password
         return self
 
     def getPassword(self):
         return self.password
+
+    def setTheme(self, theme: str | None):
+        self.theme = theme
+        return self
+
+    def getTheme(self) -> str | None:
+        return self.theme

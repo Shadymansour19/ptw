@@ -301,6 +301,12 @@ class LoginWindow(QMainWindow):
             except KeyringError as e:
                 QMessageBox.warning(self, "Error", str(e))
         
+        theme = user.getTheme()
+        if theme == 'dark':
+            QApplication.styleHints().setColorScheme(Qt.ColorScheme.Dark)
+        elif theme == 'light':
+            QApplication.styleHints().setColorScheme(Qt.ColorScheme.Light)
+
         mainWindow = None
         if user.getRole() == UserRoles.USER:
             mainWindow = UserMainWindow(user)
