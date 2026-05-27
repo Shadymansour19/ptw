@@ -6,7 +6,7 @@ from typing import Iterable
 import tempfile
 
 class ClientRequests:
-    SERVER_URL = 'http://192.168.1.14:5000'
+    SERVER_URL = 'http://localhost:5000'
 
     def login(username, password) -> tuple[str, User]:
         response = None
