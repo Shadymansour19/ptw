@@ -1,8 +1,15 @@
 import os
+import sys
 import json
 import queue
+import logging
 import threading
 from time import time, sleep
+from logging.handlers import RotatingFileHandler
+
+# Resolve the directory that contains this file (works both as a plain script and
+# as a Nuitka/PyInstaller onefile binary, regardless of the process's CWD).
+_BASE_DIR = os.path.dirname(sys.executable if getattr(sys, 'frozen', False) or getattr(sys, '__compiled__', False) else os.path.abspath(__file__))
 from dotenv import load_dotenv
 
 from flask import Flask, request, jsonify, Response, stream_with_context, send_file
@@ -18,6 +25,37 @@ from GlobalData import globalData
 from PTWData import PTWData, Isolation
 from utils import objToDict
 
+
+_LOG_FORMAT = "%(asctime)s [%(levelname)-8s] %(location)-35s - %(message)s"
+_LOG_DATE   = "%Y-%m-%d %H:%M:%S"
+
+class _Formatter(logging.Formatter):
+    def format(self, record):
+        record.location = f"{record.name}:{record.funcName}:{record.lineno}"
+        return super().format(record)
+
+def _setup_logging():
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+    fmt = _Formatter(_LOG_FORMAT, datefmt=_LOG_DATE)
+
+    console = logging.StreamHandler()
+    console.setLevel(logging.DEBUG)
+    console.setFormatter(fmt)
+    root.addHandler(console)
+
+    logs_dir = os.path.join(_BASE_DIR, 'logs')
+    os.makedirs(logs_dir, exist_ok=True)
+    fh = RotatingFileHandler(os.path.join(logs_dir, 'ptw-server.log'), maxBytes=10 * 1024 * 1024, backupCount=5)
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(fmt)
+    root.addHandler(fh)
+
+    logging.getLogger("werkzeug").setLevel(logging.WARNING)
+
+_setup_logging()
+log = logging.getLogger("app")
+
 load_dotenv()
 app = Flask(__name__)
 app.config.update(
@@ -31,15 +69,16 @@ mail = Mail(app)
 
 resetCodes = {}
 
-_sse_clients: dict[UserRoles, list[queue.Queue]] = {}   # role -> connected queues
+_sse_clients: dict[UserRoles, list[queue.Queue]] = {}
 _sse_lock = threading.Lock()
-
 _request_lock = threading.Lock()
+
 
 @app.before_request
 def _acquire_request_lock():
     if request.endpoint != 'sse_stream':
         _request_lock.acquire()
+        log.debug("%s %s", request.method, request.path)
 
 @app.teardown_request
 def _release_request_lock(exc):
@@ -49,9 +88,11 @@ def _release_request_lock(exc):
         except RuntimeError:
             pass
 
+
 def _broadcast(event_type: str, data: dict, roles: list[UserRoles] = None):
     """Broadcast an SSE event. roles=None sends to all connected roles."""
     msg = f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
+    dropped = 0
     with _sse_lock:
         targets = roles if roles is not None else list(_sse_clients.keys())
         for role in targets:
@@ -60,29 +101,47 @@ def _broadcast(event_type: str, data: dict, roles: list[UserRoles] = None):
                     q.put_nowait(msg)
                 except queue.Full:
                     _sse_clients[role].remove(q)
+                    dropped += 1
+    if dropped:
+        log.warning("SSE broadcast '%s': dropped %d full client queue(s)", event_type, dropped)
+    else:
+        log.debug("SSE broadcast '%s' data=%s", event_type, data)
+
 
 try:
+    log.info("Initializing databases...")
     userDB = UsersDb()
     ptwDB = PtwsDb()
     risksDB = RisksDb()
     isoDB = IsolationDb()
     globalData.refresh()
+    log.info("All databases initialized successfully")
 except Exception as e:
+    log.critical("Database initialization failed: %s", e, exc_info=True)
     exit(1)
+
 
 def _sync_ptw(ptw_id):
     updated = ptwDB.getPTWById(ptw_id)
     if updated:
         globalData.allPTWs[updated.id] = updated
+        log.debug("PTW #%s synced from DB", ptw_id)
+    else:
+        log.warning("PTW #%s not found in DB during sync", ptw_id)
+
 
 def _periodic_refresh():
     while True:
         sleep(5 * 60)
-        with _request_lock:
-            globalData.refresh()
-        print("Server-DB Resync Done")
+        try:
+            with _request_lock:
+                globalData.refresh()
+            log.info("Periodic DB resync completed")
+        except Exception as e:
+            log.error("Periodic DB resync failed: %s", e, exc_info=True)
 
 threading.Thread(target=_periodic_refresh, daemon=True, name="globaldata-refresh").start()
+log.info("Periodic DB resync thread started (interval: 5 min)")
 
 
 def getVerifiedUser(auth) -> User:
@@ -101,11 +160,14 @@ def getVerifiedUser(auth) -> User:
 def sse_stream():
     user = getVerifiedUser(request.authorization)
     if user is None:
+        log.warning("SSE connection rejected: unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     role = user.getRole()
     q = queue.Queue(maxsize=50)
     with _sse_lock:
         _sse_clients.setdefault(role, []).append(q)
+    log.info("SSE client connected: user='%s' role=%s total_for_role=%d", user.getUsername(), role, len(_sse_clients.get(role, [])))
+
     def generate():
         try:
             yield ": connected\n\n"
@@ -120,6 +182,8 @@ def sse_stream():
                     _sse_clients[role].remove(q)
                 except (ValueError, KeyError):
                     pass
+            log.info("SSE client disconnected: user='%s' role=%s", user.getUsername(), role)
+
     return Response(
         stream_with_context(generate()),
         mimetype="text/event-stream",
@@ -135,32 +199,36 @@ def login():
         password = auth.password
         for user in userDB.getAllUsers():
             if user.getUsername() == username and user.getPassword() == password:
+                log.info("Login successful: user='%s' role=%s", username, user.getRole())
                 return jsonify({"success": True, "user": objToDict(user)})
+        log.warning("Login failed: invalid credentials for username='%s' (ip=%s)", username, request.remote_addr)
         return jsonify({"success": False, "error": "Invalid username or password"}), 401
     except Exception as e:
+        log.error("Login request error: %s (ip=%s)", e, request.remote_addr, exc_info=True)
         return jsonify({"success": False, "error": "Invalid request format"}), 400
+
 
 @app.route("/reset-password-request", methods=["POST"])
 def requestResetPassword():
     payload = request.get_json(silent=True) or {}
     username = payload.get('username')
     if not username:
+        log.warning("Password reset request missing username (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "No username specified"}), 401
     try:
         userEmail = globalData.allUsers[username].getEmail()
-        # userEmail = userDB.getSecuredUser(username).getEmail()
         if not userEmail:
             raise Exception("No email associated to this user")
     except Exception as e:
+        log.warning("Password reset: no email found for username='%s': %s", username, e)
         return jsonify({"success": False, "error": f"Can't find a mail associated to username {username}"}), 400
 
     code = str(randint(0, 10**6 - 1)).zfill(6)
     msg = Message(
         subject='PTW Reset Password Verification Code',
         sender=os.environ.get('MAIL_USERNAME'),
-        recipients=[userEmail], 
-        cc=['shady.abdelhady@rashpetco.com'], 
-        # body='An automated flask test mail', 
+        recipients=[userEmail],
+        cc=['shady.abdelhady@rashpetco.com'],
         html=f'''<!DOCTYPE html>
             <html lang="en">
             <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -219,9 +287,14 @@ def requestResetPassword():
             </html>''',
     )
 
-    with app.app_context():
-        mail.send(msg)
-    
+    try:
+        with app.app_context():
+            mail.send(msg)
+        log.info("Password reset code sent: username='%s' email='%s'", username, userEmail)
+    except Exception as e:
+        log.error("Failed to send password reset email for username='%s': %s", username, e, exc_info=True)
+        return jsonify({"success": False, "error": "Failed to send verification email"}), 500
+
     resetCodes[username] = (code, time())
     return jsonify({"success": True, "message": "Verification code sent to registered email address"})
 
@@ -233,22 +306,29 @@ def resetPassword():
     newPassword = payload.get('new-password')
     verificationCode = payload.get('verification-code')
     if not username or not newPassword or not verificationCode:
+        log.warning("Password reset: missing required fields (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     if username not in resetCodes:
+        log.warning("Password reset: no pending reset for username='%s'", username)
         return jsonify({"success": False, "error": "No reset password request found for this username"}), 404
     code, timestamp = resetCodes[username]
-    if time() - timestamp > 15 * 60:  # code expires after 15 minutes
+    if time() - timestamp > 15 * 60:
         del resetCodes[username]
+        log.warning("Password reset: expired code used for username='%s'", username)
         return jsonify({"success": False, "error": "Verification code expired"}), 400
     if verificationCode != code:
+        log.warning("Password reset: invalid verification code for username='%s' (ip=%s)", username, request.remote_addr)
         return jsonify({"success": False, "error": "Invalid verification code"}), 400
-    
+
     try:
         userDB.updateUserPassword(username, newPassword)
         del resetCodes[username]
+        log.info("Password reset successful: username='%s'", username)
         return jsonify({"success": True, "message": "Password reset successfully"})
     except Exception as e:
+        log.error("Password reset DB update failed for username='%s': %s", username, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
+
 
 @app.route("/user", methods=["GET"])
 def getSecuredUser():
@@ -256,136 +336,178 @@ def getSecuredUser():
     data = request.get_json(silent=True) or {}
     requestedUsername = data.get('username')
     if user is None:
+        log.warning("GET /user unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     try:
-        return jsonify({"success": True, "user": objToDict(userDB.getSecuredUser(requestedUsername))})
+        result = userDB.getSecuredUser(requestedUsername)
+        log.debug("GET /user: requester='%s' requested='%s'", user.getUsername(), requestedUsername)
+        return jsonify({"success": True, "user": objToDict(result)})
     except Exception as e:
+        log.error("GET /user failed for '%s': %s", requestedUsername, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
 
 
 @app.route("/users", methods=["GET"])
-def getAllUsers():  
+def getAllUsers():
     user = getVerifiedUser(request.authorization)
     if user is None:
+        log.warning("GET /users unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     try:
-        return jsonify({"success": True, "all-users": objToDict(userDB.getAllSecuredUsers())})
+        result = userDB.getAllSecuredUsers()
+        log.debug("GET /users: %d users returned to '%s'", len(result), user.getUsername())
+        return jsonify({"success": True, "all-users": objToDict(result)})
     except Exception as e:
+        log.error("GET /users failed: %s", e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
+
 
 @app.route("/usernames", methods=["GET"])
 def getAllUsernames():
     user = getVerifiedUser(request.authorization)
     if user is None:
+        log.warning("GET /usernames unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     try:
         users = userDB.getAllUsernames()
+        log.debug("GET /usernames: %d usernames returned to '%s'", len(users), user.getUsername())
         return jsonify({"success": True, "usernames": users})
     except Exception as e:
+        log.error("GET /usernames failed: %s", e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
+
 
 @app.route("/users", methods=["POST"])
 def newUserRequest():
     user = getVerifiedUser(request.authorization)
     if user is None or user.getRole() != UserRoles.ADMIN:
+        log.warning("POST /users unauthorized: requester='%s' (ip=%s)", user.getUsername() if user else "unauthenticated", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     userDataDict = request.get_json(silent=True) or {}
     try:
         err = userDB.addUserFromDict(userDataDict)
+        username = userDataDict.get('username')
         if err is None:
-            username = userDataDict.get('username')
             if username:
                 try:
                     globalData.allUsers[username] = userDB.getSecuredUser(username)
                 except Exception:
                     pass
+            log.info("User created: username='%s' by admin='%s'", username, user.getUsername())
+        else:
+            log.warning("User creation failed for '%s': %s (by admin='%s')", username, err, user.getUsername())
         return jsonify({"success": True, "error": err})
     except Exception as e:
+        log.error("POST /users exception: %s", e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
+
 
 @app.route("/users", methods=["PUT"])
 def updateUserRequest():
     authUser = getVerifiedUser(request.authorization)
     if authUser is None:
+        log.warning("PUT /users unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     userDataDict = request.get_json(silent=True) or {}
+    target = userDataDict.get("username")
     try:
-        if authUser.getRole() == UserRoles.ADMIN or authUser.getUsername() == userDataDict["username"]:
+        if authUser.getRole() == UserRoles.ADMIN or authUser.getUsername() == target:
             result = userDB.updateUserFromDict(userDataDict)
             if result is None:
-                username = userDataDict.get('username')
-                if username:
+                if target:
                     try:
-                        globalData.allUsers[username] = userDB.getSecuredUser(username)
+                        globalData.allUsers[target] = userDB.getSecuredUser(target)
                     except Exception:
                         pass
+            log.info("User updated: username='%s' by='%s'", target, authUser.getUsername())
             return jsonify({"success": True, "user": result})
         else:
+            log.warning("PUT /users: '%s' attempted to update '%s' without permission", authUser.getUsername(), target)
             return jsonify({"success": False, "error": "Unauthorized"}), 401
     except Exception as e:
+        log.error("PUT /users exception for '%s': %s", target, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
+
 
 @app.route("/users/theme", methods=["PATCH"])
 def updateUserTheme():
     authUser = getVerifiedUser(request.authorization)
     if authUser is None:
+        log.warning("PATCH /users/theme unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     data = request.get_json(silent=True) or {}
     username = data.get('username')
     theme = data.get('theme')
     if authUser.getUsername() != username:
+        log.warning("PATCH /users/theme: '%s' attempted to change theme for '%s'", authUser.getUsername(), username)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     try:
         userDB.updateTheme(username, theme)
+        log.debug("Theme updated: user='%s' theme='%s'", username, theme)
         return jsonify({"success": True})
     except Exception as e:
+        log.error("PATCH /users/theme failed for '%s': %s", username, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
+
 
 @app.route("/users", methods=["DELETE"])
 def deleteUserRequest():
     user = getVerifiedUser(request.authorization)
     if user is None or user.getRole() != UserRoles.ADMIN:
+        log.warning("DELETE /users unauthorized: requester='%s' (ip=%s)", user.getUsername() if user else "unauthenticated", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     data = request.get_json(silent=True) or {}
     try:
         username = data["username"]
         userDB.deleteUser(User(username=username))
         globalData.allUsers.pop(username, None)
+        log.info("User deleted: username='%s' by admin='%s'", username, user.getUsername())
         return jsonify({"success": True, "user": None})
     except Exception as e:
+        log.error("DELETE /users failed: %s", e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
+
 
 @app.route("/ptws", methods=["GET"])
 def getAllPTWs():
     user = getVerifiedUser(request.authorization)
     if user is None:
+        log.warning("GET /ptws unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     try:
         data = request.get_json(silent=True) or {}
         dep = data.get('department')
         req = data.get('requestor')
         ptws = ptwDB.getAllPTWs(department=dep, requestor=req)
+        log.debug("GET /ptws: %d PTWs returned to user='%s'", len(ptws), user.getUsername())
         return jsonify({"success": True, "ptws": [objToDict(ptw) for ptw in ptws.values()]})
     except Exception as e:
+        log.error("GET /ptws failed: %s", e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
+
 
 @app.route("/ptws/archive", methods=["GET"])
 def getArchivedPTWs():
     user = getVerifiedUser(request.authorization)
     if user is None:
+        log.warning("GET /ptws/archive unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     try:
         data = request.get_json(silent=True) or {}
         dep = data.get('department')
         ptws = ptwDB.getArchivedPTWs(department=dep)
+        log.debug("GET /ptws/archive: %d PTWs returned to user='%s'", len(ptws), user.getUsername())
         return jsonify({"success": True, "ptws": [objToDict(ptw) for ptw in ptws]})
     except Exception as e:
+        log.error("GET /ptws/archive failed: %s", e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
+
 
 @app.route("/ptws", methods=["POST"])
 def addPTWRequest():
     user = getVerifiedUser(request.authorization)
     if user is None:
+        log.warning("POST /ptws unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     ptwDict = request.get_json(silent=True) or {}
     try:
@@ -394,8 +516,10 @@ def addPTWRequest():
         if new_ptw:
             globalData.allPTWs[new_ptw.id] = new_ptw
         _broadcast("new_ptw", {"ptw_id": ptw_id, "type": ptwDict.get("type", ""), "by": user.getUsername()}, roles=[UserRoles.USER, UserRoles.COORDINATOR])
+        log.info("PTW created: id=%s type='%s' by='%s'", ptw_id, ptwDict.get("type"), user.getUsername())
         return jsonify({"success": True, "ptw-id": ptw_id})
     except Exception as e:
+        log.error("POST /ptws failed: %s", e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
 
 
@@ -403,6 +527,7 @@ def addPTWRequest():
 def deletePTWRequest():
     user = getVerifiedUser(request.authorization)
     if user is None:
+        log.warning("DELETE /ptws unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
     try:
@@ -410,63 +535,80 @@ def deletePTWRequest():
         result = ptwDB.deletePTW(ptw_id)
         globalData.allPTWs.pop(ptw_id, None)
         _broadcast("ptw_deleted", {"ptw_id": ptw_id, "by": user.getUsername()})
+        log.info("PTW deleted: id=%s by='%s'", ptw_id, user.getUsername())
         return jsonify({"success": True, "ptw": result})
     except Exception as e:
+        log.error("DELETE /ptws failed for id=%s: %s", payload.get('ptw-id'), e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
+
 
 @app.route("/ptws/approvals", methods=["POST"])
 def updatePTWApprovals():
     user = getVerifiedUser(request.authorization)
     if user is None:
+        log.warning("POST /ptws/approvals unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
     ptwId = payload.get('ptw-id')
     approval = PTWData.Approval(**payload.get('approval'))
     if ptwId is None or approval is None:
+        log.warning("POST /ptws/approvals: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     try:
         result = ptwDB.updatePTWApprovals(ptwId, approval)
         _sync_ptw(ptwId)
         _broadcast("ptw_approval", {"ptw_id": ptwId, "action": str(approval.action), "by": user.getUsername()})
+        log.info("PTW approval updated: id=%s action='%s' by='%s'", ptwId, approval.action, user.getUsername())
         return jsonify({"success": True, "ptw": result})
     except Exception as e:
+        log.error("POST /ptws/approvals failed for PTW #%s: %s", ptwId, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
-    
+
+
 @app.route("/ptws/archive", methods=["POST"])
 def archivePTWs():
     user = getVerifiedUser(request.authorization)
     if user is None:
+        log.warning("POST /ptws/archive unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
     ptwIds = payload.get('ptw-ids')
     if ptwIds is None:
+        log.warning("POST /ptws/archive: missing ptw-ids (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required field: ptw-ids"}), 400
     try:
         result = ptwDB.archivePTWs(ptwIds)
         for pid in ptwIds:
             globalData.allPTWs.pop(pid, None)
         _broadcast("ptw_archived", {"ptw_ids": ptwIds, "by": user.getUsername()})
+        log.info("PTWs archived: ids=%s by='%s'", ptwIds, user.getUsername())
         return jsonify({"success": True, "ptw": result})
     except Exception as e:
+        log.error("POST /ptws/archive failed: %s", e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
+
 
 @app.route("/ptws/run-request", methods=["POST"])
 def requestToRunPTW():
     user = getVerifiedUser(request.authorization)
     if user is None:
+        log.warning("POST /ptws/run-request unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
     ptwId = payload.get('ptw-id')
     pa = payload.get('pa')
     ts = payload.get('timestamp')
     if ptwId is None or pa is None or ts is None:
+        log.warning("POST /ptws/run-request: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     try:
         result = ptwDB.requestToRunPTW(ptwId, pa, ts)
         _sync_ptw(ptwId)
         _broadcast("ptw_run_request", {"ptw_id": ptwId, "by": pa}, roles=[UserRoles.USER, UserRoles.ISSUING])
+        log.info("PTW run requested: id=%s by PA='%s'", ptwId, pa)
         return jsonify({"success": True, "message": result})
     except Exception as e:
+        log.error("POST /ptws/run-request failed for PTW #%s: %s", ptwId, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
 
 
@@ -474,6 +616,7 @@ def requestToRunPTW():
 def runPTW():
     user = getVerifiedUser(request.authorization)
     if user is None:
+        log.warning("POST /ptws/run unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
     ptwId = payload.get('ptw-id')
@@ -481,10 +624,12 @@ def runPTW():
     ts = payload.get('timestamp')
     ok = payload.get('response')
     if ptwId is None or ia is None or ts is None or ok is None:
+        log.warning("POST /ptws/run: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
-    
+
     ptw = globalData.allPTWs.get(ptwId)
     if ptw is None:
+        log.warning("POST /ptws/run: PTW #%s not found in active PTWs", ptwId)
         return jsonify({"success": False, "error": f"PTW# {ptwId} not found"}), 400
 
     try:
@@ -497,20 +642,24 @@ def runPTW():
                 isoDB.updateIsolation(globalData.isolations[iso.tag])
             _sync_ptw(ptwId)
             _broadcast("ptw_run", {"ptw_id": ptwId, "accepted": True, "by": ia})
+            log.info("PTW run accepted: id=%s by IA='%s' isolations=%d", ptwId, ia, len(ptw.isolations))
             return jsonify({"success": True})
         else:
             ptwDB.runRejectPTW(ptwId, ia, ts)
             _sync_ptw(ptwId)
             _broadcast("ptw_run", {"ptw_id": ptwId, "accepted": False, "by": ia})
+            log.info("PTW run rejected: id=%s by IA='%s'", ptwId, ia)
             return jsonify({"success": True})
     except Exception as e:
+        log.error("POST /ptws/run failed for PTW #%s: %s", ptwId, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
-    
+
 
 @app.route("/ptws/hold-request", methods=["POST"])
 def requestToHldPTW():
     user = getVerifiedUser(request.authorization)
     if user is None:
+        log.warning("POST /ptws/hold-request unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
     ptwId = payload.get('ptw-id')
@@ -518,13 +667,16 @@ def requestToHldPTW():
     ts = payload.get('timestamp')
     keepTags = payload.get('keep-tags', [])
     if ptwId is None or pa is None or ts is None:
+        log.warning("POST /ptws/hold-request: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     try:
         ptwDB.requestToHldPTW(ptwId, pa, ts, keepTags)
         _sync_ptw(ptwId)
         _broadcast("ptw_hold_request", {"ptw_id": ptwId, "by": pa}, roles=[UserRoles.USER, UserRoles.ISSUING])
+        log.info("PTW hold requested: id=%s by PA='%s' keep_tags=%s", ptwId, pa, keepTags)
         return jsonify({"success": True})
     except Exception as e:
+        log.error("POST /ptws/hold-request failed for PTW #%s: %s", ptwId, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
 
 
@@ -532,6 +684,7 @@ def requestToHldPTW():
 def hldPTW():
     user = getVerifiedUser(request.authorization)
     if user is None:
+        log.warning("POST /ptws/hold unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
     ptwId = payload.get('ptw-id')
@@ -539,10 +692,12 @@ def hldPTW():
     ts = payload.get('timestamp')
     ok = payload.get('response')
     if ptwId is None or ia is None or ts is None or ok is None:
+        log.warning("POST /ptws/hold: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
 
     ptw = globalData.allPTWs.get(ptwId)
     if ptw is None:
+        log.warning("POST /ptws/hold: PTW #%s not found in active PTWs", ptwId)
         return jsonify({"success": False, "error": f"PTW# {ptwId} not found"}), 400
 
     try:
@@ -559,13 +714,16 @@ def hldPTW():
                 isoDB.updateIsolation(globalData.isolations[iso.tag])
             _sync_ptw(ptwId)
             _broadcast("ptw_hold", {"ptw_id": ptwId, "accepted": True, "by": ia})
+            log.info("PTW hold accepted: id=%s by IA='%s'", ptwId, ia)
             return jsonify({"success": True})
         else:
             ptwDB.hldRejectPTW(ptwId, ia, ts)
             _sync_ptw(ptwId)
             _broadcast("ptw_hold", {"ptw_id": ptwId, "accepted": False, "by": ia})
+            log.info("PTW hold rejected: id=%s by IA='%s'", ptwId, ia)
             return jsonify({"success": True})
     except Exception as e:
+        log.error("POST /ptws/hold failed for PTW #%s: %s", ptwId, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
 
 
@@ -573,19 +731,23 @@ def hldPTW():
 def requestToClsPTW():
     user = getVerifiedUser(request.authorization)
     if user is None:
+        log.warning("POST /ptws/close-request unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
     ptwId = payload.get('ptw-id')
     pa = payload.get('pa')
     ts = payload.get('timestamp')
     if ptwId is None or pa is None or ts is None:
+        log.warning("POST /ptws/close-request: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     try:
         result = ptwDB.requestToClsPTW(ptwId, pa, ts)
         _sync_ptw(ptwId)
         _broadcast("ptw_close_request", {"ptw_id": ptwId, "by": pa}, roles=[UserRoles.USER, UserRoles.ISSUING])
+        log.info("PTW close requested: id=%s by PA='%s'", ptwId, pa)
         return jsonify({"success": True, "message": result})
     except Exception as e:
+        log.error("POST /ptws/close-request failed for PTW #%s: %s", ptwId, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
 
 
@@ -593,6 +755,7 @@ def requestToClsPTW():
 def clsPTW():
     user = getVerifiedUser(request.authorization)
     if user is None:
+        log.warning("POST /ptws/close unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
     ptwId = payload.get('ptw-id')
@@ -600,12 +763,14 @@ def clsPTW():
     ts = payload.get('timestamp')
     ok = payload.get('response')
     if ptwId is None or ia is None or ts is None or ok is None:
+        log.warning("POST /ptws/close: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
-    
+
     ptw = globalData.allPTWs.get(ptwId)
     if ptw is None:
+        log.warning("POST /ptws/close: PTW #%s not found in active PTWs", ptwId)
         return jsonify({"success": False, "error": f"PTW# {ptwId} not found"}), 400
-    
+
     try:
         if ok:
             ptwDB.clsAcceptPTW(ptwId, ia, ts)
@@ -614,32 +779,36 @@ def clsPTW():
                     globalData.isolations[iso.tag].unlinkPTW(ptwId)
                     isoDB.updateIsolation(globalData.isolations[iso.tag])
                 else:
-                    print(f"Isolation {iso.tag} not found in active isolations")
+                    log.critical("PTW close: isolation tag='%s' not in active isolations (PTW #%s) — data inconsistency", iso.tag, ptwId)
             _sync_ptw(ptwId)
             _broadcast("ptw_close", {"ptw_id": ptwId, "accepted": True, "by": ia})
+            log.info("PTW closed (accepted): id=%s by IA='%s'", ptwId, ia)
             return jsonify({"success": True})
         else:
             ptwDB.clsRejectPTW(ptwId, ia, ts)
             _sync_ptw(ptwId)
             _broadcast("ptw_close", {"ptw_id": ptwId, "accepted": False, "by": ia})
+            log.info("PTW close rejected: id=%s by IA='%s'", ptwId, ia)
             return jsonify({"success": True})
     except Exception as e:
+        log.error("POST /ptws/close failed for PTW #%s: %s", ptwId, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
-    
+
 
 @app.route("/ptws/attachments", methods=["POST"])
 def addPtwAttachments():
     user = getVerifiedUser(request.authorization)
     if user is None:
+        log.warning("POST /ptws/attachments unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
-    
+
     attachments = request.files or {}
     payload = request.values.to_dict() or {}
-
     ptwId = payload.get('ptw-id')
     if ptwId is None:
+        log.warning("POST /ptws/attachments: missing ptw-id (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing PTW id field"}), 400
-    
+
     errors = []
     succeeded = []
     for file in attachments.values():
@@ -647,92 +816,109 @@ def addPtwAttachments():
         if not filename:
             errors.append(f"No file selected for uploading {filename}")
             continue
-        
         try:
-            os.makedirs(f'./ptw-{ptwId}-attachments', exist_ok=True)
-            filepath = os.path.join(f'./ptw-{ptwId}-attachments', filename)
+            os.makedirs(os.path.join(_BASE_DIR, f'ptw-{ptwId}-attachments'), exist_ok=True)
+            filepath = os.path.join(os.path.join(_BASE_DIR, f'ptw-{ptwId}-attachments'), filename)
             if os.path.exists(filepath):
                 errors.append(f"File with the same name already exists for {filename}")
                 continue
             file.save(filepath)
             succeeded.append(filename)
+            log.debug("Attachment saved: PTW #%s file='%s'", ptwId, filename)
         except Exception as e:
             errors.append(f"Failed to upload file for {filename}: {str(e)}")
+            log.error("Attachment upload failed: PTW #%s file='%s': %s", ptwId, filename, e)
 
-    # err = ptwDB.addPtwAttachments(ptwId, succeeded)
-    # if err:
-    #     return jsonify({"success": False, "error": err}), 400
     if errors:
+        log.warning("Attachment upload completed with errors: PTW #%s succeeded=%s errors=%s", ptwId, succeeded, errors)
         return jsonify({"success": False, "error": "\n".join(errors)}), 400
     else:
+        log.info("Attachments uploaded: PTW #%s files=%s by='%s'", ptwId, succeeded, user.getUsername())
         return jsonify({"success": True, "message": "Files uploaded successfully"})
-    
+
 
 @app.route("/ptws/attachments", methods=["GET"])
 def getPtwAttachment():
     user = getVerifiedUser(request.authorization)
     if user is None:
+        log.warning("GET /ptws/attachments unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
     ptwId = payload.get('ptw-id')
     filename = payload.get('filename')
     if ptwId is None:
+        log.warning("GET /ptws/attachments: missing ptw-id (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     try:
         if filename:
-            filepath = os.path.join(f'./ptw-{ptwId}-attachments', filename)
+            filepath = os.path.join(os.path.join(_BASE_DIR, f'ptw-{ptwId}-attachments'), filename)
             if not os.path.isfile(filepath):
+                log.warning("Attachment not found: PTW #%s file='%s'", ptwId, filename)
                 return jsonify({"success": False, "error": "File not found"}), 404
+            log.debug("Attachment served: PTW #%s file='%s' to user='%s'", ptwId, filename, user.getUsername())
             return send_file(filepath, as_attachment=True)
         else:
             filenames = []
-            dir = f'./ptw-{ptwId}-attachments'
-            if not os.path.exists(dir):
+            dirpath = os.path.join(_BASE_DIR, f'ptw-{ptwId}-attachments')
+            if not os.path.exists(dirpath):
                 return jsonify({"success": True, "message": "PTW attachments dir not found", "attachments": []})
-            for filename in os.listdir(dir):
-                filepath = os.path.join(dir, filename)
-                if os.path.isfile(filepath):
-                    filenames.append(filename)
+            for fname in os.listdir(dirpath):
+                fpath = os.path.join(dirpath, fname)
+                if os.path.isfile(fpath):
+                    filenames.append(fname)
+            log.debug("Attachment list: PTW #%s count=%d user='%s'", ptwId, len(filenames), user.getUsername())
             return jsonify({"success": True, "attachments": filenames})
     except Exception as e:
+        log.error("GET /ptws/attachments failed for PTW #%s: %s", ptwId, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
-    
+
+
 @app.route("/ptws/attachments", methods=["DELETE"])
 def deletePtwAttachments():
     user = getVerifiedUser(request.authorization)
     if user is None:
+        log.warning("DELETE /ptws/attachments unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
     ptwId = payload.get('ptw-id')
     keepFilenames = payload.get('keep-filenames')
     if ptwId is None or keepFilenames is None:
+        log.warning("DELETE /ptws/attachments: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     keepFilenames = set(keepFilenames)
     try:
-        dir = f'./ptw-{ptwId}-attachments'
-        if os.path.exists(dir):
-            for filename in os.listdir(dir):
-                filePath = os.path.join(dir, filename)
-                if os.path.isfile(filePath) and filename not in keepFilenames:
-                    os.remove(filePath)
+        dirpath = os.path.join(_BASE_DIR, f'ptw-{ptwId}-attachments')
+        deleted = []
+        if os.path.exists(dirpath):
+            for fname in os.listdir(dirpath):
+                fpath = os.path.join(dirpath, fname)
+                if os.path.isfile(fpath) and fname not in keepFilenames:
+                    os.remove(fpath)
+                    deleted.append(fname)
+        log.info("Attachments deleted: PTW #%s deleted=%s by='%s'", ptwId, deleted, user.getUsername())
         return jsonify({"success": True})
     except Exception as e:
+        log.error("DELETE /ptws/attachments failed for PTW #%s: %s", ptwId, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
+
 
 @app.route("/ptws/attachments/copy", methods=["POST"])
 def copyPtwAttachments():
     user = getVerifiedUser(request.authorization)
     if user is None:
+        log.warning("POST /ptws/attachments/copy unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
     sourcePtwId = payload.get('source-ptw-id')
     targetPtwId = payload.get('target-ptw-id')
     if sourcePtwId is None or targetPtwId is None:
+        log.warning("POST /ptws/attachments/copy: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     try:
-        sourceDir = f'./ptw-{sourcePtwId}-attachments'
-        targetDir = f'./ptw-{targetPtwId}-attachments'
+        sourceDir = os.path.join(_BASE_DIR, f'ptw-{sourcePtwId}-attachments')
+        targetDir = os.path.join(_BASE_DIR, f'ptw-{targetPtwId}-attachments')
         if not os.path.exists(sourceDir):
+            log.warning("Attachments copy: source PTW #%s dir not found", sourcePtwId)
             return jsonify({"success": False, "error": "Source PTW attachments not found"}), 404
         os.makedirs(targetDir, exist_ok=True)
         successfullyCopied = []
@@ -744,42 +930,56 @@ def copyPtwAttachments():
                     with open(targetFilePath, 'wb') as tgtFile:
                         tgtFile.write(srcFile.read())
                 successfullyCopied.append(filename)
-        # ptwDB.addPtwAttachments(targetPtwId, successfullyCopied)
+        log.info("Attachments copied: PTW #%s -> PTW #%s files=%s by='%s'", sourcePtwId, targetPtwId, successfullyCopied, user.getUsername())
         return jsonify({"success": True, "message": "Attachments copied successfully"})
     except Exception as e:
+        log.error("POST /ptws/attachments/copy failed %s->%s: %s", sourcePtwId, targetPtwId, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
-    
+
 
 @app.route("/isolations", methods=["GET"])
 def getAllIsolations():
     user = getVerifiedUser(request.authorization)
     if user is None:
+        log.warning("GET /isolations unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     try:
-        return jsonify({"success": True, "isolations": objToDict([iso for iso in isoDB.getAllIsolations().values()])})
+        isolations = isoDB.getAllIsolations()
+        log.debug("GET /isolations: %d isolations returned to user='%s'", len(isolations), user.getUsername())
+        return jsonify({"success": True, "isolations": objToDict([iso for iso in isolations.values()])})
     except Exception as e:
-        print(str(e))
+        log.error("GET /isolations failed: %s", e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
+
 
 @app.route("/risks", methods=["GET"])
 def getAllRiskAssessments():
     user = getVerifiedUser(request.authorization)
     if user is None:
+        log.warning("GET /risks unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     try:
-        return jsonify({"success": True, "risks": objToDict(risksDB.getAllRiskAssessments())})
+        risks = risksDB.getAllRiskAssessments()
+        log.debug("GET /risks: %d assessments returned to user='%s'", len(risks), user.getUsername())
+        return jsonify({"success": True, "risks": objToDict(risks)})
     except Exception as e:
+        log.error("GET /risks failed: %s", e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
+
 
 @app.route("/risks", methods=["POST"])
 def addNewRiskAssessment():
     user = getVerifiedUser(request.authorization)
     if user is None or user.getRole() != UserRoles.SAFETY:
+        log.warning("POST /risks unauthorized: requester='%s' (ip=%s)", user.getUsername() if user else "unauthenticated", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     riskAssessmentDict = request.get_json(silent=True) or {}
     try:
-        return jsonify({"success": True, "error": risksDB.addRiskAssessmentFromDict(riskAssessmentDict)})
+        result = risksDB.addRiskAssessmentFromDict(riskAssessmentDict)
+        log.info("Risk assessment created: title='%s' by='%s'", riskAssessmentDict.get('title'), user.getUsername())
+        return jsonify({"success": True, "error": result})
     except Exception as e:
+        log.error("POST /risks failed: %s", e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
 
 
@@ -787,22 +987,32 @@ def addNewRiskAssessment():
 def updateRiskAssessment():
     user = getVerifiedUser(request.authorization)
     if user is None or user.getRole() != UserRoles.SAFETY:
+        log.warning("PUT /risks unauthorized: requester='%s' (ip=%s)", user.getUsername() if user else "unauthenticated", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     riskAssessmentDict = request.get_json(silent=True) or {}
     try:
-        return jsonify({"success": True, "error": risksDB.updateRiskAssessmentFromDict(riskAssessmentDict)})
+        result = risksDB.updateRiskAssessmentFromDict(riskAssessmentDict)
+        log.info("Risk assessment updated: title='%s' by='%s'", riskAssessmentDict.get('title'), user.getUsername())
+        return jsonify({"success": True, "error": result})
     except Exception as e:
+        log.error("PUT /risks failed: %s", e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
+
 
 @app.route("/risks", methods=["DELETE"])
 def deleteRiskAssessment():
     user = getVerifiedUser(request.authorization)
     if user is None or user.getRole() != UserRoles.SAFETY:
+        log.warning("DELETE /risks unauthorized: requester='%s' (ip=%s)", user.getUsername() if user else "unauthenticated", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     data = request.get_json(silent=True) or {}
     try:
-        return jsonify({"success": True, "error": risksDB.deleteRiskAssessment(data['title'])})
+        title = data['title']
+        result = risksDB.deleteRiskAssessment(title)
+        log.info("Risk assessment deleted: title='%s' by='%s'", title, user.getUsername())
+        return jsonify({"success": True, "error": result})
     except Exception as e:
+        log.error("DELETE /risks failed: %s", e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
 
 
@@ -810,30 +1020,38 @@ def deleteRiskAssessment():
 def getMIWI():
     user = getVerifiedUser(request.authorization)
     if user is None:
+        log.warning("GET /miwi unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
     try:
         filename = payload.get('filename')
         if not filename:
+            log.warning("GET /miwi: filename not provided (user='%s')", user.getUsername())
             return jsonify({"success": False, "error": "Filename not provided"}), 400
-        filepath = './miwi/' + filename
+        filepath = os.path.join(_BASE_DIR, 'miwi', filename)
         if not os.path.isfile(filepath):
+            log.warning("GET /miwi: file not found '%s' (user='%s')", filename, user.getUsername())
             return jsonify({"success": False, "error": "File not found"}), 404
+        log.debug("MIWI served: file='%s' to user='%s'", filename, user.getUsername())
         return send_file(filepath, as_attachment=True)
     except Exception as e:
+        log.error("GET /miwi failed: %s", e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
-    
+
 
 @app.route("/miwis", methods=["GET"])
 def getAllMIWIs():
     user = getVerifiedUser(request.authorization)
     if user is None:
+        log.warning("GET /miwis unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     try:
-        miwiPath = './miwi'
+        miwiPath = os.path.join(_BASE_DIR, 'miwi')
         filenames = [f for f in os.listdir(miwiPath) if os.path.isfile(os.path.join(miwiPath, f))]
+        log.debug("GET /miwis: %d files returned to user='%s'", len(filenames), user.getUsername())
         return jsonify({"success": True, "miwis": filenames})
     except Exception as e:
+        log.error("GET /miwis failed: %s", e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
 
 
@@ -841,24 +1059,62 @@ def getAllMIWIs():
 def uploadMIWI():
     user = getVerifiedUser(request.authorization)
     if user is None:
+        log.warning("POST /miwi unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     if 'miwi' not in request.files:
+        log.warning("POST /miwi: no file part in request (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "No file part in the request"}), 400
-    
+
     file = request.files['miwi']
     filename = file.filename if file else None
     if not filename:
+        log.warning("POST /miwi: no filename provided (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "No file selected for uploading"}), 400
-    
+
     try:
-        filepath = os.path.join('./miwi', filename)
+        filepath = os.path.join(_BASE_DIR, 'miwi', filename)
         if os.path.exists(filepath):
+            log.warning("POST /miwi: file already exists '%s' (user='%s')", filename, user.getUsername())
             return jsonify({"success": False, "error": "File with the same name already exists"}), 400
         file.save(filepath)
+        log.info("MIWI uploaded: file='%s' by='%s'", filename, user.getUsername())
         return jsonify({"success": True, "message": "File uploaded successfully"})
     except Exception as e:
+        log.error("POST /miwi failed for file='%s': %s", filename, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 500
-    
+
+
+@app.route("/logs", methods=["GET"])
+def getLogs():
+    user = getVerifiedUser(request.authorization)
+    if user is None or user.getRole() != UserRoles.ADMIN:
+        log.warning("GET /logs unauthorized: requester='%s' (ip=%s)", user.getUsername() if user else "unauthenticated", request.remote_addr)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    payload = request.get_json(silent=True) or {}
+    filename = payload.get('filename')
+    try:
+        logs_dir = os.path.join(_BASE_DIR, 'logs')
+        if filename:
+            filepath = os.path.join(logs_dir, filename)
+            if not os.path.abspath(filepath).startswith(os.path.abspath(logs_dir)):
+                log.warning("GET /logs: path traversal attempt for filename='%s' by='%s'", filename, user.getUsername())
+                return jsonify({"success": False, "error": "Invalid filename"}), 400
+            if not os.path.isfile(filepath):
+                log.warning("GET /logs: file not found '%s' (admin='%s')", filename, user.getUsername())
+                return jsonify({"success": False, "error": "Log file not found"}), 404
+            log.info("Log file served: '%s' to admin='%s'", filename, user.getUsername())
+            return send_file(os.path.abspath(filepath), as_attachment=True, mimetype='text/plain')
+        else:
+            if not os.path.exists(logs_dir):
+                return jsonify({"success": True, "logs": []})
+            filenames = sorted([f for f in os.listdir(logs_dir) if os.path.isfile(os.path.join(logs_dir, f))])
+            log.debug("GET /logs: %d log files listed for admin='%s'", len(filenames), user.getUsername())
+            return jsonify({"success": True, "logs": filenames})
+    except Exception as e:
+        log.error("GET /logs failed: %s", e, exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 400
+
 
 if __name__ == "__main__":
+    log.info("Starting PTW server on 0.0.0.0:5000")
     app.run(host="0.0.0.0", port=5000)

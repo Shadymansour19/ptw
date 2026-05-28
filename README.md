@@ -39,6 +39,9 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 - **Role-based UI** — Each of 10 roles gets a tailored interface showing only relevant actions and data
 - **Password reset via email** — 6-digit verification code sent via Gmail SMTP, expires in 15 minutes
 - **Multi-language support** — Language switching built into the UI
+- **Server activity logging** — rotating log files (10 MB, 5 backups) with DEBUG/INFO/WARNING/ERROR/CRITICAL levels; log lines include timestamp, level, and source location
+- **Admin log viewer** — dedicated tab for Admins with collapsible per-file panels, lazy loading, per-level color coding, and a level filter
+- **Light/dark theme** — full UI theme switching (system / light / dark) with preference saved server-side per user
 
 ---
 
@@ -191,6 +194,8 @@ ptw/
 │   ├── utils.py                 # Shared helpers (resource_path, objToDict, dictToObj)
 │   ├── WidgetPTW.py             # Full PTW form (create/view/edit)
 │   ├── TablePTWs.py             # PTW list with filters + Excel export
+│   ├── TabServerLogs.py         # Admin log viewer tab (collapsible, color-coded, filterable)
+│   ├── CheckableComboBox.py     # Reusable multi-select checkbox combo box
 │   ├── ReportGenerator.py       # PDF and Excel report generation
 │   ├── assets/                  # Bundled images and icons
 │   ├── fonts/                   # Bundled fonts
@@ -205,7 +210,8 @@ ptw/
     ├── IsolationDb.py           # Isolation database operations
     ├── risksDb.py               # Risk assessment DB operations
     ├── GlobalData.py            # Server-side in-memory cache
-    └── miwi/                    # MIWI PDF documents
+    ├── miwi/                    # MIWI PDF documents
+    └── logs/                    # Rotating server log files (gitignored)
 ```
 
 ---

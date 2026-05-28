@@ -1,7 +1,7 @@
 from datetime import datetime
 import copy
 import re
-from PyQt6.QtCore import Qt, QSize, QEvent, QPropertyAnimation, QEasingCurve, QTimer
+from PyQt6.QtCore import Qt, QSize, QEvent, QPropertyAnimation, QEasingCurve
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QStackedWidget, QVBoxLayout, QGridLayout,
                               QFormLayout, QLabel, QPushButton, QToolButton,
                               QToolBar, QDialog, QDialogButtonBox, QTextEdit, QListWidget,
@@ -17,6 +17,7 @@ from DialogSelectIsolations import DialogSelectIsolations
 from TableUsers import TableUsers
 from TableRisks import TableRisks
 from TableIsolations import TableIsolationsBrowser
+from TabServerLogs import TabServerLogs
 from DialogSettings import DialogSettings
 from clientRequests import ClientRequests
 from GlobalData import globalData
@@ -89,6 +90,7 @@ class MainWindow(QMainWindow):
         self.tabAllUsers = TableUsers(self.stack, self.loggedUser, "All Users")
         self.tabRisks = TableRisks(self.stack, self.loggedUser, "All Risks", readonly=False, selectable=False)
         self.tabIsolations = TableIsolationsBrowser(self.stack, self.loggedUser, "Isolations")
+        self.tabServerLogs = TabServerLogs(self.stack, self.loggedUser, "Server Logs")
 
         lytWelcome = QVBoxLayout()
         self.lytWelcomeBtns = QGridLayout()
@@ -132,6 +134,7 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.tabAllUsers)
         self.stack.addWidget(self.tabRisks)
         self.stack.addWidget(self.tabIsolations)
+        self.stack.addWidget(self.tabServerLogs)
 
         self.stack.currentChanged.connect(self.stackTabChanged)
 
@@ -175,29 +178,7 @@ class MainWindow(QMainWindow):
         self.btnIsolations = QPushButton(qta.icon('fa6s.unlock-keyhole'), "")
         self.btnLanguage = QPushButton(qta.icon('fa5s.language'), "")
         self.btnTheme = QPushButton(qta.icon('fa6s.circle-half-stroke'), "")
-
-        self._btnIcons = {
-            self.btnWelcome:                    'fa5s.home',
-            self.btnUnderReviewPTWs:            'fa6s.magnifying-glass-chart',
-            self.btnReturnedPTWs:               'fa5s.undo',
-            self.btnApprovedPTWs:               'fa6s.check',
-            self.btnRejectedPTWs:               'fa5s.times',
-            self.btnWaitingRunConfirmationPTWs: 'fa6.clock',
-            self.btnRunningPTWs:                'fa6s.play',
-            self.btnWaitingHldConfirmationPTWs: 'fa5s.hourglass-half',
-            self.btnHeldPTWs:                   'fa6s.pause',
-            self.btnWaitingClsConfirmationPTWs: 'fa6s.clock',
-            self.btnClosedPTWs:                 'fa6s.stop',
-            self.btnArchivedPTWs:               'fa6s.box-archive',
-            self.btnSettings:                   'fa6s.gear',
-            self.btnRefresh:                    'fa6s.rotate-right',
-            self.btnLogout:                     'fa6s.arrow-right-from-bracket',
-            self.btnUsers:                      'fa6s.users-gear',
-            self.btnRisks:                      'mdi.shield-check-outline',
-            self.btnIsolations:                 'fa6s.unlock-keyhole',
-            self.btnLanguage:                   'fa5s.language',
-            self.btnTheme:                      'fa6s.circle-half-stroke',
-        }
+        self.btnServerLogs = QPushButton(qta.icon('fa6s.file-lines'), "")
 
         self.btnWelcome.setToolTip("Home [Ctrl+H]")
         self.btnUnderReviewPTWs.setToolTip("Under Review PTWs")
@@ -219,6 +200,7 @@ class MainWindow(QMainWindow):
         self.btnIsolations.setToolTip("Isolations")
         self.btnLanguage.setToolTip("Switch Language")
         self.btnTheme.setToolTip("Toggle Light/Dark Mode")
+        self.btnServerLogs.setToolTip("Server Logs")
 
         self._sideBarBtnMap = {
             self.btnWelcome:                    self.tabWelcome,
@@ -235,8 +217,9 @@ class MainWindow(QMainWindow):
             self.btnArchivedPTWs:               self.tabArchivedPTWs,
             self.btnUsers:                      self.tabAllUsers,
             self.btnRisks:                      self.tabRisks,
-            self.btnIsolations:           self.tabIsolations,
-            self.btnRefresh:                    None, 
+            self.btnIsolations:                 self.tabIsolations,
+            self.btnServerLogs:                 self.tabServerLogs,
+            self.btnRefresh:                    None,
             self.btnSettings:                   None,
             self.btnLogout:                     None,
             self.btnLanguage:                   None,
@@ -865,6 +848,7 @@ class MainWindow(QMainWindow):
             tile.setText(btn.toolTip())
             tile.setIconSize(QSize(48, 48))
             tile.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            tile.setCursor(Qt.CursorShape.PointingHandCursor)
             tile.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
             tile.clicked.connect(btn.click)
             tile.setStyleSheet("""
@@ -1056,7 +1040,8 @@ class MainWindow(QMainWindow):
             ),
             UserRoles.ADMIN: (
                 "As an <b>Administrator</b>, you manage system users and their access roles. "
-                "Use the <b>Users</b> tab to create, and edit user accounts. "
+                "Use the <b>Users</b> tab to create and edit user accounts. "
+                "Use the <b>Server Logs</b> tab to monitor server activity and audit system events. "
                 "You have full visibility over all registered users in the system."
             ),
         }
@@ -1517,7 +1502,7 @@ class AdminMainWindow(MainWindow):
 
         self.setAvailableTabs([
             [self.btnWelcome],
-            [self.btnUsers],
+            [self.btnUsers, self.btnServerLogs],
         ])
 
         self.btnFAB.setText("+")
@@ -1542,11 +1527,12 @@ class AdminMainWindow(MainWindow):
         tab = self.stack.currentWidget()
         self.btnFAB.setVisible(tab in [self.tabAllUsers])
     
-    def refreshGUI(self):
+    def refreshGUI(self, refreshArchivedPTWs: bool = False):
         super().refreshWelcomePage()
         self.tabAllUsers.clear()
         for user in globalData.allUsers.values():
             self.tabAllUsers.addUserToGUI(user)
+        self.tabServerLogs.refresh()
 
 
 

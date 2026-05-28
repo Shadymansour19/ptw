@@ -54,11 +54,11 @@ class ClientRequests:
             data = response.json()
         except requests.exceptions.RequestException as e:
             err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
-            return f"Password reset failed\nerr\nPlease check your connection and try again."
+            return f"Password reset failed\n{err}\nPlease check your connection and try again."
 
         if not data.get("success"):
             err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
-            return data.get("message", f"Password reset failed!\nerr")
+            return data.get("message", f"Password reset failed!\n{err}")
         return None
 
     def getAllUsers(loggedUser: User) -> tuple[str, dict[str, SecuredUser]]:
@@ -683,3 +683,37 @@ class ClientRequests:
             return f"Failed to upload MIWI file\n{err}"
 
         return None
+
+    def getLogFiles(loggedUser: User) -> tuple[str, list[str]]:
+        response = None
+        try:
+            response = requests.get(
+                f'{ClientRequests.SERVER_URL}/logs',
+                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+            )
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to get log files\n{err}", None
+
+        if not data.get("success"):
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to get log files\n{err}", None
+
+        return None, data["logs"]
+
+    def getLog(loggedUser: User, filename: str) -> tuple[str, str]:
+        response = None
+        try:
+            response = requests.get(
+                f'{ClientRequests.SERVER_URL}/logs',
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                json={'filename': filename}
+            )
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to get log file '{filename}'\n{err}", None
+
+        return None, response.text

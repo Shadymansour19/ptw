@@ -24,19 +24,28 @@ PTW System — File Structure
 │   │
 │   │   ── MAIN UI WIDGETS ──
 │   ├── WidgetPTW.py                # Full PTW form widget — create, view, and edit a permit
-│   ├── TablePTWs.py                # PTW list view with filtering
+│   ├── TablePTWs.py                # PTW list view with filtering and Excel export
 │   ├── TableUsers.py               # Admin user management table
 │   ├── TableRisks.py               # Risk assessment table (list, open, manage)
-│   ├── TableIsolation.py           # All known isolation points table
-│   ├── TableActiveIsolations.py    # Currently active (running) isolation records
+│   ├── TableIsolations.py          # All known isolation points table
 │   ├── TableAttachments.py         # Per-PTW file attachments management table
+│   ├── TabServerLogs.py            # Admin-only server log viewer tab:
+│   │                               #   collapsible per-file panels with lazy load on expand
+│   │                               #   CheckableComboBox level filter (DEBUG/INFO/WARNING/ERROR/CRITICAL)
+│   │                               #   color-coded lines per level via QTextCursor insertText
+│   │                               #   transparent panel styling
+│   ├── CheckableComboBox.py        # Reusable multi-select checkbox combo box
+│   │                               #   emits filterChanged signal; used in TablePTWs and TabServerLogs
+│   │
+│   │   ── REALTIME & NETWORKING ──
+│   ├── SSEListener.py              # QThread that connects to GET /events and emits PTW change events
 │   │
 │   │   ── DIALOGS ──
 │   ├── DialogUser.py               # Create / edit user dialog
 │   ├── DialogIsolation.py          # Create / edit isolation point dialog
 │   ├── DialogRisk.py               # Risk item creation/edit dialog
 │   ├── DialogSelectIsolations.py   # Dialog to select which isolations to keep when requesting hold
-│   ├── DialogSettings.py           # App settings dialog (server URL, credentials, etc.)
+│   ├── DialogSettings.py           # App settings dialog (server URL, theme, credentials, etc.)
 │   │
 │   │   ── REPORTING ──
 │   ├── ReportGenerator.py          # Generates printable PDF permit report for a PTW
@@ -53,12 +62,12 @@ PTW System — File Structure
 │           ├── Satisfy-Regular.ttf # Handwriting-style font (used in reports)
 │           └── LICENSE.txt
 │
-│   NOTE: Several role-specific main windows exist only as compiled .pyc files in
-│         __pycache__/ — their .py source files are not present in client/:
+│   NOTE: All role-specific main windows are defined as classes inside MainWindow.py:
 │           AdminMainWindow, UserMainWindow, CoordinatorMainWindow,
 │           IssuingMainWindow, SafetyMainWindow, PDHMainWindow,
-│           PGMMainWindow, SODMainWindow, DFGMMainWindow, DFGMMainWindow
-│         These implement the role-gated views (approval buttons, run/hold/close controls, etc.)
+│           PGMMainWindow, SODMainWindow, DFGMMainWindow
+│         Each implements role-gated views (approval buttons, run/hold/close controls, etc.)
+│         main.py routes to the correct class after login based on the user's role.
 │
 │
 └── server/                         # Flask REST API server (runs on the server machine)
@@ -67,7 +76,10 @@ PTW System — File Structure
     │                               #   Routes: /login, /reset-password*, /users, /ptws,
     │                               #           /ptws/approvals, /ptws/run*, /ptws/hold*,
     │                               #           /ptws/close*, /ptws/attachments*, /isolations,
-    │                               #           /risks, /miwi, /miwis
+    │                               #           /risks, /miwi, /miwis, /events (SSE), /logs
+    │                               #   Logging: RotatingFileHandler (10 MB, 5 backups) → logs/
+    │                               #            format: timestamp [LEVEL   ] module:func:line - message
+    │                               #            levels: CRITICAL / ERROR / WARNING / INFO / DEBUG
     │
     ├── PTWData.py                  # Core data model classes:
     │                               #   objToDict / dictToObj (serialization helpers)
@@ -131,50 +143,13 @@ PTW System — File Structure
     │                               #   updateRecordFromDict — generic UPDATE from dict
     │                               #   deleteRecord       — generic DELETE by key
     │
-    ├── miwi/                       # Method of Isolation Work Instructions (PDF documents)
-    │   ├── *.pdf                   # Various MIWI PDF documents (ADC, DPCM, MISRA, etc.)
-    │   └── ...                     # Also contains draft/copy files without extensions
+    ├── logs/                       # Server log files (gitignored)
+    │   ├── ptw.log                 # Current rotating log file
+    │   └── ptw.log.1 … ptw.log.5  # Rotated backups (10 MB each, 5 kept)
     │
-    ├── ptw-31-attachments/         # Attachment files for PTW #31
-    │   ├── DPCM_annotated
-    │   ├── MISRA_C-2012_7.3
-    │   └── Power Tool Checklist
+    ├── miwi/                       # Maintenance and Isolation Work Instructions (PDF documents)
     │
-    ├── ptw-37-attachments/         # Attachment files for PTW #37
-    │   └── Power Tool Checklist
-    │
-    ├── ptw-41-attachments/         # Attachment files for PTW #41
-    │   └── Confined Space Medical Certificates
-    │
-    ├── ptw-42-attachments/         # Attachment files for PTW #42
-    │   └── Confined Space Medical Certificates
-    │
-    ├── ptw-43-attachments/         # Attachment files for PTW #43
-    │   ├── Confined Space Medical Certificates
-    │   ├── DPCM_annotated
-    │   ├── MISRA_C-2012_7.3
-    │   └── Power Tool Checklist
-    │
-    ├── ptw-44-attachments/         # Attachment files for PTW #44
-    │   ├── Confined Space Medical Certificates
-    │   ├── DPCM_annotated
-    │   ├── MISRA_C-2012_7.3
-    │   └── Power Tool Checklist
-    │
-    ├── ptw-46-attachments/         # Attachment files for PTW #46
-    │   └── Working at Height Medical Certificates
-    │
-    ├── ptw-48-attachments/         # Attachment files for PTW #48
-    │   └── Working at Height Medical Certificates
-    │
-    ├── ptw-49-attachments/         # Attachment files for PTW #49
-    │   └── Working at Height Medical Certificates
-    │
-    ├── ptw-50-attachments/         # Attachment files for PTW #50
-    │   └── Working at Height Medical Certificates
-    │
-    └── ptw-51-attachments/         # Attachment files for PTW #51
-        └── Working at Height Medical Certificates
+    └── ptw-*-attachments/          # Per-PTW uploaded attachments
 
 
 ===========================================================

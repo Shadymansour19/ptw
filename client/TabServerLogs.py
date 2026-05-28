@@ -1,0 +1,206 @@
+import re
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont, QColor, QTextCharFormat, QTextCursor
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+                              QPushButton, QScrollArea, QFrame, QTextEdit)
+import qtawesome as qta
+
+from clientRequests import ClientRequests
+from CheckableComboBox import CheckableComboBox
+
+LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+
+_LINE_START = re.compile(r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}')
+_LEVEL_RE   = re.compile(r'\[(\w+)\s*\]')
+
+_LEVEL_COLORS = {
+    "DEBUG":    ("#808080", False),
+    "INFO":     ("#0288d1", False),
+    "WARNING":  ("#f57c00", True),
+    "ERROR":    ("#d32f2f", True),
+    "CRITICAL": ("#ff1744", True),
+}
+
+_LEVEL_FMT: dict[str, QTextCharFormat] = {}
+
+
+def _levelFormats() -> dict[str, QTextCharFormat]:
+    if _LEVEL_FMT:
+        return _LEVEL_FMT
+    for level, (color, bold) in _LEVEL_COLORS.items():
+        fmt = QTextCharFormat()
+        fmt.setForeground(QColor(color))
+        if bold:
+            fmt.setFontWeight(QFont.Weight.Bold)
+        _LEVEL_FMT[level] = fmt
+    return _LEVEL_FMT
+
+
+def _setColoredText(edit: QTextEdit, content: str, levels: set[str]):
+    fmts = _levelFormats()
+    default_fmt = QTextCharFormat()
+
+    edit.clear()
+    cursor = QTextCursor(edit.document())
+    cursor.beginEditBlock()
+
+    include = True
+    current_fmt = default_fmt
+    first_block = True
+
+    for line in content.splitlines():
+        if _LINE_START.match(line):
+            m = _LEVEL_RE.search(line)
+            level = m.group(1).strip() if m else None
+            include = (level in levels) if level else True
+            current_fmt = fmts.get(level, default_fmt)
+
+        if include:
+            if not first_block:
+                cursor.insertBlock()
+            cursor.insertText(line, current_fmt)
+            first_block = False
+
+    cursor.endEditBlock()
+
+
+class TabServerLogs(QWidget):
+    def __init__(self, parent, loggedUser, title: str = "Server Logs"):
+        super().__init__(parent)
+        self.loggedUser = loggedUser
+        self._rawContent:   dict[str, str]       = {}
+        self._contentEdits: dict[str, QTextEdit] = {}
+
+        outerLayout = QVBoxLayout(self)
+        outerLayout.setContentsMargins(16, 16, 16, 16)
+        outerLayout.setSpacing(10)
+
+        headerRow = QHBoxLayout()
+        headerLabel = QLabel(title, font=QFont("Helvetica", 18, QFont.Weight.Bold))
+        self._statusLabel = QLabel()
+        self._statusLabel.setStyleSheet("color: palette(link);")
+
+        filterLabel = QLabel("Level:")
+        self._levelFilter = CheckableComboBox()
+        self._levelFilter.setItems(LOG_LEVELS, sort=False)
+        self._levelFilter.setFixedWidth(200)
+        self._levelFilter.filterChanged.connect(self._applyFilter)
+
+        btnRefreshLogs = QPushButton(qta.icon('fa6s.rotate-right'), " Refresh")
+        btnRefreshLogs.setCursor(Qt.CursorShape.PointingHandCursor)
+        btnRefreshLogs.clicked.connect(self.refresh)
+
+        headerRow.addWidget(headerLabel)
+        headerRow.addWidget(self._statusLabel)
+        headerRow.addStretch()
+        headerRow.addWidget(filterLabel)
+        headerRow.addWidget(self._levelFilter)
+        headerRow.addWidget(btnRefreshLogs)
+        outerLayout.addLayout(headerRow)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+
+        self._container = QWidget()
+        self._containerLayout = QVBoxLayout(self._container)
+        self._containerLayout.setContentsMargins(0, 4, 0, 4)
+        self._containerLayout.setSpacing(6)
+        self._containerLayout.addStretch()
+
+        scroll.setWidget(self._container)
+        outerLayout.addWidget(scroll)
+
+    def refresh(self):
+        while self._containerLayout.count() > 1:
+            item = self._containerLayout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        self._rawContent.clear()
+        self._contentEdits.clear()
+        self._statusLabel.setText("")
+
+        err, filenames = ClientRequests.getLogFiles(self.loggedUser)
+        if err:
+            self._statusLabel.setText(err)
+            return
+        if not filenames:
+            self._statusLabel.setText("No log files found.")
+            return
+
+        for filename in filenames:
+            self._addLogEntry(filename)
+
+    def _applyFilter(self):
+        levels = self._levelFilter.checkedItems()
+        for filename, edit in self._contentEdits.items():
+            raw = self._rawContent.get(filename)
+            if raw is None:
+                continue
+            _setColoredText(edit, raw, levels)
+
+    def _addLogEntry(self, filename: str):
+        entry = QFrame()
+        entry.setFrameShape(QFrame.Shape.StyledPanel)
+        entry.setStyleSheet(
+            "QFrame { border: 2px solid rgba(128, 128, 128, 0.4); border-radius: 6px; background: rgba(128, 128, 128, 0.2); }"
+        )
+        entryLayout = QVBoxLayout(entry)
+        entryLayout.setContentsMargins(0, 0, 0, 0)
+        entryLayout.setSpacing(0)
+
+        headerWidget = QWidget()
+        headerWidget.setStyleSheet("QWidget { border: none; background: transparent; }")
+        headerWidget.setCursor(Qt.CursorShape.PointingHandCursor)
+        headerLayout = QHBoxLayout(headerWidget)
+        headerLayout.setContentsMargins(8, 8, 8, 8)
+        headerLayout.setSpacing(8)
+
+        toggleBtn = QPushButton(qta.icon('fa6s.chevron-right'), "")
+        toggleBtn.setFixedSize(26, 26)
+        toggleBtn.setCheckable(True)
+        toggleBtn.setCursor(Qt.CursorShape.PointingHandCursor)
+        toggleBtn.setStyleSheet("QPushButton { border: none; background: transparent; }")
+
+        filenameLabel = QLabel(filename)
+        filenameLabel.setFont(QFont("Helvetica", 14, QFont.Weight.Medium))
+
+        headerLayout.addWidget(toggleBtn)
+        headerLayout.addWidget(filenameLabel)
+        headerLayout.addStretch()
+
+        contentEdit = QTextEdit()
+        contentEdit.setReadOnly(True)
+        contentEdit.setFont(QFont("Courier New", 12))
+        contentEdit.setVisible(False)
+        contentEdit.setMinimumHeight(200)
+        contentEdit.setMaximumHeight(600)
+        contentEdit.setStyleSheet(
+            "QTextEdit { border: none; border-top: 2px solid rgba(128, 128, 128, 0.4); border-radius: 0px; background: transparent; }"
+        )
+
+        self._contentEdits[filename] = contentEdit
+
+        def onToggle(checked, fn=filename, edit=contentEdit):
+            if checked:
+                toggleBtn.setIcon(qta.icon('fa6s.chevron-down'))
+                edit.setVisible(True)
+                if fn not in self._rawContent:
+                    edit.setPlainText("Loading…")
+                    err, content = ClientRequests.getLog(self.loggedUser, fn)
+                    if err:
+                        edit.setPlainText(f"Error: {err}")
+                        return
+                    self._rawContent[fn] = content or ""
+                levels = self._levelFilter.checkedItems()
+                _setColoredText(edit, self._rawContent[fn], levels)
+            else:
+                toggleBtn.setIcon(qta.icon('fa6s.chevron-right'))
+                edit.setVisible(False)
+
+        toggleBtn.toggled.connect(onToggle)
+        headerWidget.mousePressEvent = lambda event: toggleBtn.toggle()
+        entryLayout.addWidget(headerWidget)
+        entryLayout.addWidget(contentEdit)
+
+        self._containerLayout.insertWidget(self._containerLayout.count() - 1, entry)

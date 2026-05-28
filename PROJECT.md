@@ -389,6 +389,15 @@ The server broadcasts role-filtered events over this stream. The client connects
 | GET    | `/miwis`  | List all MIWI filenames       |
 | POST   | `/miwi`   | Upload a new MIWI PDF         |
 
+### Logs
+Admin-only. The request body is JSON (`{"filename": "<name>"}`) to fetch a specific file; omit the body to list all files.
+
+| Method | Endpoint | Description                                          | Auth Required |
+|--------|----------|------------------------------------------------------|---------------|
+| GET    | `/logs`  | List log filenames **or** download a specific log file | Admin only  |
+
+Path traversal is prevented server-side via `os.path.abspath` containment check.
+
 ---
 
 ## Database Schema
@@ -505,6 +514,8 @@ The desktop client is structured around role-based main windows. After login, `M
 | `TableRisks.py`             | Risk assessment list and editor                                  |
 | `TableIsolations.py`        | All available isolation points table                             |
 | `TableAttachments.py`       | PTW attachment management                                        |
+| `TabServerLogs.py`          | Admin-only log viewer: collapsible file panels, lazy load, level filter, color-coded lines |
+| `CheckableComboBox.py`      | Reusable multi-select checkbox combo box with `filterChanged` signal |
 | `DialogUser.py`             | Create/edit user dialog                                          |
 | `DialogIsolation.py`        | Create/edit isolation dialog                                     |
 | `DialogRisk.py`             | Risk item creation dialog                                        |

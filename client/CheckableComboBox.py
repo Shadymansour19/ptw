@@ -63,7 +63,7 @@ class CheckableComboBox(QComboBox):
             return
         super().hidePopup()
 
-    def setItems(self, texts, preserve_selection=True):
+    def setItems(self, texts, preserve_selection=True, sort=True):
         prev_unchecked = set()
         if preserve_selection:
             for i in range(1, self._model.rowCount()):
@@ -72,7 +72,7 @@ class CheckableComboBox(QComboBox):
                     prev_unchecked.add(item.text())
         self._model.clear()
         self._addSelectAllItem()
-        for text in sorted(texts):
+        for text in sorted(texts) if sort else texts:
             item = QStandardItem(text)
             item.setCheckState(
                 Qt.CheckState.Unchecked if (preserve_selection and text in prev_unchecked)

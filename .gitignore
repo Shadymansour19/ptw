@@ -22,6 +22,9 @@ client/nuitka*
 server/miwi/
 server/ptw-*-attachments/
 
+# Server logs
+server/logs/
+
 # Generated files
 client/qr-summery-*.png
 
