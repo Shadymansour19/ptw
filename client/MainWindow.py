@@ -1,7 +1,7 @@
 from datetime import datetime
 import copy
 import re
-from PyQt6.QtCore import Qt, QSize, QEvent, QPropertyAnimation, QEasingCurve
+from PyQt6.QtCore import Qt, QSize, QEvent, QPropertyAnimation, QEasingCurve, QTimer
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QStackedWidget, QVBoxLayout, QGridLayout,
                               QFormLayout, QLabel, QPushButton, QToolButton,
                               QToolBar, QDialog, QDialogButtonBox, QTextEdit, QListWidget,
@@ -452,6 +452,10 @@ class MainWindow(QMainWindow):
         self._sidebarAnim.setDuration(300)
         self._sidebarAnim.setEasingCurve(QEasingCurve.Type.InOutQuart)
         self._sidebarAnim.finished.connect(self._onSidebarAnimFinished)
+        self._sidebarHoverTimer = QTimer(self)
+        self._sidebarHoverTimer.setSingleShot(True)
+        self._sidebarHoverTimer.setInterval(600)
+        self._sidebarHoverTimer.timeout.connect(self._expandSidebar)
         self.sideBarLayout.installEventFilter(self)
         for btn in self._sideBarBtnMap:
             btn.installEventFilter(self)
@@ -464,8 +468,9 @@ class MainWindow(QMainWindow):
             is_vertical = area in (Qt.ToolBarArea.LeftToolBarArea, Qt.ToolBarArea.RightToolBarArea)
             if is_vertical:
                 if event.type() == QEvent.Type.Enter:
-                    self._expandSidebar()
+                    self._sidebarHoverTimer.start()
                 elif event.type() == QEvent.Type.Leave:
+                    self._sidebarHoverTimer.stop()
                     self._collapseSidebar()
         return super().eventFilter(obj, event)
 
