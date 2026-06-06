@@ -60,7 +60,7 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 | Credentials   | `keyring`                             |
 | Reports       | ReportLab (PDF), Pillow, qrcode       |
 | Excel Export  | `openpyxl`                            |
-| Distribution  | Nuitka (Windows + Linux binaries)     |
+| Distribution  | Nuitka `--onedir` → zipped for release (Windows + Linux) |
 
 ---
 
@@ -241,11 +241,25 @@ Then create the required tables (`users`, `ptws`, `active_isolations`, `risks`) 
 
 ```bash
 cd server
-pip install flask flask-mail psycopg2 keyring
+pip install flask flask-mail psycopg2 python-dotenv bcrypt
 python app.py
 ```
 
-Configure your DB connection and Gmail SMTP credentials inside `app.py`.
+Create a `server/.env` file with your credentials:
+
+```ini
+DB_HOST=localhost
+DB_NAME=ptw_database
+DB_USER=postgres
+DB_PASSWORD=yourpassword
+MAIL_USERNAME=your@gmail.com
+MAIL_PASSWORD=your_app_password
+```
+
+> **First deployment:** if the database already has plain-text passwords, run the migration script once before starting the server:
+> ```bash
+> python migrate_hash_passwords.py
+> ```
 
 ### Client
 
@@ -283,21 +297,20 @@ Full API reference in [PROJECT.md](PROJECT.md).
 
 ## Building for Distribution
 
-Pre-built binaries for Windows and Linux are produced automatically via GitHub Actions on every version tag:
+Pre-built releases for Windows and Linux are produced automatically via GitHub Actions on every version tag:
 
 ```bash
 git tag v1.x.x
 git push origin v1.x.x
 ```
 
-Download `PTW.exe` (Windows) and `PTW` (Linux) from the **Actions** tab → completed run → **Artifacts**.
+Download `PTW-windows.zip` and `PTW-linux.zip` from the **Releases** page. Extract the zip and run `PTW.exe` (Windows) or `PTW` (Linux) from the extracted folder.
 
-Builds use **Nuitka** for native compilation. To trigger a manual build without a tag: **Actions → Build PTW → Run workflow**.
+Builds use **Nuitka** (`--onedir`) for native compilation — the app folder is zipped before upload. To trigger a manual build without a tag: **Actions → Build PTW → Run workflow**.
 
 ---
 
 ## Known Limitations
 
-- Passwords are stored in plain text — hashing is planned for a future version.
-- File storage is local filesystem — back up `server/miwi/` and `server/ptw-*-attachments/` regularly.
+See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for the full security and bug backlog with fix guidance.
 

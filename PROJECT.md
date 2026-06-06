@@ -20,7 +20,7 @@ The application runs as a **PyQt6 desktop client** communicating with a **Flask 
 | Credentials  | keyring                             |
 | Reports      | ReportLab (PDF), Pillow, qrcode     |
 | Excel Export | openpyxl                            |
-| Distribution | Nuitka (Windows + Linux binaries)   |
+| Distribution | Nuitka `--onedir` → zipped for release (Windows + Linux) |
 
 ---
 
@@ -300,7 +300,7 @@ Maintenance and Work Instructions (MIWI) are PDF documents stored in `server/miw
 ## Authentication & Security
 
 - All API endpoints require HTTP Basic Auth (username + password).
-- Passwords are stored in plain text in the database (no hashing — this is an identified weakness to be fixed in upcoming versions).
+- Passwords are hashed with **bcrypt** before storage. The server never returns a password hash in any API response.
 - **Password Reset** flow: user requests a reset → server sends a 6-digit verification code to the user's registered email via Gmail SMTP → code expires after 15 minutes → user submits new password with code.
 - Role-based access control is enforced at the API layer for sensitive operations (user management, risk assessment management).
 
@@ -539,5 +539,6 @@ All role-specific views are implemented as classes within `MainWindow.py`. After
 
 ## Known Issues / Notes
 
-1. **Passwords stored in plain text** — no hashing is applied before storage.
-2. **File storage is local filesystem** — attachments and MIWI documents are stored on the server's local disk. Regular backups of `server/miwi/` and `server/ptw-*-attachments/` are recommended.
+See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for the full backlog of open bugs and security items with fix guidance.
+
+- **File storage is local filesystem** — attachments and MIWI documents are stored on the server's local disk. Regular backups of `server/miwi/` and `server/ptw-*-attachments/` are recommended.
