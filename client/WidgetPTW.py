@@ -353,10 +353,10 @@ class DialogPTW(QDialog):
         # self.boxMiwi.setEditable(True)
         self.boxMiwi.setMaxVisibleItems(10)
 
-        self.btnViewMiwi = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton), 'View MIWI')
+        self.btnViewMiwi = QPushButton(qta.icon("fa6.eye"), 'View MIWI')
         self.btnViewMiwi.clicked.connect(self.openMIWI)
 
-        self.btnNewMiwi = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogNewFolder), 'New MIWI')
+        self.btnNewMiwi = QPushButton(qta.icon("fa6s.plus"), 'New MIWI')
         self.btnNewMiwi.clicked.connect(self.newMIWI)
 
         miwiLyt = QHBoxLayout()
@@ -373,7 +373,7 @@ class DialogPTW(QDialog):
 
         self.tableAttachments = TableAttachments(self.tabAttachments, loggedUser, self.ptw.id, referencePTW.id if referencePTW else None, attachs, readOnly)
 
-        self.btnNewAttach = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogNewFolder), 'New Attachment')
+        self.btnNewAttach = QPushButton(qta.icon("fa6s.plus"), 'New Attachment')
         self.btnNewAttach.clicked.connect(self.newAttachment)
 
         lytAttachments.addWidget(self.tableAttachments, stretch=1)
