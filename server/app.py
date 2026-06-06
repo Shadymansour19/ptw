@@ -6,12 +6,7 @@ import logging
 import threading
 from time import time, sleep
 from logging.handlers import RotatingFileHandler
-
-# Resolve the directory that contains this file (works both as a plain script and
-# as a Nuitka/PyInstaller onefile binary, regardless of the process's CWD).
-_BASE_DIR = os.path.dirname(sys.executable if getattr(sys, 'frozen', False) or getattr(sys, '__compiled__', False) else os.path.abspath(__file__))
 from dotenv import load_dotenv
-
 from flask import Flask, request, jsonify, Response, stream_with_context, send_file
 from flask_mail import Mail, Message
 from random import randint
@@ -26,6 +21,11 @@ from GlobalData import globalData
 from PTWData import PTWData, Isolation
 from utils import objToDict
 
+# Resolve the directory that contains this file (works both as a plain script and
+# as a Nuitka/PyInstaller onefile binary, regardless of the process's CWD).
+_BASE_DIR = os.path.dirname(sys.executable if getattr(sys, 'frozen', False) or getattr(sys, '__compiled__', False) else os.path.abspath(__file__))
+_MIWI_DIR = os.path.join(_BASE_DIR, 'miwi')
+os.makedirs(_MIWI_DIR, exist_ok=True)
 
 _LOG_FORMAT = "%(asctime)s [%(levelname)-8s] %(location)-35s - %(message)s"
 _LOG_DATE   = "%Y-%m-%d %H:%M:%S"
@@ -1030,7 +1030,7 @@ def getMIWI():
         if not filename:
             log.warning("GET /miwi: filename not provided (user='%s')", user.getUsername())
             return jsonify({"success": False, "error": "Filename not provided"}), 400
-        filepath = os.path.join(_BASE_DIR, 'miwi', filename)
+        filepath = os.path.join(_MIWI_DIR, filename)
         if not os.path.isfile(filepath):
             log.warning("GET /miwi: file not found '%s' (user='%s')", filename, user.getUsername())
             return jsonify({"success": False, "error": "File not found"}), 404
@@ -1048,8 +1048,7 @@ def getAllMIWIs():
         log.warning("GET /miwis unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     try:
-        miwiPath = os.path.join(_BASE_DIR, 'miwi')
-        filenames = [f for f in os.listdir(miwiPath) if os.path.isfile(os.path.join(miwiPath, f))]
+        filenames = [f for f in os.listdir(_MIWI_DIR) if os.path.isfile(os.path.join(_MIWI_DIR, f))]
         log.debug("GET /miwis: %d files returned to user='%s'", len(filenames), user.getUsername())
         return jsonify({"success": True, "miwis": filenames})
     except Exception as e:
@@ -1074,7 +1073,7 @@ def uploadMIWI():
         return jsonify({"success": False, "error": "No file selected for uploading"}), 400
 
     try:
-        filepath = os.path.join(_BASE_DIR, 'miwi', filename)
+        filepath = os.path.join(_MIWI_DIR, filename)
         if os.path.exists(filepath):
             log.warning("POST /miwi: file already exists '%s' (user='%s')", filename, user.getUsername())
             return jsonify({"success": False, "error": "File with the same name already exists"}), 400
