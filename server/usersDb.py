@@ -23,7 +23,9 @@ class UsersDb:
                         name VARCHAR(100) NOT NULL,
                         role VARCHAR(50) NOT NULL,
                         department VARCHAR(100),
-                        email VARCHAR(100)
+                        email VARCHAR(100),
+                        ext VARCHAR(50),
+                        theme VARCHAR(20)
                     )
                 """)
                 cursor.execute("SELECT COUNT(*) FROM users")
