@@ -413,6 +413,7 @@ role        VARCHAR(50)  NOT NULL
 department  VARCHAR(100)
 email       VARCHAR(100)
 ext         VARCHAR(50)
+theme       VARCHAR(20)
 ```
 
 ### `ptws`
