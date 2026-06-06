@@ -803,6 +803,9 @@ class MainWindow(QMainWindow):
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
 
+        if user.getPassword() is None:
+            user.setPassword(self.loggedUser.getPassword())
+
         err = ClientRequests.updateUser(self.loggedUser, user)
         if err:
             QMessageBox.warning(self, "Fail", err)

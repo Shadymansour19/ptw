@@ -19,7 +19,9 @@ class ClientRequests:
             return f"Login request failed\n{err}\n", None
 
         if data.get("success"):
-            return None, User().setAll(data.get('user'))
+            user = User().setAll(data.get('user'))
+            user.setPassword(password)
+            return None, user
         else:
             err = response.json().get("error", response.text) if response is not None else str(e)
             return f"Login Failed! Incorrect username or password\n{err}", None
@@ -98,7 +100,8 @@ class ClientRequests:
     def updateUser(loggedUser: User, user: User):
         response = None
         try:
-            response = requests.put(f'{ClientRequests.SERVER_URL}/users', json=user.__dict__, auth=(loggedUser.getUsername(), loggedUser.getPassword()))
+            user_dict = {k: v for k, v in user.__dict__.items() if not (k == 'password' and not v)}
+            response = requests.put(f'{ClientRequests.SERVER_URL}/users', json=user_dict, auth=(loggedUser.getUsername(), loggedUser.getPassword()))
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:

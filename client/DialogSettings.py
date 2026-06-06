@@ -34,7 +34,7 @@ class DialogSettings(QDialog):
         self.txtPassword.setEchoMode(QLineEdit.EchoMode.Password)
 
         self.txtUsername.setText(loggedUser.getUsername())
-        self.txtPassword.setText(loggedUser.getPassword())
+        self.txtPassword.setPlaceholderText("Leave blank to keep current password")
         self.txtName.setText(loggedUser.getName())
         self.txtRole.setCurrentText(loggedUser.getRole())
         self.txtDepartment.setCurrentText(loggedUser.getDepartment())
@@ -61,15 +61,17 @@ class DialogSettings(QDialog):
         lyt.addWidget(btns)
 
     def collectData(self):
-        self.loggedUser.setPassword(self.txtPassword.text())
+        new_pass = self.txtPassword.text()
+        if new_pass and len(new_pass) < 8:
+            QMessageBox.critical(self, "Error", "Password must be at least 8 characters!")
+            return
+        self.loggedUser.setPassword(new_pass or None)
         self.loggedUser.setName(self.txtName.text())
         self.loggedUser.setDepartment(self.txtDepartment.currentText())
         self.loggedUser.setEmail(self.txtEmail.text())
         self.loggedUser.setExt(self.txtExt.text())
         self.new_theme = _THEME_REVERSE[self.cmbTheme.currentText()]
-        if len(self.loggedUser.getPassword()) < 6:
-            QMessageBox.critical(self, "Error", "Password must be at least 6 characters!")
-        elif not self.loggedUser.getName():
+        if not self.loggedUser.getName():
             QMessageBox.critical(self, "Error", "Name can't be empty!")
         else:
             self.accept()

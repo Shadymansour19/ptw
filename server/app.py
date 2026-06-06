@@ -149,12 +149,7 @@ log.info("Periodic DB resync thread started (interval: 5 min)")
 
 def getVerifiedUser(auth) -> User:
     try:
-        username = auth.username
-        password = auth.password
-        for user in userDB.getAllUsers():
-            if user.getUsername() == username and user.getPassword() == password:
-                return user
-        return None
+        return userDB.getVerifiedUser(auth.username, auth.password)
     except AttributeError:
         return None
 
@@ -198,12 +193,12 @@ def sse_stream():
 def login():
     try:
         auth = request.authorization
-        username = auth.username
-        password = auth.password
-        for user in userDB.getAllUsers():
-            if user.getUsername() == username and user.getPassword() == password:
-                log.info("Login successful: user='%s' role=%s", username, user.getRole())
-                return jsonify({"success": True, "user": objToDict(user)})
+        username = auth.username if auth else None
+        password = auth.password if auth else None
+        user = userDB.getVerifiedUser(username, password)
+        if user:
+            log.info("Login successful: user='%s' role=%s", username, user.getRole())
+            return jsonify({"success": True, "user": objToDict(user)})
         log.warning("Login failed: invalid credentials for username='%s' (ip=%s)", username, request.remote_addr)
         return jsonify({"success": False, "error": "Invalid username or password"}), 401
     except Exception as e:
@@ -408,6 +403,7 @@ def newUserRequest():
 @app.route("/users", methods=["PUT"])
 def updateUserRequest():
     authUser = getVerifiedUser(request.authorization)
+    print(request.authorization.username, request.authorization.password)
     if authUser is None:
         log.warning("PUT /users unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
