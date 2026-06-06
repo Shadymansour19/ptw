@@ -147,22 +147,18 @@ class UsersDb:
             raise Exception(f"User {user.getUsername()} does not exist")
 
         try:
-            varsToSet = f'''
-                password = '{user.getPassword()}',
-                name = '{user.getName()}',
-                department = '{user.getDepartment()}',
-                email = '{user.getEmail()}'
-            '''
             if user.getRole():
-                varsToSet += f", role = '{user.getRole()}'"
-
-            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                cursor.execute('''
-                    UPDATE users
-                    SET ''' + varsToSet + '''
-                    WHERE username = %s''',
-                    (user.getUsername(),)
-                )
+                with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                    cursor.execute(
+                        'UPDATE users SET password=%s, name=%s, department=%s, email=%s, role=%s WHERE username=%s',
+                        (user.getPassword(), user.getName(), user.getDepartment(), user.getEmail(), user.getRole(), user.getUsername())
+                    )
+            else:
+                with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                    cursor.execute(
+                        'UPDATE users SET password=%s, name=%s, department=%s, email=%s WHERE username=%s',
+                        (user.getPassword(), user.getName(), user.getDepartment(), user.getEmail(), user.getUsername())
+                    )
             self.conn.commit()
         except Exception as e:
             self.conn.rollback()

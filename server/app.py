@@ -26,9 +26,8 @@ from utils import objToDict
 # as a Nuitka/PyInstaller onefile binary, regardless of the process's CWD).
 _BASE_DIR = os.path.dirname(sys.executable if getattr(sys, 'frozen', False) or getattr(sys, '__compiled__', False) else os.path.abspath(__file__))
 _MIWI_DIR = os.path.join(_BASE_DIR, 'miwi')
-os.makedirs(_MIWI_DIR, exist_ok=True)
 _LOGS_DIR = os.path.join(_BASE_DIR, 'logs')
-os.makedirs(_LOGS_DIR, exist_ok=True)
+os.makedirs(_MIWI_DIR, exist_ok=True)
 
 _LOG_FORMAT = "%(asctime)s [%(levelname)-8s] %(location)-35s - %(message)s"
 _LOG_DATE   = "%Y-%m-%d %H:%M:%S"
@@ -813,6 +812,11 @@ def addPtwAttachments():
     if ptwId is None:
         log.warning("POST /ptws/attachments: missing ptw-id (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing PTW id field"}), 400
+    try:
+        ptwId = int(ptwId)
+    except (ValueError, TypeError):
+        log.warning("POST /ptws/attachments: invalid ptw-id='%s' (user='%s')", ptwId, user.getUsername())
+        return jsonify({"success": False, "error": "Invalid PTW id"}), 400
 
     attachDir = os.path.join(_BASE_DIR, f'ptw-{ptwId}-attachments')
     os.makedirs(attachDir, exist_ok=True)
@@ -860,6 +864,11 @@ def getPtwAttachment():
         log.warning("GET /ptws/attachments: missing ptw-id (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     try:
+        ptwId = int(ptwId)
+    except (ValueError, TypeError):
+        log.warning("GET /ptws/attachments: invalid ptw-id='%s' (user='%s')", ptwId, user.getUsername())
+        return jsonify({"success": False, "error": "Invalid PTW id"}), 400
+    try:
         attachDir = os.path.join(_BASE_DIR, f'ptw-{ptwId}-attachments')
         if filename:
             filepath = os.path.join(attachDir, filename)
@@ -902,6 +911,11 @@ def deletePtwAttachments():
     if ptwId is None or keepFilenames is None:
         log.warning("DELETE /ptws/attachments: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
+    try:
+        ptwId = int(ptwId)
+    except (ValueError, TypeError):
+        log.warning("DELETE /ptws/attachments: invalid ptw-id='%s' (user='%s')", ptwId, user.getUsername())
+        return jsonify({"success": False, "error": "Invalid PTW id"}), 400
     keepFilenames = set(keepFilenames)
     try:
         dirpath = os.path.join(_BASE_DIR, f'ptw-{ptwId}-attachments')
@@ -932,6 +946,12 @@ def copyPtwAttachments():
         log.warning("POST /ptws/attachments/copy: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     try:
+        sourcePtwId = int(sourcePtwId)
+        targetPtwId = int(targetPtwId)
+    except (ValueError, TypeError):
+        log.warning("POST /ptws/attachments/copy: invalid ptw-id(s) source='%s' target='%s' (user='%s')", sourcePtwId, targetPtwId, user.getUsername())
+        return jsonify({"success": False, "error": "Invalid PTW id"}), 400
+    try:
         sourceDir = os.path.join(_BASE_DIR, f'ptw-{sourcePtwId}-attachments')
         targetDir = os.path.join(_BASE_DIR, f'ptw-{targetPtwId}-attachments')
         if not os.path.exists(sourceDir):
@@ -941,11 +961,8 @@ def copyPtwAttachments():
         successfullyCopied = []
         for filename in os.listdir(sourceDir):
             sourceFilePath = os.path.join(sourceDir, filename)
-            targetFilePath = os.path.join(targetDir, filename)
             if os.path.isfile(sourceFilePath):
-                with open(sourceFilePath, 'rb') as srcFile:
-                    with open(targetFilePath, 'wb') as tgtFile:
-                        tgtFile.write(srcFile.read())
+                shutil.copy2(sourceFilePath, os.path.join(targetDir, filename))
                 successfullyCopied.append(filename)
         log.info("Attachments copied: PTW #%s -> PTW #%s files=%s by='%s'", sourcePtwId, targetPtwId, successfullyCopied, user.getUsername())
         return jsonify({"success": True, "message": "Attachments copied successfully"})

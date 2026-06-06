@@ -99,7 +99,7 @@ class CommonDB:
     def deleteRecord(conn, table: str, primaryKey: str, primaryKeyVal: str):
         cursor = conn.cursor()
         try:
-            cursor.execute(f"DELETE FROM {table} WHERE {primaryKey} = '{primaryKeyVal}'")
+            cursor.execute(f"DELETE FROM {table} WHERE {primaryKey} = %s", (primaryKeyVal,))
             conn.commit()
         except Exception as e:
             conn.rollback()
