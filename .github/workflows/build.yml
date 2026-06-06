@@ -34,7 +34,7 @@ jobs:
       - name: Build
         run: >
           python -m nuitka
-          --onefile
+          --onedir
           --assume-yes-for-downloads
           --show-progress
           --enable-plugin=pyqt6
@@ -45,11 +45,15 @@ jobs:
           --output-filename=PTW.exe
           main.py
 
+      - name: Zip output
+        run: Compress-Archive -Path main.dist\* -DestinationPath PTW-windows.zip
+        shell: pwsh
+
       - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: client/PTW.exe
+          files: client/PTW-windows.zip
 
 
   build-linux:
@@ -81,18 +85,20 @@ jobs:
       - name: Build
         run: >
           python -m nuitka
-          --onefile
+          --onedir
           --assume-yes-for-downloads
           --show-progress
           --enable-plugin=pyqt6
           --include-data-dir=assets=assets
           --include-data-dir=fonts=fonts
-          --linux-onefile-icon=assets/sh-logo-trans.png
           --output-filename=PTW
           main.py
+
+      - name: Zip output
+        run: zip -r PTW-linux.zip main.dist/
 
       - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: client/PTW
+          files: client/PTW-linux.zip
