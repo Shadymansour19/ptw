@@ -425,7 +425,7 @@ location                    VARCHAR(100)
 equipment                   VARCHAR(100)
 area_class                  VARCHAR(100)
 department                  VARCHAR(100)
-description                 VARCHAR(300)
+description                 VARCHAR(300) NOT NULL
 requestor                   VARCHAR(100)
 performing                  VARCHAR(100)
 issuing                     VARCHAR(100)
