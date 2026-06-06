@@ -1,3 +1,4 @@
+import psycopg2
 from psycopg2 import *
 from psycopg2.extras import *
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
