@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from flask import Flask, request, jsonify, Response, stream_with_context, send_file
 from flask_mail import Mail, Message
 from random import randint
+import shutil
 
 from commonDb import CommonDB
 from usersDb import UsersDb
@@ -26,6 +27,8 @@ from utils import objToDict
 _BASE_DIR = os.path.dirname(sys.executable if getattr(sys, 'frozen', False) or getattr(sys, '__compiled__', False) else os.path.abspath(__file__))
 _MIWI_DIR = os.path.join(_BASE_DIR, 'miwi')
 os.makedirs(_MIWI_DIR, exist_ok=True)
+_LOGS_DIR = os.path.join(_BASE_DIR, 'logs')
+os.makedirs(_LOGS_DIR, exist_ok=True)
 
 _LOG_FORMAT = "%(asctime)s [%(levelname)-8s] %(location)-35s - %(message)s"
 _LOG_DATE   = "%Y-%m-%d %H:%M:%S"
@@ -45,9 +48,8 @@ def _setup_logging():
     console.setFormatter(fmt)
     root.addHandler(console)
 
-    logs_dir = os.path.join(_BASE_DIR, 'logs')
-    os.makedirs(logs_dir, exist_ok=True)
-    fh = RotatingFileHandler(os.path.join(logs_dir, 'ptw-server.log'), maxBytes=10 * 1024 * 1024, backupCount=5)
+    os.makedirs(_LOGS_DIR, exist_ok=True)
+    fh = RotatingFileHandler(os.path.join(_LOGS_DIR, 'ptw-server.log'), maxBytes=10 * 1024 * 1024, backupCount=5)
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(fmt)
     root.addHandler(fh)
@@ -552,10 +554,11 @@ def updatePTWApprovals():
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
     ptwId = payload.get('ptw-id')
-    approval = PTWData.Approval(**payload.get('approval'))
-    if ptwId is None or approval is None:
+    approvalData = payload.get('approval')
+    if ptwId is None or not approvalData:
         log.warning("POST /ptws/approvals: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
+    approval = PTWData.Approval(**approvalData)
     try:
         result = ptwDB.updatePTWApprovals(ptwId, approval)
         _sync_ptw(ptwId)
@@ -811,6 +814,9 @@ def addPtwAttachments():
         log.warning("POST /ptws/attachments: missing ptw-id (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing PTW id field"}), 400
 
+    attachDir = os.path.join(_BASE_DIR, f'ptw-{ptwId}-attachments')
+    os.makedirs(attachDir, exist_ok=True)
+
     errors = []
     succeeded = []
     for file in attachments.values():
@@ -819,8 +825,10 @@ def addPtwAttachments():
             errors.append(f"No file selected for uploading {filename}")
             continue
         try:
-            os.makedirs(os.path.join(_BASE_DIR, f'ptw-{ptwId}-attachments'), exist_ok=True)
-            filepath = os.path.join(os.path.join(_BASE_DIR, f'ptw-{ptwId}-attachments'), filename)
+            filepath = os.path.join(attachDir, filename)
+            if not os.path.abspath(filepath).startswith(os.path.abspath(attachDir)):
+                log.warning("POST /ptws/attachments: path traversal attempt: ptw-id='%s' file='%s' user='%s'", ptwId, filename, user.getUsername())
+                return jsonify({"success": False, "error": "Invalid filename"}), 400
             if os.path.exists(filepath):
                 errors.append(f"File with the same name already exists for {filename}")
                 continue
@@ -852,20 +860,27 @@ def getPtwAttachment():
         log.warning("GET /ptws/attachments: missing ptw-id (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     try:
+        attachDir = os.path.join(_BASE_DIR, f'ptw-{ptwId}-attachments')
         if filename:
-            filepath = os.path.join(os.path.join(_BASE_DIR, f'ptw-{ptwId}-attachments'), filename)
+            filepath = os.path.join(attachDir, filename)
             if not os.path.isfile(filepath):
                 log.warning("Attachment not found: PTW #%s file='%s'", ptwId, filename)
                 return jsonify({"success": False, "error": "File not found"}), 404
+            if not os.path.abspath(filepath).startswith(os.path.abspath(attachDir)):
+                log.warning("GET /ptws/attachments: path traversal attempt: ptw-id='%s' file='%s' user='%s'", ptwId, filename, user.getUsername())
+                return jsonify({"success": False, "error": "Invalid filename"}), 400
+            filepath = os.path.join(attachDir, filename)
+            if not os.path.abspath(filepath).startswith(os.path.abspath(attachDir)):
+                log.warning("POST /ptws/attachments: path traversal attempt: ptw-id='%s' file='%s' user='%s'", ptwId, filename, user.getUsername())
+                return jsonify({"success": False, "error": "Invalid filename"}), 400
             log.debug("Attachment served: PTW #%s file='%s' to user='%s'", ptwId, filename, user.getUsername())
             return send_file(filepath, as_attachment=True)
         else:
             filenames = []
-            dirpath = os.path.join(_BASE_DIR, f'ptw-{ptwId}-attachments')
-            if not os.path.exists(dirpath):
+            if not os.path.exists(attachDir):
                 return jsonify({"success": True, "message": "PTW attachments dir not found", "attachments": []})
-            for fname in os.listdir(dirpath):
-                fpath = os.path.join(dirpath, fname)
+            for fname in os.listdir(attachDir):
+                fpath = os.path.join(attachDir, fname)
                 if os.path.isfile(fpath):
                     filenames.append(fname)
             log.debug("Attachment list: PTW #%s count=%d user='%s'", ptwId, len(filenames), user.getUsername())
@@ -1031,6 +1046,9 @@ def getMIWI():
             log.warning("GET /miwi: filename not provided (user='%s')", user.getUsername())
             return jsonify({"success": False, "error": "Filename not provided"}), 400
         filepath = os.path.join(_MIWI_DIR, filename)
+        if not os.path.abspath(filepath).startswith(os.path.abspath(_MIWI_DIR)):
+            log.warning("GET /miwi: path traversal attempt '%s' (user='%s')", filename, user.getUsername())
+            return jsonify({"success": False, "error": "Invalid filename"}), 400
         if not os.path.isfile(filepath):
             log.warning("GET /miwi: file not found '%s' (user='%s')", filename, user.getUsername())
             return jsonify({"success": False, "error": "File not found"}), 404
@@ -1074,6 +1092,9 @@ def uploadMIWI():
 
     try:
         filepath = os.path.join(_MIWI_DIR, filename)
+        if not os.path.abspath(filepath).startswith(os.path.abspath(_MIWI_DIR)):
+            log.warning("POST /miwi: path traversal attempt '%s' (user='%s')", filename, user.getUsername())
+            return jsonify({"success": False, "error": "Invalid filename"}), 400
         if os.path.exists(filepath):
             log.warning("POST /miwi: file already exists '%s' (user='%s')", filename, user.getUsername())
             return jsonify({"success": False, "error": "File with the same name already exists"}), 400
@@ -1094,10 +1115,9 @@ def getLogs():
     payload = request.get_json(silent=True) or {}
     filename = payload.get('filename')
     try:
-        logs_dir = os.path.join(_BASE_DIR, 'logs')
         if filename:
-            filepath = os.path.join(logs_dir, filename)
-            if not os.path.abspath(filepath).startswith(os.path.abspath(logs_dir)):
+            filepath = os.path.join(_LOGS_DIR, filename)
+            if not os.path.abspath(filepath).startswith(os.path.abspath(_LOGS_DIR)):
                 log.warning("GET /logs: path traversal attempt for filename='%s' by='%s'", filename, user.getUsername())
                 return jsonify({"success": False, "error": "Invalid filename"}), 400
             if not os.path.isfile(filepath):
@@ -1106,9 +1126,9 @@ def getLogs():
             log.info("Log file served: '%s' to admin='%s'", filename, user.getUsername())
             return send_file(os.path.abspath(filepath), as_attachment=True, mimetype='text/plain')
         else:
-            if not os.path.exists(logs_dir):
+            if not os.path.exists(_LOGS_DIR):
                 return jsonify({"success": True, "logs": []})
-            filenames = sorted([f for f in os.listdir(logs_dir) if os.path.isfile(os.path.join(logs_dir, f))])
+            filenames = sorted([f for f in os.listdir(_LOGS_DIR) if os.path.isfile(os.path.join(_LOGS_DIR, f))])
             log.debug("GET /logs: %d log files listed for admin='%s'", len(filenames), user.getUsername())
             return jsonify({"success": True, "logs": filenames})
     except Exception as e:
