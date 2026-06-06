@@ -16,6 +16,7 @@ from flask import Flask, request, jsonify, Response, stream_with_context, send_f
 from flask_mail import Mail, Message
 from random import randint
 
+from commonDb import CommonDB
 from usersDb import UsersDb
 from ptwDb import PtwsDb
 from risksDb import RisksDb
@@ -57,6 +58,7 @@ _setup_logging()
 log = logging.getLogger("app")
 
 load_dotenv()
+CommonDB.ensure_database_exists()
 app = Flask(__name__)
 app.config.update(
     MAIL_SERVER='smtp.gmail.com',

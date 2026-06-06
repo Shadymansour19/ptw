@@ -13,6 +13,24 @@ class IsolationDb:
             user=os.environ.get('DB_USER', 'postgres'),
             password=os.environ.get('DB_PASSWORD')
         )
+        try:
+            with self.conn.cursor() as cursor:
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS isolations (
+                        tag                    VARCHAR(30)  PRIMARY KEY,
+                        type                   VARCHAR(30)  NOT NULL,
+                        description            VARCHAR(300) NOT NULL,
+                        primary_ptw            VARCHAR(30)  NOT NULL,
+                        latest_ptw             VARCHAR(30)  NOT NULL,
+                        linked_ptws            TEXT[]       NOT NULL DEFAULT '{}',
+                        is_physically_isolated BOOLEAN      NOT NULL DEFAULT FALSE,
+                        held_by                TEXT[]       NOT NULL DEFAULT '{}'
+                    )
+                """)
+            self.conn.commit()
+        except Exception as e:
+            self.conn.rollback()
+            raise Exception("Error initializing isolations database: " + str(e))
 
     def updateIsolation(self, iso):
         try:
