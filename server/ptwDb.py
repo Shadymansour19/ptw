@@ -18,10 +18,9 @@ class PtwsDb:
         try:
             ptwSample = PTWData()
             columns = list(objToDict(ptwSample).keys())
-            columns.remove('approval_status')
             types = [
                 'SERIAL PRIMARY KEY' if columns[i] == 'id' else
-                'JSONB[]' if columns[i] == 'approvals' else
+                'JSONB[]' if columns[i] in ['approvals', 'isolations'] else
                 'TEXT[]' if isinstance(getattr(ptwSample, columns[i]), list) else
                 'VARCHAR(300) NOT NULL' if columns[i] == 'description' else
                 'VARCHAR(100)'

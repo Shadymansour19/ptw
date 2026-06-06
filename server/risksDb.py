@@ -17,7 +17,7 @@ class RisksDb:
         try:
             riskItemSample = RiskItem()
             columns = list(riskItemSample.__dict__.keys())
-            columns.append('title')
+            columns.extend(['title', 'date'])
             with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 cursor.execute("CREATE TABLE IF NOT EXISTS risks (" + ", ".join(col + ' VARCHAR(300) NOT NULL' for col in columns) + ")")
             self.conn.commit()
