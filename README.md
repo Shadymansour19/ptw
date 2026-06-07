@@ -256,10 +256,12 @@ MAIL_USERNAME=your-email@gmail.com
 MAIL_PASSWORD=your_app_password
 ```
 
-> **First deployment:** if the database already has plain-text passwords, run the migration script once before starting the server:
-> ```bash
-> python migrate_hash_passwords.py
+> **First deployment:** On first boot with an empty database, a random admin password is generated and printed once to the server log at `WARNING` level. Look for the line:
 > ```
+> INITIAL ADMIN PASSWORD: <generated-password>
+> ```
+> Change it immediately after first login.
+
 
 ### Client
 

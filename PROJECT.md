@@ -301,6 +301,7 @@ Maintenance and Work Instructions (MIWI) are PDF documents stored in `server/miw
 
 - All API endpoints require HTTP Basic Auth (username + password).
 - Passwords are hashed with **bcrypt** before storage. The server never returns a password hash in any API response.
+- **First boot:** if the `users` table is empty, a random admin password is generated with `secrets.token_urlsafe(12)` and printed once to the server log at `WARNING` level. Change it immediately after first login.
 - **Password Reset** flow: user requests a reset → server sends a 6-digit verification code to the user's registered email via Gmail SMTP → code expires after 15 minutes → user submits new password with code.
 - Role-based access control is enforced at the API layer for sensitive operations (user management, risk assessment management).
 
