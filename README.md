@@ -251,8 +251,8 @@ Create a `server/.env` file with your credentials:
 DB_HOST=localhost
 DB_NAME=ptw_database
 DB_USER=postgres
-DB_PASSWORD=yourpassword
-MAIL_USERNAME=your@gmail.com
+DB_PASSWORD=your_password
+MAIL_USERNAME=your-email@gmail.com
 MAIL_PASSWORD=your_app_password
 ```
 
