@@ -546,6 +546,10 @@ def deletePTWRequest():
     payload = request.get_json(silent=True) or {}
     try:
         ptw_id = payload.get('ptw-id')
+        ptw = globalData.allPTWs.get(ptw_id)
+        if ptw is not None and ptw.approval_status != PTWData.ApprovalStatus.REJECTED:
+            log.warning("DELETE /ptws: forbidden — PTW #%s status='%s' user='%s'", ptw_id, ptw.approval_status, user.getUsername())
+            return jsonify({"success": False, "error": "Can only delete REJECTED or ARCHIVED PTWs"}), 403
         result = ptwDB.deletePTW(ptw_id)
         globalData.allPTWs.pop(ptw_id, None)
         _broadcast("ptw_deleted", {"ptw_id": ptw_id, "by": user.getUsername()})
@@ -591,6 +595,14 @@ def archivePTWs():
     if ptwIds is None:
         log.warning("POST /ptws/archive: missing ptw-ids (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required field: ptw-ids"}), 400
+    for pid in ptwIds:
+        ptw = globalData.allPTWs.get(pid)
+        if ptw is None:
+            log.warning("POST /ptws/archive: PTW #%s not found (user='%s')", pid, user.getUsername())
+            return jsonify({"success": False, "error": f"PTW# {pid} not found"}), 404
+        if ptw.approval_status != PTWData.ApprovalStatus.REJECTED and ptw.running_status != PTWData.RunningStatus.CLOSED:
+            log.warning("POST /ptws/archive: forbidden — PTW #%s approval='%s' running='%s' user='%s'", pid, ptw.approval_status, ptw.running_status, user.getUsername())
+            return jsonify({"success": False, "error": f"PTW# {pid} cannot be archived (must be REJECTED or CLOSED)"}), 403
     try:
         result = ptwDB.archivePTWs(ptwIds)
         for pid in ptwIds:
