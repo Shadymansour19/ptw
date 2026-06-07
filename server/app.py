@@ -74,6 +74,8 @@ resetCodes = {}
 _RESET_CODE_TTL = 15 * 60
 _RESET_CODE_PRUNE_INTERVAL = 5 * 60
 
+_DB_PERIODIC_REFRESH_INTERVAL = 5 * 60
+
 _sse_clients: dict[UserRoles, list[queue.Queue]] = {}
 _sse_lock = threading.Lock()
 _request_lock = threading.Lock()
@@ -137,7 +139,7 @@ def _sync_ptw(ptw_id):
 
 def _periodic_refresh():
     while True:
-        sleep(5 * 60)
+        sleep(_DB_PERIODIC_REFRESH_INTERVAL)
         try:
             with _request_lock:
                 globalData.refresh()
