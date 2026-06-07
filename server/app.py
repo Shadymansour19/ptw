@@ -633,6 +633,9 @@ def runPTW():
     if user is None:
         log.warning("POST /ptws/run unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
+    if user.getRole() != UserRoles.ISSUING:
+        log.warning("POST /ptws/run: forbidden for role='%s' user='%s'", user.getRole(), user.getUsername())
+        return jsonify({"success": False, "error": "Forbidden"}), 403
     payload = request.get_json(silent=True) or {}
     ptwId = payload.get('ptw-id')
     ia = payload.get('ia')
@@ -701,6 +704,9 @@ def hldPTW():
     if user is None:
         log.warning("POST /ptws/hold unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
+    if user.getRole() != UserRoles.ISSUING:
+        log.warning("POST /ptws/hold: forbidden for role='%s' user='%s'", user.getRole(), user.getUsername())
+        return jsonify({"success": False, "error": "Forbidden"}), 403
     payload = request.get_json(silent=True) or {}
     ptwId = payload.get('ptw-id')
     ia = payload.get('ia')
@@ -772,6 +778,9 @@ def clsPTW():
     if user is None:
         log.warning("POST /ptws/close unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
+    if user.getRole() != UserRoles.ISSUING:
+        log.warning("POST /ptws/close: forbidden for role='%s' user='%s'", user.getRole(), user.getUsername())
+        return jsonify({"success": False, "error": "Forbidden"}), 403
     payload = request.get_json(silent=True) or {}
     ptwId = payload.get('ptw-id')
     ia = payload.get('ia')
