@@ -36,26 +36,6 @@ The server binds to plain HTTP on port 5000. Every request sends the username an
 ---
 
 
-### M3 — psycopg2 connection shared across threads
-**File:** `server/usersDb.py:11`, `server/ptwDb.py`, `server/risksDb.py`, `server/IsolationDb.py`
-
-psycopg2 explicitly states that connections are **not thread-safe**. Each `*Db` class holds a single `self.conn` shared by the request-handling threads and the `_periodic_refresh` daemon thread. The `_request_lock` serialises most requests, but the SSE handler calls `userDB.getAllUsers()` without holding that lock, creating a race window.
-
-**Fix:** Use `psycopg2.pool.ThreadedConnectionPool` (or `psycopg2.pool.SimpleConnectionPool` given the request lock), acquiring and releasing a connection per operation.
-
----
-
-## Low
-
-### L2 — Global `_request_lock` is a DoS amplifier
-**File:** `server/app.py:77`
-
-All non-SSE requests are serialized by a single threading lock. A slow DB query or large file upload from one client stalls every other client. An authenticated user can trivially cause service degradation.
-
-**Fix:** Per-resource locking, or migrate to an async framework (e.g., Flask with gevent/eventlet, or FastAPI with asyncio). At minimum, document the single-threaded nature and ensure file upload timeouts are enforced.
-
----
-
 ## Fixed
 
 ### ~~H1 — Default `admin`/`admin` seed credentials~~ ✓
@@ -76,6 +56,20 @@ Seed password is now generated with `secrets.token_urlsafe(12)` on first boot   
 **File:** `server/app.py` — `getPtwAttachment`
 
 Removed the duplicate `filepath` reconstruction and second path-traversal check that immediately followed the first one.
+
+---
+
+### ~~L2 — Global `_request_lock` is a DoS amplifier~~ ✓
+**File:** `server/app.py`
+
+Resolved as a direct consequence of the M3 fix. `_request_lock` and its `before_request`/`teardown_request` hooks were removed entirely. Requests now run concurrently; the `ThreadedConnectionPool` handles DB concurrency and `globalData.lock` (an `RLock`) serialises only the brief in-memory cache mutations.
+
+---
+
+### ~~M3 — psycopg2 connection shared across threads~~ ✓
+**Files:** `server/commonDb.py`, `server/usersDb.py`, `server/ptwDb.py`, `server/risksDb.py`, `server/IsolationDb.py`, `server/GlobalData.py`, `server/app.py`
+
+Replaced the single shared `self.conn` in every `*Db` class with a `ThreadedConnectionPool` in `CommonDB`. Each method now borrows a connection via `CommonDB.get_conn()` and returns it automatically. The global `_request_lock` was removed entirely; `GlobalData` now owns an `RLock` that protects only its in-memory cache mutations. The `_periodic_refresh` daemon and all route handlers that mutate `globalData` acquire this fine-grained lock for the minimum critical section only.
 
 ---
 

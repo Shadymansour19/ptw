@@ -1,25 +1,29 @@
+import threading
+
+
 class GlobalData:
     def __init__(self):
-        self.allUsers: dict = {}                # dict[str, SecuredUser]
-        self.allPTWs: dict = {}                 # dict[int, PTWData]
-        self.isolations: dict = {}              # dict[str, Isolation]
+        self._lock = threading.RLock()
+        self.allUsers: dict = {}
+        self.allPTWs: dict = {}
+        self.isolations: dict = {}
 
-    def refresh(self) -> str:
-        from usersDb import UsersDb
-        from ptwDb import PtwsDb
-        from IsolationDb import IsolationDb
+    @property
+    def lock(self):
+        return self._lock
 
+    def refresh(self, userDB, ptwDB, isoDB) -> str:
         try:
-            userDB = UsersDb()
-            ptwDB = PtwsDb()
-            isoDB = IsolationDb()
+            allUsers = userDB.getAllSecuredUsers()
+            allPTWs = ptwDB.getAllPTWs()
+            isolations = isoDB.getAllIsolations()
         except Exception as e:
             return str(e)
-
-        self.allUsers = userDB.getAllSecuredUsers()
-        self.allPTWs = ptwDB.getAllPTWs()
-        self.isolations = isoDB.getAllIsolations()
-
+        with self._lock:
+            self.allUsers = allUsers
+            self.allPTWs = allPTWs
+            self.isolations = isolations
         return None
+
 
 globalData = GlobalData()

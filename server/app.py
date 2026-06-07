@@ -78,22 +78,11 @@ _DB_PERIODIC_REFRESH_INTERVAL = 5 * 60
 
 _sse_clients: dict[UserRoles, list[queue.Queue]] = {}
 _sse_lock = threading.Lock()
-_request_lock = threading.Lock()
 
 
 @app.before_request
-def _acquire_request_lock():
-    if request.endpoint != 'sse_stream':
-        _request_lock.acquire()
-        log.debug("%s %s", request.method, request.path)
-
-@app.teardown_request
-def _release_request_lock(exc):
-    if request.endpoint != 'sse_stream':
-        try:
-            _request_lock.release()
-        except RuntimeError:
-            pass
+def _log_request():
+    log.debug("%s %s", request.method, request.path)
 
 
 def _broadcast(event_type: str, data: dict, roles: list[UserRoles] = None):
@@ -117,11 +106,12 @@ def _broadcast(event_type: str, data: dict, roles: list[UserRoles] = None):
 
 try:
     log.info("Initializing databases...")
+    CommonDB.init_pool()
     userDB = UsersDb()
     ptwDB = PtwsDb()
     risksDB = RisksDb()
     isoDB = IsolationDb()
-    globalData.refresh()
+    globalData.refresh(userDB, ptwDB, isoDB)
     log.info("All databases initialized successfully")
 except Exception as e:
     log.critical("Database initialization failed: %s", e, exc_info=True)
@@ -131,7 +121,8 @@ except Exception as e:
 def _sync_ptw(ptw_id):
     updated = ptwDB.getPTWById(ptw_id)
     if updated:
-        globalData.allPTWs[updated.id] = updated
+        with globalData.lock:
+            globalData.allPTWs[updated.id] = updated
         log.debug("PTW #%s synced from DB", ptw_id)
     else:
         log.warning("PTW #%s not found in DB during sync", ptw_id)
@@ -141,8 +132,7 @@ def _periodic_refresh():
     while True:
         sleep(_DB_PERIODIC_REFRESH_INTERVAL)
         try:
-            with _request_lock:
-                globalData.refresh()
+            globalData.refresh(userDB, ptwDB, isoDB)
             log.info("Periodic DB resync completed")
         except Exception as e:
             log.error("Periodic DB resync failed: %s", e, exc_info=True)
@@ -405,7 +395,8 @@ def newUserRequest():
         if err is None:
             if username:
                 try:
-                    globalData.allUsers[username] = userDB.getSecuredUser(username)
+                    with globalData.lock:
+                        globalData.allUsers[username] = userDB.getSecuredUser(username)
                 except Exception:
                     pass
             log.info("User created: username='%s' by admin='%s'", username, user.getUsername())
@@ -432,7 +423,8 @@ def updateUserRequest():
             if result is None:
                 if target:
                     try:
-                        globalData.allUsers[target] = userDB.getSecuredUser(target)
+                        with globalData.lock:
+                            globalData.allUsers[target] = userDB.getSecuredUser(target)
                     except Exception:
                         pass
             log.info("User updated: username='%s' by='%s'", target, authUser.getUsername())
@@ -476,7 +468,8 @@ def deleteUserRequest():
     try:
         username = data["username"]
         userDB.deleteUser(User(username=username))
-        globalData.allUsers.pop(username, None)
+        with globalData.lock:
+            globalData.allUsers.pop(username, None)
         log.info("User deleted: username='%s' by admin='%s'", username, user.getUsername())
         return jsonify({"success": True, "user": None})
     except Exception as e:
@@ -530,7 +523,8 @@ def addPTWRequest():
         ptw_id = ptwDB.addPTWFromDict(ptwDict)
         new_ptw = ptwDB.getPTWById(ptw_id)
         if new_ptw:
-            globalData.allPTWs[new_ptw.id] = new_ptw
+            with globalData.lock:
+                globalData.allPTWs[new_ptw.id] = new_ptw
         _broadcast("new_ptw", {"ptw_id": ptw_id, "type": ptwDict.get("type", ""), "by": user.getUsername()}, roles=[UserRoles.USER, UserRoles.COORDINATOR])
         log.info("PTW created: id=%s type='%s' by='%s'", ptw_id, ptwDict.get("type"), user.getUsername())
         return jsonify({"success": True, "ptw-id": ptw_id})
@@ -553,7 +547,8 @@ def deletePTWRequest():
             log.warning("DELETE /ptws: forbidden — PTW #%s status='%s' user='%s'", ptw_id, ptw.approval_status, user.getUsername())
             return jsonify({"success": False, "error": "Can only delete REJECTED or ARCHIVED PTWs"}), 403
         result = ptwDB.deletePTW(ptw_id)
-        globalData.allPTWs.pop(ptw_id, None)
+        with globalData.lock:
+            globalData.allPTWs.pop(ptw_id, None)
         _broadcast("ptw_deleted", {"ptw_id": ptw_id, "by": user.getUsername()})
         log.info("PTW deleted: id=%s by='%s'", ptw_id, user.getUsername())
         return jsonify({"success": True, "ptw": result})
@@ -607,8 +602,9 @@ def archivePTWs():
             return jsonify({"success": False, "error": f"PTW# {pid} cannot be archived (must be REJECTED or CLOSED)"}), 403
     try:
         result = ptwDB.archivePTWs(ptwIds)
-        for pid in ptwIds:
-            globalData.allPTWs.pop(pid, None)
+        with globalData.lock:
+            for pid in ptwIds:
+                globalData.allPTWs.pop(pid, None)
         _broadcast("ptw_archived", {"ptw_ids": ptwIds, "by": user.getUsername()})
         log.info("PTWs archived: ids=%s by='%s'", ptwIds, user.getUsername())
         return jsonify({"success": True, "ptw": result})
@@ -667,11 +663,12 @@ def runPTW():
     try:
         if ok:
             ptwDB.runAcceptPTW(ptwId, ia, ts)
-            for iso in ptw.isolations:
-                if iso.tag not in globalData.isolations:
-                    globalData.isolations[iso.tag] = Isolation(type=iso.type, tag=iso.tag, description=iso.description)
-                globalData.isolations[iso.tag].linkPTW(ptwId)
-                isoDB.updateIsolation(globalData.isolations[iso.tag])
+            with globalData.lock:
+                for iso in ptw.isolations:
+                    if iso.tag not in globalData.isolations:
+                        globalData.isolations[iso.tag] = Isolation(type=iso.type, tag=iso.tag, description=iso.description)
+                    globalData.isolations[iso.tag].linkPTW(ptwId)
+                    isoDB.updateIsolation(globalData.isolations[iso.tag])
             _sync_ptw(ptwId)
             _broadcast("ptw_run", {"ptw_id": ptwId, "accepted": True, "by": ia})
             log.info("PTW run accepted: id=%s by IA='%s' isolations=%d", ptwId, ia, len(ptw.isolations))
@@ -739,14 +736,15 @@ def hldPTW():
         keepTags = ptw.keep_isolations
         if ok:
             ptwDB.hldAcceptPTW(ptwId, ia, ts)
-            for iso in ptw.isolations:
-                if iso.tag not in globalData.isolations:
-                    continue
-                if iso.tag in keepTags:
-                    globalData.isolations[iso.tag].holdPTW(ptwId)
-                else:
-                    globalData.isolations[iso.tag].unlinkPTW(ptwId)
-                isoDB.updateIsolation(globalData.isolations[iso.tag])
+            with globalData.lock:
+                for iso in ptw.isolations:
+                    if iso.tag not in globalData.isolations:
+                        continue
+                    if iso.tag in keepTags:
+                        globalData.isolations[iso.tag].holdPTW(ptwId)
+                    else:
+                        globalData.isolations[iso.tag].unlinkPTW(ptwId)
+                    isoDB.updateIsolation(globalData.isolations[iso.tag])
             _sync_ptw(ptwId)
             _broadcast("ptw_hold", {"ptw_id": ptwId, "accepted": True, "by": ia})
             log.info("PTW hold accepted: id=%s by IA='%s'", ptwId, ia)
@@ -812,12 +810,13 @@ def clsPTW():
     try:
         if ok:
             ptwDB.clsAcceptPTW(ptwId, ia, ts)
-            for iso in ptw.isolations:
-                if iso.tag in globalData.isolations:
-                    globalData.isolations[iso.tag].unlinkPTW(ptwId)
-                    isoDB.updateIsolation(globalData.isolations[iso.tag])
-                else:
-                    log.critical("PTW close: isolation tag='%s' not in active isolations (PTW #%s) — data inconsistency", iso.tag, ptwId)
+            with globalData.lock:
+                for iso in ptw.isolations:
+                    if iso.tag in globalData.isolations:
+                        globalData.isolations[iso.tag].unlinkPTW(ptwId)
+                        isoDB.updateIsolation(globalData.isolations[iso.tag])
+                    else:
+                        log.critical("PTW close: isolation tag='%s' not in active isolations (PTW #%s) — data inconsistency", iso.tag, ptwId)
             _sync_ptw(ptwId)
             _broadcast("ptw_close", {"ptw_id": ptwId, "accepted": True, "by": ia})
             log.info("PTW closed (accepted): id=%s by IA='%s'", ptwId, ia)
