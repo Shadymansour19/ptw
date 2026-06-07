@@ -1,4 +1,6 @@
 import os
+import secrets
+import logging
 import bcrypt
 import psycopg2
 from psycopg2 import *
@@ -6,6 +8,8 @@ from psycopg2.extras import RealDictCursor
 
 from User import User, UserRoles, SecuredUser
 from commonDb import CommonDB
+
+log = logging.getLogger(__name__)
 
 
 def _hash_password(plain: str) -> str:
@@ -43,11 +47,16 @@ class UsersDb:
                 """)
                 cursor.execute("SELECT COUNT(*) FROM users")
                 if cursor.fetchone()['count'] == 0:
+                    seed_password = secrets.token_urlsafe(12)
                     cursor.execute('''
                         INSERT INTO users (username, password, name, role, department, email)
                         VALUES (%s, %s, %s, %s, %s, %s)''',
-                        ("admin", _hash_password("admin"), "Administrator", UserRoles.ADMIN, "Admin", "")
+                        ("admin", _hash_password(seed_password), "Administrator", UserRoles.ADMIN, "Admin", "")
                     )
+                    log.warning("=" * 60)
+                    log.warning("INITIAL ADMIN PASSWORD: %s", seed_password)
+                    log.warning("Change this immediately after first login.")
+                    log.warning("=" * 60)
             self.conn.commit()
         except Exception as e:
             self.conn.rollback()
