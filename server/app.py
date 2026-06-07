@@ -71,6 +71,8 @@ app.config.update(
 mail = Mail(app)
 
 resetCodes = {}
+_RESET_CODE_TTL = 15 * 60
+_RESET_CODE_PRUNE_INTERVAL = 5 * 60
 
 _sse_clients: dict[UserRoles, list[queue.Queue]] = {}
 _sse_lock = threading.Lock()
@@ -145,6 +147,19 @@ def _periodic_refresh():
 
 threading.Thread(target=_periodic_refresh, daemon=True, name="globaldata-refresh").start()
 log.info("Periodic DB resync thread started (interval: 5 min)")
+
+
+def _prune_reset_codes():
+    while True:
+        sleep(_RESET_CODE_PRUNE_INTERVAL)
+        cutoff = time() - _RESET_CODE_TTL
+        expired = [u for u, (_, ts) in list(resetCodes.items()) if ts < cutoff]
+        for u in expired:
+            del resetCodes[u]
+        if expired:
+            log.debug("Pruned %d expired reset code(s)", len(expired))
+
+threading.Thread(target=_prune_reset_codes, daemon=True, name="resetcodes-pruner").start()
 
 
 def getVerifiedUser(auth) -> User:
@@ -310,7 +325,7 @@ def resetPassword():
         log.warning("Password reset: no pending reset for username='%s'", username)
         return jsonify({"success": False, "error": "No reset password request found for this username"}), 404
     code, timestamp = resetCodes[username]
-    if time() - timestamp > 15 * 60:
+    if time() - timestamp > _RESET_CODE_TTL:
         del resetCodes[username]
         log.warning("Password reset: expired code used for username='%s'", username)
         return jsonify({"success": False, "error": "Verification code expired"}), 400
@@ -873,10 +888,6 @@ def getPtwAttachment():
                 return jsonify({"success": False, "error": "File not found"}), 404
             if not os.path.abspath(filepath).startswith(os.path.abspath(attachDir)):
                 log.warning("GET /ptws/attachments: path traversal attempt: ptw-id='%s' file='%s' user='%s'", ptwId, filename, user.getUsername())
-                return jsonify({"success": False, "error": "Invalid filename"}), 400
-            filepath = os.path.join(attachDir, filename)
-            if not os.path.abspath(filepath).startswith(os.path.abspath(attachDir)):
-                log.warning("POST /ptws/attachments: path traversal attempt: ptw-id='%s' file='%s' user='%s'", ptwId, filename, user.getUsername())
                 return jsonify({"success": False, "error": "Invalid filename"}), 400
             log.debug("Attachment served: PTW #%s file='%s' to user='%s'", ptwId, filename, user.getUsername())
             return send_file(filepath, as_attachment=True)
