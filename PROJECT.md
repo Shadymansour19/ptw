@@ -303,7 +303,8 @@ Maintenance and Work Instructions (MIWI) are PDF documents stored in `server/miw
 - Passwords are hashed with **bcrypt** before storage. The server never returns a password hash in any API response.
 - **First boot:** if the `users` table is empty, a random admin password is generated with `secrets.token_urlsafe(12)` and printed once to the server log at `WARNING` level. Change it immediately after first login.
 - **Password Reset** flow: user requests a reset → server sends a 6-digit verification code to the user's registered email via Gmail SMTP → code expires after 15 minutes → user submits new password with code.
-- Role-based access control is enforced at the API layer for sensitive operations (user management, risk assessment management).
+- Role-based access control is enforced at the API layer for sensitive operations (user management, risk assessment management, PTW lifecycle: only `ISSUING` can accept/reject run, hold, and close requests).
+- `DELETE /ptws` and `POST /ptws/archive` are open to all authenticated users but are state-gated: deletion requires `REJECTED` or `ARCHIVED` status; archiving requires `REJECTED` or `CLOSED` status.
 
 ---
 

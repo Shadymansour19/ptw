@@ -35,14 +35,6 @@ The server binds to plain HTTP on port 5000. Every request sends the username an
 
 ---
 
-### M2 — Missing role checks on PTW state-change operations
-**File:** `server/app.py` — routes `/ptws/run`, `/ptws/hold`, `/ptws/close`, `/ptws/approvals`, `DELETE /ptws`, `POST /ptws/archive`
-
-These endpoints only verify that the caller is authenticated — they do not verify role. Any authenticated user (including `UserRoles.USER`) can accept/reject a run, hold, or close request, delete any PTW, or archive permits. The enforcement of who is allowed to take each action exists only in the client UI, not in the server.
-
-**Fix:** Add explicit `user.getRole()` guards that match the business rules (e.g., only `ISSUING` can accept a run request, only `ADMIN` or the requestor can delete a PTW).
-
----
 
 ### M3 — psycopg2 connection shared across threads
 **File:** `server/usersDb.py:11`, `server/ptwDb.py`, `server/risksDb.py`, `server/IsolationDb.py`
@@ -84,6 +76,15 @@ Seed password is now generated with `secrets.token_urlsafe(12)` on first boot   
 **File:** `server/app.py` — `getPtwAttachment`
 
 Removed the duplicate `filepath` reconstruction and second path-traversal check that immediately followed the first one.
+
+---
+
+### ~~M2 — Missing role checks on PTW state-change operations~~ ✓
+**File:** `server/app.py`
+
+- `/ptws/run`, `/ptws/hold`, `/ptws/close` — now require `ISSUING` role; returns 403 for any other role.
+- `DELETE /ptws` — state guard added: active PTWs must have `approval_status == REJECTED`; PTWs not in the active cache (i.e. already archived) are also allowed through.
+- `POST /ptws/archive` — state guard added: each PTW must be `REJECTED` or `CLOSED`; returns 403 otherwise.
 
 ---
 
