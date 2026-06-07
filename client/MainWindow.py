@@ -803,6 +803,7 @@ class MainWindow(QMainWindow):
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
 
+        password_changed = user.getPassword() is not None
         if user.getPassword() is None:
             user.setPassword(self.loggedUser.getPassword())
 
@@ -812,6 +813,12 @@ class MainWindow(QMainWindow):
             return
 
         self.loggedUser = user
+        if password_changed:
+            self._sseListener.stop()
+            self._sseListener.wait(1000)
+            self._sseListener = SSEListener(ClientRequests.SERVER_URL, user.getUsername(), user.getPassword())
+            self._sseListener.eventReceived.connect(self._onSSEEvent)
+            self._sseListener.start()
         MainWindow.refreshWelcomePage(self)
 
         if dlg.new_theme != old_theme:
