@@ -6,15 +6,6 @@ Issues are grouped by severity. Fixed items are noted at the bottom for traceabi
 
 ## High
 
-### H1 — Default `admin`/`admin` seed credentials
-**File:** `server/usersDb.py` — `__init__`
-
-The database seed inserts an `admin` account with password `"admin"` when the `users` table is empty. This underlying credential is trivially weak. Any fresh deployment is open until the password is manually changed.
-
-**Fix:** Force the admin to set a real password on first login, or generate a random seed password and print it once to the console/log on first boot.
-
----
-
 ### H2 — No HTTPS — Basic Auth credentials sent unencrypted
 **File:** `server/app.py:1141`
 
@@ -22,7 +13,7 @@ The server binds to plain HTTP on port 5000. Every request sends the username an
 
 **Fix:** Terminate TLS at a reverse proxy (nginx/caddy) in front of Flask, or use `ssl_context` in `app.run()` with a certificate.
 
----
+--- 
 
 ### H3 — No rate limiting on login or password-reset code
 **File:** `server/app.py` — `/login` (line ~197), `/reset-password` (line ~307)
@@ -62,40 +53,43 @@ psycopg2 explicitly states that connections are **not thread-safe**. Each `*Db` 
 
 ---
 
-### M4 — SSEListener not restarted after password change
-**File:** `client/MainWindow.py:368`, `client/SSEListener.py`
-
-`SSEListener` is initialised once at login with the user's password. If the user changes their password via Settings, the listener continues using the old credential. When the SSE connection drops and the listener attempts to reconnect, authentication will fail silently and real-time events will stop arriving.
-
-**Fix:** After a successful password change in `dlgSettings()`, stop and restart `_sseListener` with the new password.
-
----
-
 ## Low
-
-### L1 — Redundant path-traversal check in `getPtwAttachment`
-**File:** `server/app.py` — `getPtwAttachment` (~line 864)
-
-The path-traversal containment check is performed, then `filepath` is reconstructed identically, then the same check runs again. The duplicate is dead code.
-
-**Fix:** Remove the second construction + check block.
-
----
 
 ### L2 — Global `_request_lock` is a DoS amplifier
 **File:** `server/app.py:77`
 
-All non-SSE requests are serialised by a single threading lock. A slow DB query or large file upload from one client stalls every other client. An authenticated user can trivially cause service degradation.
+All non-SSE requests are serialized by a single threading lock. A slow DB query or large file upload from one client stalls every other client. An authenticated user can trivially cause service degradation.
 
 **Fix:** Per-resource locking, or migrate to an async framework (e.g., Flask with gevent/eventlet, or FastAPI with asyncio). At minimum, document the single-threaded nature and ensure file upload timeouts are enforced.
 
 ---
 
-### L3 — `resetCodes` dict is never proactively pruned
-**File:** `server/app.py:74`
+## Fixed
 
-The in-memory `resetCodes` dict grows with every password-reset request. Expired entries are only removed when a matching (possibly expired) code submission arrives. Under sustained reset requests the dict leaks memory indefinitely.
+### ~~H1 — Default `admin`/`admin` seed credentials~~ ✓
+**File:** `server/usersDb.py` — `__init__`
 
-**Fix:** Prune expired entries on a background timer, or use a time-keyed `OrderedDict` and evict from the front on each insert.
+Seed password is now generated with `secrets.token_urlsafe(12)` on first boot   and printed once to the log at `WARNING` level. The hardcoded `"admin"` password is gone.
+
+---
+
+### ~~M4 — SSEListener not restarted after password change~~ ✓
+**File:** `client/MainWindow.py` — `dlgSettings`
+
+`dlgSettings` now detects a password change, then stops and recreates `_sseListener` with the new credential before resuming.
+
+---
+
+### ~~L1 — Redundant path-traversal check in `getPtwAttachment`~~ ✓
+**File:** `server/app.py` — `getPtwAttachment`
+
+Removed the duplicate `filepath` reconstruction and second path-traversal check that immediately followed the first one.
+
+---
+
+### ~~L3 — `resetCodes` dict is never proactively pruned~~ ✓
+**File:** `server/app.py`
+
+Added `_RESET_CODE_TTL` and `_RESET_CODE_PRUNE_INTERVAL` constants. A daemon thread now prunes expired entries every `_RESET_CODE_PRUNE_INTERVAL` seconds. The inline `15 * 60` in `resetPassword` was replaced with `_RESET_CODE_TTL`.
 
 ---
