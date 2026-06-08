@@ -45,15 +45,6 @@ The update is implemented as `deleteRiskAssessment` followed by `addRiskAssessme
 
 ---
 
-### M7 — Multi-file attachment upload returns mid-loop on path-traversal, leaving orphaned files on disk
-**File:** `server/app.py` — `addPtwAttachments` (line 867)
-
-When uploading multiple files in one request, a path-traversal check failure inside the loop does a hard `return` immediately. Any files already saved earlier in the same loop iteration are left on disk with no corresponding DB record, and all remaining valid files are silently dropped. The client receives a 400 with no indication of which files were saved.
-
-**Fix:** Validate all filenames before writing any file to disk — collect errors in the first pass, then only proceed to save if no errors were found. This guarantees the operation is all-or-nothing from the client's perspective.
-
----
-
 ### L4 — `IsolationDb.updateIsolation` has a TOCTOU race across two connections
 **File:** `server/IsolationDb.py` — `updateIsolation` (line 29)
 
@@ -65,6 +56,13 @@ The existence check (`SELECT EXISTS`) and the subsequent `UPDATE` or `INSERT` ea
 
 
 ## Fixed
+
+### ~~M7 — Multi-file attachment upload returns mid-loop on path-traversal, leaving orphaned files on disk~~ ✓
+**File:** `server/app.py` — `addPtwAttachments`
+
+Restructured into a two-pass approach: all filenames are validated first (empty name, path traversal, duplicate), and files are only written to disk if the entire validation pass is clean. The hard `return` on path traversal was replaced with an `errors.append` + `continue`, eliminating both the orphaned-file and silent-drop issues.
+
+---
 
 ### ~~M5 — `Approval.__str__` and `__updateApprovalStatus` crash on deleted users~~ ✓
 **Files:** `server/PTWData.py`, `client/PTWData.py`

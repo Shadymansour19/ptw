@@ -854,32 +854,36 @@ def addPtwAttachments():
     os.makedirs(attachDir, exist_ok=True)
 
     errors = []
-    succeeded = []
+    validated = []
     for file in attachments.values():
         filename = file.filename if file else None
         if not filename:
-            errors.append(f"No file selected for uploading {filename}")
+            errors.append("No file selected for uploading")
             continue
-        try:
-            filepath = os.path.join(attachDir, filename)
-            if not os.path.abspath(filepath).startswith(os.path.abspath(attachDir)):
-                log.warning("POST /ptws/attachments: path traversal attempt: ptw-id='%s' file='%s' user='%s'", ptwId, filename, user.getUsername())
-                return jsonify({"success": False, "error": "Invalid filename"}), 400
-            if os.path.exists(filepath):
-                errors.append(f"File with the same name already exists for {filename}")
-                continue
-            file.save(filepath)
-            succeeded.append(filename)
-            log.debug("Attachment saved: PTW #%s file='%s'", ptwId, filename)
-        except Exception as e:
-            errors.append(f"Failed to upload file for {filename}: {str(e)}")
-            log.error("Attachment upload failed: PTW #%s file='%s': %s", ptwId, filename, e)
+        filepath = os.path.join(attachDir, filename)
+        if not os.path.abspath(filepath).startswith(os.path.abspath(attachDir)):
+            log.warning("POST /ptws/attachments: path traversal attempt: ptw-id='%s' file='%s' user='%s'", ptwId, filename, user.getUsername())
+            errors.append(f"Invalid filename: {filename}")
+            continue
+        if os.path.exists(filepath):
+            errors.append(f"File already exists: {filename}")
+            continue
+        validated.append((file, filename, filepath))
+
+    if not errors:
+        for file, filename, filepath in validated:
+            try:
+                file.save(filepath)
+                log.debug("Attachment saved: PTW #%s file='%s'", ptwId, filename)
+            except Exception as e:
+                errors.append(f"Failed to upload {filename}: {str(e)}")
+                log.error("Attachment upload failed: PTW #%s file='%s': %s", ptwId, filename, e)
 
     if errors:
-        log.warning("Attachment upload completed with errors: PTW #%s succeeded=%s errors=%s", ptwId, succeeded, errors)
+        log.warning("Attachment upload didn't complete due to errors: PTW #%s errors=%s", ptwId, errors)
         return jsonify({"success": False, "error": "\n".join(errors)}), 400
     else:
-        log.info("Attachments uploaded: PTW #%s files=%s by='%s'", ptwId, succeeded, user.getUsername())
+        log.info("Attachments uploaded: PTW #%s files=%s by='%s'", ptwId, [f[1] for f in validated], user.getUsername())
         return jsonify({"success": True, "message": "Files uploaded successfully"})
 
 
