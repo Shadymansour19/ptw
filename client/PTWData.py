@@ -1617,7 +1617,7 @@ class PTWData:
         self.close_issuing = None
         self.close_performing_timestamp = None
         self.close_issuing_timestamp = None
-        self.status = PTWData.ApprovalStatus.UNDER_REVIEW
+        self.approval_status = PTWData.ApprovalStatus.UNDER_REVIEW
         self.running_status = PTWData.RunningStatus.NOT_RUNNING
         self.prev_running_status = PTWData.RunningStatus.NOT_RUNNING
         return self
