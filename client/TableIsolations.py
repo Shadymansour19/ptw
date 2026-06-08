@@ -40,9 +40,10 @@ class TablePTWIsolations(QWidget):
         for isolation in self.isolations:
             self.__addIsolationToGUI(isolation)
 
-        self.btnNewIsolation = QPushButton('+', self)
+        self.btnNewIsolation = QPushButton(self)
+        self.btnNewIsolation.setIcon(qta.icon('fa6s.plus', color='white'))
         self.btnNewIsolation.setFixedSize(60, 60)
-        self.btnNewIsolation.setFont(QFont("Arial", 24, QFont.Weight.Bold))
+        self.btnNewIsolation.setIconSize(QSize(32, 32))
         self.btnNewIsolation.setStyleSheet("""
             QPushButton {
                 background-color: #1976D2;

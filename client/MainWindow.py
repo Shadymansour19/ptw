@@ -329,7 +329,6 @@ class MainWindow(QMainWindow):
         self.btnFAB.setFixedSize(60, 60)
         # self.btnFAB.setIcon(QIcon.fromTheme("list-add"))
         self.btnFAB.setIconSize(QSize(32, 32))
-        self.btnFAB.setFont(QFont("Arial", 24, QFont.Weight.Bold))
         self.btnFAB.setStyleSheet("""
             QPushButton {
                 background-color: #1976D2;
@@ -1299,7 +1298,7 @@ class UserMainWindow(MainWindow):
         ])
 
         self.btnFAB.setToolTip("New PTW [Ctrl+N]")
-        self.btnFAB.setText("+")
+        self.btnFAB.setIcon(qta.icon('fa6s.plus', color='white'))
 
         shortcut = QShortcut(QKeySequence("Ctrl+N"), self)
         shortcut.activated.connect(self.btnFABHandler)
@@ -1345,7 +1344,7 @@ class CoordinatorMainWindow(MainWindow):
         ])
 
         # Create Floating Option Button
-        self.btnFAB.setIcon(qta.icon('fa6s.print'))
+        self.btnFAB.setIcon(qta.icon('fa6s.print', color='white'))
         self.btnFAB.setToolTip("Print current widget PTWs [Ctrl+P]")
 
         shortcut = QShortcut(QKeySequence("Ctrl+P"), self)
@@ -1393,7 +1392,7 @@ class IssuingMainWindow(MainWindow):
         ])
 
         # Create Floating Option Button
-        self.btnFAB.setIcon(qta.icon('fa6s.print'))
+        self.btnFAB.setIcon(qta.icon('fa6s.print', color='white'))
         self.btnFAB.setToolTip("Print current widget PTWs")
 
     def stackTabChanged(self):
@@ -1427,7 +1426,7 @@ class SafetyMainWindow(MainWindow):
             [self.btnRisks],
         ])
 
-        self.btnFAB.setText("+")
+        self.btnFAB.setIcon(qta.icon('fa6s.plus', color='white'))
         self.btnFAB.setToolTip("New Risk [Ctrl+N]")
 
         QShortcut(QKeySequence("Ctrl+N"), self).activated.connect(self.addNewRiskDialog)
@@ -1481,7 +1480,7 @@ class ManagerMainWindow(MainWindow):
         ])
 
         # Create Floating Option Button
-        self.btnFAB.setIcon(qta.icon('fa6s.print'))
+        self.btnFAB.setIcon(qta.icon('fa6s.print', color='white'))
         self.btnFAB.setToolTip("Print current widget PTWs")
 
     def stackTabChanged(self):
@@ -1510,7 +1509,7 @@ class AdminMainWindow(MainWindow):
             [self.btnUsers, self.btnServerLogs],
         ])
 
-        self.btnFAB.setText("+")
+        self.btnFAB.setIcon(qta.icon('fa6s.plus', color='white'))
         self.btnFAB.setToolTip("Add New User [Ctrl+N]")
 
         shortcut = QShortcut(QKeySequence("Ctrl+N"), self)

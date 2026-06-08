@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import (QDialog, QWidget, QFormLayout, QVBoxLayout, QHBoxLa
                               QDialogButtonBox, QMessageBox, QApplication, QStyle)
 from PyQt6.QtGui import QFont
 import re
+import qtawesome as qta
 
 from PTWData import RiskAssessment, RiskItem
 from GlobalData import globalData
@@ -93,8 +94,8 @@ class DialogRiskAssessment(QDialog):
 
         self.btnPrev = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ArrowBack), 'Prev')
         self.btnNext = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ArrowForward), 'Next')
-        self.btnNew  = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogNewFolder), 'New')
-        self.btnDelete = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon), 'Delete')
+        self.btnNew  = QPushButton(qta.icon('fa6s.plus'), 'New')
+        self.btnDelete = QPushButton(qta.icon('fa6s.trash-can'), 'Delete')
 
         lytCtrl = QHBoxLayout()
         self.stack = QStackedWidget()
