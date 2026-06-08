@@ -151,7 +151,7 @@ def _prune_reset_codes():
         if expired:
             log.debug("Pruned %d expired reset code(s)", len(expired))
 
-threading.Thread(target=_prune_reset_codes, daemon=True, name="resetcodes-pruner").start()
+threading.Thread(target=_prune_reset_codes, daemon=True, name="reset-codes-pruner").start()
 
 
 def getVerifiedUser(auth) -> User:
