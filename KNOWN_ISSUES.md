@@ -24,6 +24,15 @@ The server binds to plain HTTP on port 5000. Every request sends the username an
 
 ---
 
+### H4 — `getVerifiedUser` performs a full table scan on every authenticated request
+**File:** `server/usersDb.py` — `getVerifiedUser` (line 68)
+
+`getVerifiedUser` calls `self.getAllUsers()` on every request, fetching every row from the `users` table and iterating it in Python to find a match. Under any concurrent load this means N full table scans per second (one per in-flight request). It also momentarily holds `User` objects containing raw bcrypt hashes across threads, increasing the blast radius of any memory-inspection vulnerability.
+
+**Fix:** Query by username directly — `SELECT * FROM users WHERE username = %s` — then call `_verify_password` against the single returned hash. Alternatively, authenticate against the `globalData.allUsers` in-memory cache (already populated and lock-protected) to avoid a DB round-trip entirely.
+
+---
+
 ## Medium
 
 ### M1 — Username enumeration via password-reset endpoint
@@ -32,6 +41,51 @@ The server binds to plain HTTP on port 5000. Every request sends the username an
 `POST /reset-password-request` returns `"Can't find a mail associated to username {username}"` when the username does not exist (or has no email). An unauthenticated caller can probe for valid usernames by watching which error is returned.
 
 **Fix:** Return a generic response regardless of whether the username exists: `"If this account exists, a verification code has been sent."` Log the real reason internally.
+
+---
+
+### M5 — `Approval.__str__` and `__updateApprovalStatus` crash on deleted users
+**Files:** `server/PTWData.py` — `Approval.__str__` (line 190), `__updateApprovalStatus` (line 404)
+
+Both methods do a bare dict lookup `globalData.allUsers[approval.username]` with no guard. If a user is deleted after having approved a PTW, any code path that prints, logs, or recalculates the approval status of that PTW raises a `KeyError` and crashes. This affects every PTW the deleted user ever touched.
+
+**Fix:** Replace bare lookups with `.get()` and handle the `None` case gracefully. In `__str__`: `user = globalData.allUsers.get(self.username)` then fall back to the raw username if `user` is `None`. In `__updateApprovalStatus`: skip the role lookup for any approval whose username is no longer in `allUsers` rather than raising.
+
+---
+
+### M6 — `updateRiskAssessmentFromDict` is non-atomic — delete succeeds but insert may fail
+**File:** `server/risksDb.py` — `updateRiskAssessmentFromDict` (line 37)
+
+The update is implemented as `deleteRiskAssessment` followed by `addRiskAssessmentFromDict`. Each call acquires its own DB connection from the pool, so they cannot share a transaction. If the insert fails for any reason (constraint violation, lost connection, malformed row) the old assessment has already been permanently deleted with no rollback path.
+
+**Fix:** Run both operations inside a single `with CommonDB.get_conn() as conn` block — DELETE then INSERT — so the connection's rollback on exception restores the original data. The individual helper methods can remain as-is; `updateRiskAssessmentFromDict` should bypass them and execute both statements directly on the shared connection.
+
+---
+
+### M7 — Multi-file attachment upload returns mid-loop on path-traversal, leaving orphaned files on disk
+**File:** `server/app.py` — `addPtwAttachments` (line 867)
+
+When uploading multiple files in one request, a path-traversal check failure inside the loop does a hard `return` immediately. Any files already saved earlier in the same loop iteration are left on disk with no corresponding DB record, and all remaining valid files are silently dropped. The client receives a 400 with no indication of which files were saved.
+
+**Fix:** Validate all filenames before writing any file to disk — collect errors in the first pass, then only proceed to save if no errors were found. This guarantees the operation is all-or-nothing from the client's perspective.
+
+---
+
+### M8 — `clearApprovals` assigns to non-existent `self.status` instead of `self.approval_status`
+**File:** `server/PTWData.py` — `clearApprovals` (line 375)
+
+`self.status = PTWData.ApprovalStatus.UNDER_REVIEW` writes to an attribute that does not exist on `PTWData` — the correct field is `self.approval_status`. Python creates the spurious `status` attribute silently, so the approval status reset is a no-op. Any workflow that calls `clearApprovals` and then checks `approval_status` will see the old status value.
+
+**Fix:** Change the assignment to `self.approval_status = PTWData.ApprovalStatus.UNDER_REVIEW`.
+
+---
+
+### L4 — `IsolationDb.updateIsolation` has a TOCTOU race across two connections
+**File:** `server/IsolationDb.py` — `updateIsolation` (line 29)
+
+The existence check (`SELECT EXISTS`) and the subsequent `UPDATE` or `INSERT` each borrow a separate connection from the pool. Between the two calls, a concurrent request could insert a row with the same `tag`, causing the second connection's `INSERT` to fail with a unique-key violation. This is a classic check-then-act race condition.
+
+**Fix:** Replace the two-step logic with a single upsert: `INSERT INTO isolations (...) VALUES (...) ON CONFLICT (tag) DO UPDATE SET ...`. This is atomic and eliminates the race entirely.
 
 ---
 
