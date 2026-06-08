@@ -803,22 +803,12 @@ class MainWindow(QMainWindow):
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
 
-        password_changed = user.getPassword() is not None
-        if user.getPassword() is None:
-            user.setPassword(self.loggedUser.getPassword())
-
         err = ClientRequests.updateUser(self.loggedUser, user)
         if err:
             QMessageBox.warning(self, "Fail", err)
             return
 
         self.loggedUser = user
-        if password_changed:
-            self._sseListener.stop()
-            self._sseListener.wait(1000)
-            self._sseListener = SSEListener(ClientRequests.SERVER_URL, user.getUsername(), user.getPassword())
-            self._sseListener.eventReceived.connect(self._onSSEEvent)
-            self._sseListener.start()
         MainWindow.refreshWelcomePage(self)
 
         if dlg.new_theme != old_theme:
@@ -1355,7 +1345,7 @@ class CoordinatorMainWindow(MainWindow):
         ])
 
         # Create Floating Option Button
-        self.btnFAB.setIcon(qta.icon("fa5.file-pdf"))
+        self.btnFAB.setIcon(qta.icon('fa6s.print'))
         self.btnFAB.setToolTip("Print current widget PTWs [Ctrl+P]")
 
         shortcut = QShortcut(QKeySequence("Ctrl+P"), self)
@@ -1403,7 +1393,7 @@ class IssuingMainWindow(MainWindow):
         ])
 
         # Create Floating Option Button
-        self.btnFAB.setIcon(qta.icon("fa5.file-pdf"))
+        self.btnFAB.setIcon(qta.icon('fa6s.print'))
         self.btnFAB.setToolTip("Print current widget PTWs")
 
     def stackTabChanged(self):
@@ -1491,7 +1481,7 @@ class ManagerMainWindow(MainWindow):
         ])
 
         # Create Floating Option Button
-        self.btnFAB.setIcon(qta.icon("fa5.file-pdf"))
+        self.btnFAB.setIcon(qta.icon('fa6s.print'))
         self.btnFAB.setToolTip("Print current widget PTWs")
 
     def stackTabChanged(self):
