@@ -411,7 +411,6 @@ def newUserRequest():
 @app.route("/users", methods=["PUT"])
 def updateUserRequest():
     authUser = getVerifiedUser(request.authorization)
-    print(request.authorization.username, request.authorization.password)
     if authUser is None:
         log.warning("PUT /users unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
