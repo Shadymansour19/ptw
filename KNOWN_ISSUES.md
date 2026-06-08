@@ -24,15 +24,6 @@ The server binds to plain HTTP on port 5000. Every request sends the username an
 
 ---
 
-### H4 — `getVerifiedUser` performs a full table scan on every authenticated request
-**File:** `server/usersDb.py` — `getVerifiedUser` (line 68)
-
-`getVerifiedUser` calls `self.getAllUsers()` on every request, fetching every row from the `users` table and iterating it in Python to find a match. Under any concurrent load this means N full table scans per second (one per in-flight request). It also momentarily holds `User` objects containing raw bcrypt hashes across threads, increasing the blast radius of any memory-inspection vulnerability.
-
-**Fix:** Query by username directly — `SELECT * FROM users WHERE username = %s` — then call `_verify_password` against the single returned hash. Alternatively, authenticate against the `globalData.allUsers` in-memory cache (already populated and lock-protected) to avoid a DB round-trip entirely.
-
----
-
 ## Medium
 
 ### M1 — Username enumeration via password-reset endpoint
@@ -82,6 +73,13 @@ The existence check (`SELECT EXISTS`) and the subsequent `UPDATE` or `INSERT` ea
 
 
 ## Fixed
+
+### ~~H4 — `getVerifiedUser` performs a full table scan on every authenticated request~~ ✓
+**File:** `server/usersDb.py` — `getVerifiedUser`
+
+Replaced `self.getAllUsers()` iteration with a direct `SELECT * FROM users WHERE username = %s` query. Since `username` is the primary key, the DB resolves the lookup via index in O(log n). Only one row is fetched and only its hash is passed to `_verify_password`, eliminating both the full table scan and the unnecessary in-memory exposure of all bcrypt hashes.
+
+---
 
 ### ~~H1 — Default `admin`/`admin` seed credentials~~ ✓
 **File:** `server/usersDb.py` — `__init__`

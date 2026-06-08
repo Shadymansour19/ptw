@@ -65,10 +65,16 @@ class UsersDb:
             return False
 
     def getVerifiedUser(self, username: str, password: str) -> User | None:
-        for user in self.getAllUsers():
-            if user.getUsername() == username and _verify_password(password, user.getPassword()):
-                return user
-        return None
+        try:
+            with CommonDB.get_conn() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                    cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
+                    row = cursor.fetchone()
+            if row and _verify_password(password, row['password']):
+                return User().setAll(row)
+            return None
+        except Exception:
+            raise Exception("Error verifying user credentials")
 
     def updateUserPassword(self, username: str, newPassword: str):
         try:
