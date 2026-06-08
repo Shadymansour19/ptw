@@ -35,14 +35,6 @@ The server binds to plain HTTP on port 5000. Every request sends the username an
 
 ---
 
-### M5 — `Approval.__str__` and `__updateApprovalStatus` crash on deleted users
-**Files:** `server/PTWData.py` — `Approval.__str__` (line 190), `__updateApprovalStatus` (line 404)
-
-Both methods do a bare dict lookup `globalData.allUsers[approval.username]` with no guard. If a user is deleted after having approved a PTW, any code path that prints, logs, or recalculates the approval status of that PTW raises a `KeyError` and crashes. This affects every PTW the deleted user ever touched.
-
-**Fix:** Replace bare lookups with `.get()` and handle the `None` case gracefully. In `__str__`: `user = globalData.allUsers.get(self.username)` then fall back to the raw username if `user` is `None`. In `__updateApprovalStatus`: skip the role lookup for any approval whose username is no longer in `allUsers` rather than raising.
-
----
 
 ### M6 — `updateRiskAssessmentFromDict` is non-atomic — delete succeeds but insert may fail
 **File:** `server/risksDb.py` — `updateRiskAssessmentFromDict` (line 37)
@@ -73,6 +65,13 @@ The existence check (`SELECT EXISTS`) and the subsequent `UPDATE` or `INSERT` ea
 
 
 ## Fixed
+
+### ~~M5 — `Approval.__str__` and `__updateApprovalStatus` crash on deleted users~~ ✓
+**Files:** `server/PTWData.py`, `client/PTWData.py`
+
+All bare `globalData.allUsers[username]` lookups in `Approval.__str__`, `__updateApprovalStatus`, and `getApprovalStatus` replaced with `.get()` guards in both files. `__str__` falls back to `[deleted user: username]`; `__updateApprovalStatus` skips deleted users in the role set comprehension; `getApprovalStatus` skips deleted users in both approval-loop passes.
+
+---
 
 ### ~~H4 — `getVerifiedUser` performs a full table scan on every authenticated request~~ ✓
 **File:** `server/usersDb.py` — `getVerifiedUser`

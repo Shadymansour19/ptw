@@ -1333,7 +1333,9 @@ class PTWData:
             return self
             
         def __str__(self):
-            user = globalData.allUsers[self.username]
+            user = globalData.allUsers.get(self.username)
+            if user is None:
+                return f"{self.action} by [deleted user: {self.username}] at {self.timestamp}"
             return f"{self.action} by {user.getRole()} {user.getName()} at {self.timestamp}"
         
         def toWidget(self):
@@ -1646,7 +1648,7 @@ class PTWData:
             self.approval_status = self.approvals[-1].action
             return
         
-        approvers = set([globalData.allUsers[approval.username].getRole() for approval in self.approvals])
+        approvers = set([globalData.allUsers[approval.username].getRole() for approval in self.approvals if approval.username in globalData.allUsers])
         
         if approvers >= set(self.requiredApprovers()):
             self.approval_status = PTWData.ApprovalStatus.APPROVED
@@ -1661,12 +1663,14 @@ class PTWData:
             if idx > 1:
                 prvRole = allRoles[idx-1]
             for approval in self.approvals[::-1]:
-                if globalData.allUsers[approval.username].getRole() == role:
+                user = globalData.allUsers.get(approval.username)
+                if user is not None and user.getRole() == role:
                     return approval.action
             if prvRole == None:
                 return PTWData.ApprovalStatus.UNDER_REVIEW
             for approval in self.approvals[::-1]:
-                if globalData.allUsers[approval.username].getRole() == prvRole:
+                user = globalData.allUsers.get(approval.username)
+                if user is not None and user.getRole() == prvRole:
                     return PTWData.ApprovalStatus.UNDER_REVIEW if approval.action == PTWData.ApprovalStatus.APPROVED else approval.action
             return None
         return self.approval_status
