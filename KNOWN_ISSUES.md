@@ -71,15 +71,6 @@ When uploading multiple files in one request, a path-traversal check failure ins
 
 ---
 
-### M8 — `clearApprovals` assigns to non-existent `self.status` instead of `self.approval_status`
-**File:** `server/PTWData.py` — `clearApprovals` (line 375)
-
-`self.status = PTWData.ApprovalStatus.UNDER_REVIEW` writes to an attribute that does not exist on `PTWData` — the correct field is `self.approval_status`. Python creates the spurious `status` attribute silently, so the approval status reset is a no-op. Any workflow that calls `clearApprovals` and then checks `approval_status` will see the old status value.
-
-**Fix:** Change the assignment to `self.approval_status = PTWData.ApprovalStatus.UNDER_REVIEW`.
-
----
-
 ### L4 — `IsolationDb.updateIsolation` has a TOCTOU race across two connections
 **File:** `server/IsolationDb.py` — `updateIsolation` (line 29)
 
