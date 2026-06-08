@@ -36,14 +36,6 @@ The server binds to plain HTTP on port 5000. Every request sends the username an
 ---
 
 
-### M6 — `updateRiskAssessmentFromDict` is non-atomic — delete succeeds but insert may fail
-**File:** `server/risksDb.py` — `updateRiskAssessmentFromDict` (line 37)
-
-The update is implemented as `deleteRiskAssessment` followed by `addRiskAssessmentFromDict`. Each call acquires its own DB connection from the pool, so they cannot share a transaction. If the insert fails for any reason (constraint violation, lost connection, malformed row) the old assessment has already been permanently deleted with no rollback path.
-
-**Fix:** Run both operations inside a single `with CommonDB.get_conn() as conn` block — DELETE then INSERT — so the connection's rollback on exception restores the original data. The individual helper methods can remain as-is; `updateRiskAssessmentFromDict` should bypass them and execute both statements directly on the shared connection.
-
----
 
 ### L4 — `IsolationDb.updateIsolation` has a TOCTOU race across two connections
 **File:** `server/IsolationDb.py` — `updateIsolation` (line 29)
@@ -56,6 +48,13 @@ The existence check (`SELECT EXISTS`) and the subsequent `UPDATE` or `INSERT` ea
 
 
 ## Fixed
+
+### ~~M6 — `updateRiskAssessmentFromDict` is non-atomic — delete succeeds but insert may fail~~ ✓
+**File:** `server/risksDb.py` — `updateRiskAssessmentFromDict`
+
+Rewrote to execute DELETE and all INSERTs on a single shared connection with one `conn.commit()` at the end. If any INSERT fails, `get_conn`'s exception handler rolls back the entire transaction, restoring the original assessment.
+
+---
 
 ### ~~M7 — Multi-file attachment upload returns mid-loop on path-traversal, leaving orphaned files on disk~~ ✓
 **File:** `server/app.py` — `addPtwAttachments`

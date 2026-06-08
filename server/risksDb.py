@@ -34,10 +34,24 @@ class RisksDb:
             return str(e)
 
     def updateRiskAssessmentFromDict(self, riskAssessment: dict):
-        return (
-            self.deleteRiskAssessment(riskAssessment['title']) or
-            self.addRiskAssessmentFromDict(riskAssessment)
-        )
+        try:
+            title = riskAssessment['title']
+            date  = riskAssessment['date']
+            with CommonDB.get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM risks WHERE title = %s", (title,))
+                for riskItemDict in riskAssessment['risks']:
+                    row = {**riskItemDict, 'title': title, 'date': date}
+                    columns = list(row.keys())
+                    placeholders = ', '.join(['%s'] * len(columns))
+                    cursor.execute(
+                        f"INSERT INTO risks ({', '.join(columns)}) VALUES ({placeholders})",
+                        tuple(row[c] for c in columns)
+                    )
+                conn.commit()
+            return None
+        except Exception as e:
+            return str(e)
 
     def deleteRiskAssessment(self, title: str) -> str:
         try:
