@@ -257,7 +257,7 @@ class DialogPTW(QDialog):
         self.btnsTools: list[QCheckBox] = []
         for i,tool in enumerate(PTWData.ALL_TOOLS):
             btn = QCheckBox(DialogPTW.checkboxDisplayName(tool))
-            btn.stateChanged.connect(self.checkRequirement)
+            btn.clicked.connect(self.checkRequirement)
             btn.setChecked(DialogPTW.formatCheckBoxText(btn.text()) in ptw.tools)
             btn.setEnabled(not readOnly)
             # btn.setStyleSheet('QCheckBox::indicator { width: 20px; height: 20px; }')
@@ -275,7 +275,7 @@ class DialogPTW(QDialog):
         self.btnsHazard: list[QCheckBox] = []
         for i,hazard in enumerate(PTWData.ALL_HAZARDS):
             btn = QCheckBox(DialogPTW.checkboxDisplayName(hazard))
-            btn.stateChanged.connect(self.checkRequirement)
+            btn.clicked.connect(self.checkRequirement)
             btn.setChecked(DialogPTW.formatCheckBoxText(btn.text()) in ptw.hazards)
             btn.setEnabled(not readOnly)
             # btn.setStyleSheet('QCheckBox::indicator { width: 20px; height: 20px; }')
@@ -293,7 +293,7 @@ class DialogPTW(QDialog):
         self.btnsControls: list[QCheckBox] = []
         for i,ctrl in enumerate(PTWData.ALL_CONTROLS):
             btn = QCheckBox(DialogPTW.checkboxDisplayName(ctrl))
-            btn.stateChanged.connect(self.checkRequirement)
+            btn.clicked.connect(self.checkRequirement)
             btn.setChecked(DialogPTW.formatCheckBoxText(btn.text()) in ptw.controls)
             btn.setEnabled(not readOnly)
             # btn.setStyleSheet('QCheckBox::indicator { width: 20px; height: 20px; }')
@@ -401,6 +401,11 @@ class DialogPTW(QDialog):
         
 
     def refreshUI(self):
+        all_check_btns = self.btnsTools + self.btnsHazard + self.btnsControls
+
+        for btn in all_check_btns:
+            btn.blockSignals(True)
+            
         for btn in self.btnsTools:
             btn.setChecked(DialogPTW.formatCheckBoxText(btn.text()) in self.ptw.tools)
         self.boxOtherTools.setText(', '.join(tool for tool in self.ptw.tools if tool not in PTWData.ALL_TOOLS))
@@ -419,6 +424,9 @@ class DialogPTW(QDialog):
 
         self.requiredAttachs = self.ptw.requiredAttachs()
         self.tableAttachments.setRequiredAttachs(self.requiredAttachs)
+
+        for btn in all_check_btns:
+            btn.blockSignals(False)
 
     def miwiMosSwitch(self):
         if self.btnMiwi.isChecked():
