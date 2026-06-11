@@ -21,13 +21,11 @@ _checkmark_path = _tmp.name.replace('\\', '/')
 
 app.setStyleSheet(f"""
     QRadioButton::indicator {{width: 20px; height: 20px; border: 2px solid gray; border-radius: 6px;}}
-    QRadioButton::indicator:checked {{background-color: palette(highlight); border-color: palette(highlight); image: url({_checkmark_path});}}
     QRadioButton::indicator:disabled  {{background-color: palette(mid);}}
-    QRadioButton::indicator:checked:disabled {{border-color: gray;}}
+    QRadioButton::indicator:checked {{background-color: palette(highlight); border-color: palette(highlight); image: url({_checkmark_path});}}
     QCheckBox::indicator {{width: 20px; height: 20px; border: 2px solid gray; border-radius: 6px;}}
-    QCheckBox::indicator:checked {{background-color: palette(highlight); border-color: palette(highlight); image: url({_checkmark_path});}}
     QCheckBox::indicator:disabled  {{background-color: palette(mid);}}
-    QCheckBox::indicator:checked:disabled {{border-color: gray;}}
+    QCheckBox::indicator:checked {{background-color: palette(highlight); border-color: palette(highlight); image: url({_checkmark_path});}}
 """)
 loginWindow = LoginWindow()
 loginWindow.show()
