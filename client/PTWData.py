@@ -1584,8 +1584,6 @@ class PTWData:
                 __handleRequirement(requirement)
             i += 1
 
-        print(self.tools, self.hazards, self.controls)
-
     def requiredAttachs(self) -> list[str]:
         docs = []
         for tool in self.tools:
