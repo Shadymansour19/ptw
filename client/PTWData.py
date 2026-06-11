@@ -185,7 +185,9 @@ class PTWData:
         ],
         'Flammable Material':               [],
         'Trapping / Impact Injuries':       [],
-        'Overside Working':                 [],
+        'Overside Working':                 [
+            Requirement(type=Requirement.Types.CONTROL, description='Close Standby (overside)'), 
+        ],
         'Gas Cylinders':                    [
             Requirement(type=Requirement.Types.CONTROL, description='MSDS'), 
         ],
@@ -196,7 +198,9 @@ class PTWData:
         'SIMOPS':                           [],
         'Moving Vehicle':                   [],
         'Temp. Equipment':                  [],
-        'Inadequate Lighting':              [],
+        'Inadequate Lighting':              [
+            Requirement(type=Requirement.Types.CONTROL, description='Additional Lighting'), 
+        ],
         'Heavy / Complex Lifts':            [
             Requirement(type=Requirement.Types.CONTROL, description='Lifting Plan'), 
         ],
@@ -209,6 +213,7 @@ class PTWData:
         'Vibration':                        [],
         'Dropped Objects':                  [
             Requirement(type=Requirement.Types.CONTROL, description='Housekeeping'), 
+            Requirement(type=Requirement.Types.CONTROL, description='Signs / Barriers'), 
         ],
         'Scaffolding':                      [
             Requirement(type=Requirement.Types.HAZARD, description='Working at Height'), 
@@ -224,10 +229,10 @@ class PTWData:
     }
 
     ALL_CONTROLS:   dict[str, list[Requirement]] = {
-        'Initial Gas Test':             [
-            Requirement(type=Requirement.Types.DOC, description='Atmospheric Gas Test'), 
+        'Initial Gas Test':             [],
+        'Continuous Gas Test':          [
+            Requirement(type=Requirement.Types.DOC, description='Atmospheric Gas Test'),
         ],
-        'Continuous Gas Test':          [],
         'Close Standby (overside)':     [],
         'Portable Fire Extinguisher':   [],
         'Equipment Earthing':           [],
