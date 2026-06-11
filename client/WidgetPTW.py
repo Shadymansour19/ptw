@@ -395,9 +395,6 @@ class DialogPTW(QDialog):
         self.miwiMosSwitch()
 
     def checkRequirement(self, state=None):
-        if state and state != Qt.CheckState.Checked.value:
-            return
-
         self.collectData()
         self.ptw.updateRequirements()
         self.refreshUI()
