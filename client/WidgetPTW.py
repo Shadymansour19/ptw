@@ -257,6 +257,7 @@ class DialogPTW(QDialog):
         self.btnsTools: list[QCheckBox] = []
         for i,tool in enumerate(PTWData.ALL_TOOLS):
             btn = QCheckBox(DialogPTW.checkboxDisplayName(tool))
+            btn.stateChanged.connect(self.checkRequirement)
             btn.setChecked(DialogPTW.formatCheckBoxText(btn.text()) in ptw.tools)
             btn.setEnabled(not readOnly)
             # btn.setStyleSheet('QCheckBox::indicator { width: 20px; height: 20px; }')
@@ -274,6 +275,7 @@ class DialogPTW(QDialog):
         self.btnsHazard: list[QCheckBox] = []
         for i,hazard in enumerate(PTWData.ALL_HAZARDS):
             btn = QCheckBox(DialogPTW.checkboxDisplayName(hazard))
+            btn.stateChanged.connect(self.checkRequirement)
             btn.setChecked(DialogPTW.formatCheckBoxText(btn.text()) in ptw.hazards)
             btn.setEnabled(not readOnly)
             # btn.setStyleSheet('QCheckBox::indicator { width: 20px; height: 20px; }')
@@ -291,6 +293,7 @@ class DialogPTW(QDialog):
         self.btnsControls: list[QCheckBox] = []
         for i,ctrl in enumerate(PTWData.ALL_CONTROLS):
             btn = QCheckBox(DialogPTW.checkboxDisplayName(ctrl))
+            btn.stateChanged.connect(self.checkRequirement)
             btn.setChecked(DialogPTW.formatCheckBoxText(btn.text()) in ptw.controls)
             btn.setEnabled(not readOnly)
             # btn.setStyleSheet('QCheckBox::indicator { width: 20px; height: 20px; }')
@@ -390,6 +393,15 @@ class DialogPTW(QDialog):
         self.stack.currentChanged.connect(self.stackTabChanged)
         self.stackTabChanged()
         self.miwiMosSwitch()
+
+    def checkRequirement(self, state=None):
+        if state and state != Qt.CheckState.Checked.value:
+            return
+
+        self.collectData()
+        self.ptw.updateRequirements()
+        self.refreshUI()
+        
 
     def refreshUI(self):
         for btn in self.btnsTools:
@@ -519,10 +531,7 @@ class DialogPTW(QDialog):
 
         self.btnNext.setEnabled(tabIdx < self.stack.count() - 1)
         self.btnBack.setEnabled(tabIdx > 0)
-
-        self.collectData()
-        self.ptw.updateRequirements()
-        self.refreshUI()
+        # self.checkRequirement()
 
     def collectData(self):
         if self.readonly:
