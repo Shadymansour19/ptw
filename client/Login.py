@@ -183,6 +183,8 @@ class ResetPasswordDialog(QDialog):
         
 
 class LoginWindow(QMainWindow):
+    on_login_success = pyqtSignal(object)
+    
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("PTW Login")
@@ -281,7 +283,17 @@ class LoginWindow(QMainWindow):
         else:
             QMessageBox.information(self, "Success", "Your password has been reset successfully. You can now log in with your new password.")
     
-
+    def reset(self):
+        self.boxUsername.clear()
+        self.boxPassword.clear()
+        self.boxUsername.setFocus()
+        try:
+            username, password = self.retrieveLoginCredentials()
+            self.boxUsername.setText(username)
+            self.boxPassword.setText(password)
+        except KeyringError as e:
+            pass
+        
     def login(self):
         from MainWindow import MainWindow, AdminMainWindow, UserMainWindow, CoordinatorMainWindow, IssuingMainWindow, SafetyMainWindow, ManagerMainWindow
         from clientRequests import ClientRequests
@@ -307,31 +319,4 @@ class LoginWindow(QMainWindow):
         elif theme == 'light':
             QApplication.styleHints().setColorScheme(Qt.ColorScheme.Light)
 
-        mainWindow = None
-        if user.getRole() == UserRoles.USER:
-            mainWindow = UserMainWindow(user)
-        elif user.getRole() == UserRoles.COORDINATOR:
-            mainWindow = CoordinatorMainWindow(user)
-        elif user.getRole() == UserRoles.ISSUING:
-            mainWindow = IssuingMainWindow(user)
-        elif user.getRole() == UserRoles.SAFETY:
-            mainWindow = SafetyMainWindow(user)
-        elif user.getRole() == UserRoles.PGM:
-            mainWindow = ManagerMainWindow(user, "PGM")
-        elif user.getRole() == UserRoles.PDH:
-            mainWindow = ManagerMainWindow(user, "PDH")
-        elif user.getRole() == UserRoles.SOD:
-            mainWindow = ManagerMainWindow(user, "SOD")
-        elif user.getRole() == UserRoles.DFGM:
-            mainWindow = ManagerMainWindow(user, "DFGM")
-        elif user.getRole() == UserRoles.ADMIN:
-            mainWindow = AdminMainWindow(user)
-        else:
-            mainWindow = MainWindow(user)
-
-        if mainWindow:
-            mainWindow.show()
-            self.close()
-            return
-        else:
-            QMessageBox.warning(self, "Error", "Your user role is not recognized. Please contact the administrator.")
+        self.on_login_success.emit(user)

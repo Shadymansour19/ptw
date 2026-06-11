@@ -1,7 +1,7 @@
 from datetime import datetime
 import copy
 import re
-from PyQt6.QtCore import Qt, QSize, QEvent, QPropertyAnimation, QEasingCurve, QTimer
+from PyQt6.QtCore import Qt, QSize, QEvent, QPropertyAnimation, QEasingCurve, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QStackedWidget, QVBoxLayout, QGridLayout,
                               QFormLayout, QLabel, QPushButton, QToolButton,
                               QToolBar, QDialog, QDialogButtonBox, QTextEdit, QListWidget,
@@ -30,6 +30,8 @@ from utils import resource_path
 
 
 class MainWindow(QMainWindow):
+    on_logout = pyqtSignal()
+    
     def __init__(self, loggedUser: User):
         super().__init__()
         self.loggedUser = loggedUser
@@ -554,12 +556,10 @@ class MainWindow(QMainWindow):
         return
     
     def logout(self):
-        import os
-        import sys
         self._sseListener.stop()
         self._sseListener.wait(1000)
+        self.on_logout.emit()
         self.close()
-        os.execv(sys.executable, [sys.executable] + sys.argv)
     
     def viewPTW(self, row: int, ptw: PTWData):
         viewPTWDialog = DialogPTW(self, self.loggedUser, ptw, None, False, True, f'View Mode - PTW# {ptw.id}')
