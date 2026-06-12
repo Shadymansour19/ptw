@@ -1093,65 +1093,72 @@ class MainWindow(QMainWindow):
         return f"Update: {event_type} for PTW #{ptw_id}"
 
     def refreshWelcomePage(self):
-        globalData.refresh(self.loggedUser, self.loggedUser.getDepartment() if self.loggedUser.getRole() == UserRoles.USER else None, refreshUsers=True)
-        self.btnWelcomeName.setText(self.loggedUser.getRole() + ' ' + self.loggedUser.getName().upper() + '!')
+        def on_done(err, _):
+            if err:
+                QMessageBox.warning(self, "Error", f"Failed to refresh data: {err}")
+                return
+            self.btnWelcomeName.setText(self.loggedUser.getRole() + ' ' + self.loggedUser.getName().upper() + '!')
+        globalData.refresh(self.loggedUser, self.loggedUser.getDepartment() if self.loggedUser.getRole() == UserRoles.USER else None, refreshUsers=True, callback=on_done)
 
     def refreshPtwUserGUI(self, refreshArchivedPTWs: bool = False):
+        def on_done(err, _):
+            tabs: list[TablePTWs] = [
+                self.tabUnderReviewPTWs,
+                self.tabApprovedPTWs,
+                self.tabReturnedPTWs,
+                self.tabRejectedPTWs,
+                self.tabWaitingRunConfirmationPTWs,
+                self.tabRunningPTWs,
+                self.tabWaitingHldConfirmationPTWs,
+                self.tabHeldPTWs,
+                self.tabWaitingClsConfirmationPTWs,
+                self.tabClosedPTWs,
+            ]
+
+            for tab in tabs:
+                tab.clear()
+
+            for ptw in globalData.allPTWs:
+                mySt = ptw.getApprovalStatus(role=self.loggedUser.getRole())
+                st = ptw.getApprovalStatus()
+                runSt = ptw.running_status
+                if runSt == PTWData.RunningStatus.WAITING_RUN_CONFIRM:
+                    self.tabWaitingRunConfirmationPTWs.addPTWToGUI(ptw)
+                elif runSt == PTWData.RunningStatus.WAITING_CLS_CONFIRM:
+                    self.tabWaitingClsConfirmationPTWs.addPTWToGUI(ptw)
+                elif runSt == PTWData.RunningStatus.WAITING_HLD_CONFIRM:
+                    self.tabWaitingHldConfirmationPTWs.addPTWToGUI(ptw)
+                elif runSt == PTWData.RunningStatus.RUNNING:
+                    self.tabRunningPTWs.addPTWToGUI(ptw)
+                elif runSt == PTWData.RunningStatus.HELD:
+                    self.tabHeldPTWs.addPTWToGUI(ptw)
+                elif runSt == PTWData.RunningStatus.CLOSED:
+                    self.tabClosedPTWs.addPTWToGUI(ptw)
+                elif st == PTWData.ApprovalStatus.APPROVED:
+                    self.tabApprovedPTWs.addPTWToGUI(ptw)
+                elif st == PTWData.ApprovalStatus.REJECTED:
+                    self.tabRejectedPTWs.addPTWToGUI(ptw)
+                elif st == PTWData.ApprovalStatus.RETURNED:
+                    self.tabReturnedPTWs.addPTWToGUI(ptw)
+                elif st == PTWData.ApprovalStatus.UNDER_REVIEW and mySt == PTWData.ApprovalStatus.UNDER_REVIEW:
+                    self.tabUnderReviewPTWs.addPTWToGUI(ptw)
+
+            for tab in tabs:
+                tab.sort()
+
+            self.tabIsolations.setIsolations(globalData.isolations)
+
+            if refreshArchivedPTWs:
+                self.refreshArchivedPTWs()
+
+        print("Refreshing data...")
         globalData.refresh(
             self.loggedUser, 
             self.loggedUser.getDepartment() if self.loggedUser.getRole() == UserRoles.USER else None, 
             refreshUsers=True, refreshPTWs=True, refreshRiskAssessments=True, 
             refreshMIWIs=True, refreshIsolations=True, 
+            callback=on_done, 
         )
-
-        tabs: list[TablePTWs] = [
-            self.tabUnderReviewPTWs,
-            self.tabApprovedPTWs,
-            self.tabReturnedPTWs,
-            self.tabRejectedPTWs,
-            self.tabWaitingRunConfirmationPTWs,
-            self.tabRunningPTWs,
-            self.tabWaitingHldConfirmationPTWs,
-            self.tabHeldPTWs,
-            self.tabWaitingClsConfirmationPTWs,
-            self.tabClosedPTWs,
-        ]
-
-        for tab in tabs:
-            tab.clear()
-
-        for ptw in globalData.allPTWs:
-            mySt = ptw.getApprovalStatus(role=self.loggedUser.getRole())
-            st = ptw.getApprovalStatus()
-            runSt = ptw.running_status
-            if runSt == PTWData.RunningStatus.WAITING_RUN_CONFIRM:
-                self.tabWaitingRunConfirmationPTWs.addPTWToGUI(ptw)
-            elif runSt == PTWData.RunningStatus.WAITING_CLS_CONFIRM:
-                self.tabWaitingClsConfirmationPTWs.addPTWToGUI(ptw)
-            elif runSt == PTWData.RunningStatus.WAITING_HLD_CONFIRM:
-                self.tabWaitingHldConfirmationPTWs.addPTWToGUI(ptw)
-            elif runSt == PTWData.RunningStatus.RUNNING:
-                self.tabRunningPTWs.addPTWToGUI(ptw)
-            elif runSt == PTWData.RunningStatus.HELD:
-                self.tabHeldPTWs.addPTWToGUI(ptw)
-            elif runSt == PTWData.RunningStatus.CLOSED:
-                self.tabClosedPTWs.addPTWToGUI(ptw)
-            elif st == PTWData.ApprovalStatus.APPROVED:
-                self.tabApprovedPTWs.addPTWToGUI(ptw)
-            elif st == PTWData.ApprovalStatus.REJECTED:
-                self.tabRejectedPTWs.addPTWToGUI(ptw)
-            elif st == PTWData.ApprovalStatus.RETURNED:
-                self.tabReturnedPTWs.addPTWToGUI(ptw)
-            elif st == PTWData.ApprovalStatus.UNDER_REVIEW and mySt == PTWData.ApprovalStatus.UNDER_REVIEW:
-                self.tabUnderReviewPTWs.addPTWToGUI(ptw)
-
-        for tab in tabs:
-            tab.sort()
-
-        self.tabIsolations.setIsolations(globalData.isolations)
-
-        if refreshArchivedPTWs:
-            self.refreshArchivedPTWs()
     
     def refreshArchivedPTWs(self):
         self.tabArchivedPTWs.clear()

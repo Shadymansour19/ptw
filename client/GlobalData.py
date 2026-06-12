@@ -1,3 +1,5 @@
+from RequestWorker import async_request
+
 class GlobalData:
     def __init__(self):
         self.allUsers: dict = {}                # dict[str, SecuredUser]
@@ -7,6 +9,7 @@ class GlobalData:
         self.allMIWIs: list = []                # list[str]
         self.isolations: dict = {}        # dict[str, Isolation]
 
+    @async_request
     def refresh(
         self, 
         loggedUser, 
@@ -20,7 +23,7 @@ class GlobalData:
         refreshAll: bool = False, 
     ) -> str:
         from clientRequests import ClientRequests
-        
+    
         if refreshUsers or refreshAll:
             err, allUsers = ClientRequests.getAllUsers(loggedUser)
             if err:
