@@ -442,13 +442,14 @@ class DialogPTW(QDialog):
             self.boxMOS.setFocus()
 
     def openMIWI(self):
-        miwiName = self.boxMiwi.currentText()
-        if miwiName:
-            err, filepath = ClientRequests.getMIWI(self.loggedUser, miwiName)
+        def on_done(err, filepath):
             if err:
                 QMessageBox.warning(self, "Error", err)
             else:
                 ReportGenerator.openPDF(filepath)
+        miwiName = self.boxMiwi.currentText()
+        if miwiName:
+            ClientRequests.getMIWI(self.loggedUser, miwiName, callback=on_done)
 
     class SaveAsDialog(QDialog):
         def __init__(self, parent, initName: str = '', invalidList: list[str] = [], title: str = "Save file as"):
