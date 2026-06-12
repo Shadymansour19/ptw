@@ -1151,7 +1151,6 @@ class MainWindow(QMainWindow):
             if refreshArchivedPTWs:
                 self.refreshArchivedPTWs()
 
-        print("Refreshing data...")
         globalData.refresh(
             self.loggedUser, 
             self.loggedUser.getDepartment() if self.loggedUser.getRole() == UserRoles.USER else None, 

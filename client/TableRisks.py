@@ -124,12 +124,13 @@ class TableRisks(QWidget):
             self.addRiskToGUI(riskTitle)
 
     def addRiskAssessment(self, riskAssessment: RiskAssessment):
-        err = ClientRequests.addNewRiskAssessment(self.loggedUser, riskAssessment)
-        if err:
-            QMessageBox.warning(self, "Fail", err)
-            return
-        self.risks[riskAssessment.title] = riskAssessment
-        self.addRiskToGUI(riskAssessment.title)
+        def on_done(err, _):
+            if err:
+                QMessageBox.warning(self, "Fail", err)
+                return
+            self.risks[riskAssessment.title] = riskAssessment
+            self.addRiskToGUI(riskAssessment.title)
+        ClientRequests.addNewRiskAssessment(self.loggedUser, riskAssessment, callback=on_done)
     
     def itemDoubleClicked(self, item: QListWidgetItem):
         riskRecord: TableRisks.RecordWidget = self.lstRisks.itemWidget(item)
@@ -159,23 +160,25 @@ class TableRisks(QWidget):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
-        err = ClientRequests.updateRiskAssessment(self.loggedUser, riskAssessment)
-        if err:
-            QMessageBox.warning(self, "Fail", err)
-
-        self.risks[riskTitle] = riskAssessment
+        def on_done(err, _):
+            if err:
+                QMessageBox.warning(self, "Fail", err)
+                return
+            self.risks[riskTitle] = riskAssessment
+        ClientRequests.updateRiskAssessment(self.loggedUser, riskAssessment, callback=on_done)
     
     def deleteRiskAssessment(self, riskTitle: str):
         reply = QMessageBox.question(self, 'Delete Risk Assessment', f"Are you sure you want to delete Risk Assessment '{riskTitle}'?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.No:
             return
         
-        err = ClientRequests.deleteRiskAssessment(self.loggedUser, riskTitle)
-        if err:
-            QMessageBox.warning(self, "Fail", err)
-            
-        self.risks.pop(riskTitle)
-        self.refreshGUI()
+        def on_done(err, _):
+            if err:
+                QMessageBox.warning(self, "Fail", err)
+                return
+            self.risks.pop(riskTitle)
+            self.refreshGUI()
+        ClientRequests.deleteRiskAssessment(self.loggedUser, riskTitle, callback=on_done)
     
     def addNewRiskAssessmentDialog(self):
         newRiskAssessment = RiskAssessment()

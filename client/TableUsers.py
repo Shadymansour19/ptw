@@ -75,11 +75,12 @@ class TableUsers(QWidget):
             self.tbl.setItem(self.tbl.rowCount()-1, i, cell)
 
     def addUser(self, newUser):
-        err = ClientRequests.addNewUser(self.loggedUser, newUser)
-        if err:
-            QMessageBox.warning(self, "Fail", err)
-            return
-        self.addUserToGUI(newUser)
+        def on_done(err, _):
+            if err:
+                QMessageBox.warning(self, "Fail", err)
+                return
+            self.addUserToGUI(newUser)
+        ClientRequests.addNewUser(self.loggedUser, newUser, callback=on_done)
     
     def addUsers(self, users: Iterable):
         for user in users:
@@ -121,28 +122,31 @@ class TableUsers(QWidget):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
-        err = ClientRequests.updateUser(self.loggedUser, user)
-        if err:
-            QMessageBox.warning(self, "Fail", err)
+        def on_done(err, _):
+            if err:
+                QMessageBox.warning(self, "Fail", err)
+                return
+            self.users[row] = user
+            data = self.userToRecord(user)
+            for i,d in enumerate(data):
+                cell = QTableWidgetItem(d)
+                self.tbl.setItem(row, i, cell)
+        ClientRequests.updateUser(self.loggedUser, user, callback=on_done)
 
-        self.users[row] = user
-        data = self.userToRecord(user)
-        for i,d in enumerate(data):
-            cell = QTableWidgetItem(d)
-            self.tbl.setItem(row, i, cell)
-    
     def deleteUser(self, row: int):
         user = self.users[row]
         reply = QMessageBox.question(self, 'Delete User', f"Are you sure you want to delete user '{user.getUsername()}'?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.No:
             return
         
-        err = ClientRequests.deleteUser(self.loggedUser, self.users[row].getUsername())
-        if err:
-            QMessageBox.warning(self, "Fail", err)
-            
-        self.users.pop(row)
-        self.tbl.removeRow(row)
+        def on_done(err, _):
+            if err:
+                QMessageBox.warning(self, "Fail", err)
+                return
+            self.users.pop(row)
+            self.tbl.removeRow(row)
+
+        ClientRequests.deleteUser(self.loggedUser, self.users[row].getUsername(), callback=on_done)
     
     def addNewUserDialog(self):
         from User import User
