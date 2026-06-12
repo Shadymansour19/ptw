@@ -4,10 +4,12 @@ from PTWData import PTWData, RiskAssessment, Attachment, Isolation
 from utils import dictToObj, objToDict
 from typing import Iterable
 import tempfile
+from RequestWorker import async_request
 
 class ClientRequests:
     SERVER_URL = 'http://localhost:5000'
 
+    @async_request
     def login(username, password) -> tuple[str, User]:
         response = None
         try:
@@ -26,6 +28,7 @@ class ClientRequests:
             err = response.json().get("error", response.text) if response is not None else str(e)
             return f"Login Failed! Incorrect username or password\n{err}", None
 
+    @async_request
     def requestResetPassword(username: str):
         response = None
         try:
@@ -45,6 +48,7 @@ class ClientRequests:
         return None
 
 
+    @async_request
     def resetPassword(username: str, newPassword: str, verificationCode: str) -> str:
         response = None
         try:
@@ -63,6 +67,7 @@ class ClientRequests:
             return data.get("message", f"Password reset failed!\n{err}")
         return None
 
+    @async_request
     def getAllUsers(loggedUser: User) -> tuple[str, dict[str, SecuredUser]]:
         response = None
         try:
@@ -83,6 +88,7 @@ class ClientRequests:
             err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
             return f"Failed to fetch users\n{err}", None
 
+    @async_request
     def addNewUser(loggedUser: User, newUser: User):
         response = None
         try:
@@ -97,6 +103,7 @@ class ClientRequests:
             err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
             return f"Failed to register user!\n{err}"
 
+    @async_request
     def updateUser(loggedUser: User, user: User):
         response = None
         try:
@@ -112,6 +119,7 @@ class ClientRequests:
             err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
             return f"Failed to update user!\n{err}"
 
+    @async_request
     def updateTheme(loggedUser: User, theme: str | None):
         response = None
         try:
@@ -124,6 +132,7 @@ class ClientRequests:
         if not data.get("success"):
             return data.get("error", "Failed to update theme")
 
+    @async_request
     def deleteUser(loggedUser: User, username: str):
         response = None
         try:
@@ -138,6 +147,7 @@ class ClientRequests:
             err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
             return f"Failed to delete user!\n{err}"
 
+    @async_request
     def getAllPTWs(loggedUser: User, department: UserDepartments = None, requestorUsername: str = None) -> tuple[str, Iterable[PTWData]]:
         response = None
         try:
@@ -158,6 +168,7 @@ class ClientRequests:
             err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
             return f"Failed to fetch PTWs\n{err}", []
 
+    @async_request
     def getArchivedPTWs(loggedUser: User, department: UserDepartments = None) -> tuple[str, Iterable[PTWData]]:
         response = None
         try:
@@ -178,6 +189,7 @@ class ClientRequests:
             err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
             return f"Failed to fetch archived PTWs\n{err}", []
 
+    @async_request
     def addPTW(loggedUser: User, ptw: PTWData) -> tuple[str, str]:
         response = None
         try:
@@ -197,6 +209,7 @@ class ClientRequests:
             return f"Failed to add PTW\n{err}", None
         return None, data.get('ptw-id')
 
+    @async_request
     def updatePTW(loggedUser: User, ptw: PTWData) -> str:
         response = None
         try:
@@ -213,6 +226,7 @@ class ClientRequests:
 
         return None
 
+    @async_request
     def addPtwAttachments(loggedUser: User, ptwId: str, attachments: list[Attachment]) -> str:
         if not attachments:
             return ClientRequests.deleteAllPtwAttachments(loggedUser, ptwId)
@@ -248,6 +262,7 @@ class ClientRequests:
             return f"Failed to add attachment\n{err}"
         return None
 
+    @async_request
     def getPtwAttachmentNames(loggedUser: User, ptwId: str) -> tuple[str, list[str]]:
         response = None
         try:
@@ -268,6 +283,7 @@ class ClientRequests:
 
         return None, data.get("attachments", [])
 
+    @async_request
     def getPtwAttachment(loggedUser: User, ptwId: str, filename: str):
         response = None
         try:
@@ -289,6 +305,7 @@ class ClientRequests:
             err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
             return f"Failed to save attachment file {filename}\n{err}", None
 
+    @async_request
     def deleteAllPtwAttachments(loggedUser: User, ptwId: str, keepFilenames: list[str] = []) -> str:
         response = None
         try:
@@ -308,6 +325,7 @@ class ClientRequests:
             return f"Failed to delete attachments\n{err}"
         return None
 
+    @async_request
     def copyPtwAttachments(loggedUser: User, sourcePtwId: str, targetPtwId: str) -> str:
         response = None
         try:
@@ -328,6 +346,7 @@ class ClientRequests:
         return None
 
 
+    @async_request
     def deletePTW(loggedUser: User, ptwId: str) -> str:
         response = None
         try:
@@ -344,6 +363,7 @@ class ClientRequests:
 
         return None
 
+    @async_request
     def returnPTW(loggedUser: User, ptwId: str, comment: str) -> str:
         response = None
         try:
@@ -364,6 +384,7 @@ class ClientRequests:
 
         return None
 
+    @async_request
     def updateApprovalPTW(loggedUser: User, ptwId: str, approval: PTWData.Approval) -> str:
         response = None
         try:
@@ -384,6 +405,7 @@ class ClientRequests:
 
         return None
 
+    @async_request
     def archivePTWs(loggedUser: User, ptwIds: list[str]) -> str:
         response = None
         try:
@@ -401,6 +423,7 @@ class ClientRequests:
         return None
 
 
+    @async_request
     def requestToRunPTW(loggedUser: User, ptwId: str, pa: str, ts: str):
         response = None
         try:
@@ -421,6 +444,7 @@ class ClientRequests:
 
         return None
 
+    @async_request
     def runResponsePTW(loggedUser: User, ptwId: str, ia: str, ts: str, accepted: bool) -> str:
         response = None
         try:
@@ -441,6 +465,7 @@ class ClientRequests:
 
         return None
 
+    @async_request
     def requestToHldPTW(loggedUser: User, ptwId: str, pa: str, ts: str, keepTags: list[str] = []):
         response = None
         try:
@@ -461,6 +486,7 @@ class ClientRequests:
 
         return None
 
+    @async_request
     def hldResponsePTW(loggedUser: User, ptwId: str, ia: str, ts: str, accepted: bool) -> str:
         response = None
         try:
@@ -481,6 +507,7 @@ class ClientRequests:
 
         return None
 
+    @async_request
     def requestToClsPTW(loggedUser: User, ptwId: str, pa: str, ts: str):
         response = None
         try:
@@ -501,6 +528,7 @@ class ClientRequests:
 
         return None
 
+    @async_request
     def clsResponsePTW(loggedUser: User, ptwId: str, ia: str, ts: str, accepted: bool) -> str:
         response = None
         try:
@@ -522,6 +550,7 @@ class ClientRequests:
         return None
 
 
+    @async_request
     def getAllIsolations(loggedUser: User):
         response = None
         try:
@@ -542,6 +571,7 @@ class ClientRequests:
         return None, {iso['tag']: Isolation().setAll(namespace=dictToObj(iso)) for iso in data.get("isolations", [])}
 
 
+    @async_request
     def getAllRiskAssessments(loggedUser: User) -> tuple[str, dict[str, RiskAssessment]]:
         response = None
         try:
@@ -561,6 +591,7 @@ class ClientRequests:
 
         return None, {title: RiskAssessment().setAll(riskAssessmentDict) for title, riskAssessmentDict in data["risks"].items()}
 
+    @async_request
     def addNewRiskAssessment(loggedUser: User, riskAssessment: RiskAssessment) ->  str:
         response = None
         try:
@@ -580,6 +611,7 @@ class ClientRequests:
             return f"Failed to add risk\n{err}"
         return None
 
+    @async_request
     def updateRiskAssessment(loggedUser: User, riskAssessment: RiskAssessment) ->  str:
         response = None
         try:
@@ -600,6 +632,7 @@ class ClientRequests:
         return None
 
 
+    @async_request
     def deleteRiskAssessment(loggedUser: User, riskTitle: str) ->  str:
         response = None
         try:
@@ -620,6 +653,7 @@ class ClientRequests:
         return None
 
 
+    @async_request
     def getMIWI(loggedUser: User, filename: str) -> tuple[str, str]:
         response = None
         try:
@@ -642,6 +676,7 @@ class ClientRequests:
             return f"Failed to save MIWI file\n{err}", None
 
 
+    @async_request
     def getAllMIWIs(loggedUser: User) -> tuple[str, list[str]]:
         response = None
         try:
@@ -662,6 +697,7 @@ class ClientRequests:
         return None, data["miwis"]
 
 
+    @async_request
     def uploadMIWI(loggedUser: User, filePath: str, savename: str = None) -> str:
         response = None
         try:
@@ -687,6 +723,7 @@ class ClientRequests:
 
         return None
 
+    @async_request
     def getLogFiles(loggedUser: User) -> tuple[str, list[str]]:
         response = None
         try:
@@ -706,6 +743,7 @@ class ClientRequests:
 
         return None, data["logs"]
 
+    @async_request
     def getLog(loggedUser: User, filename: str) -> tuple[str, str]:
         response = None
         try:
