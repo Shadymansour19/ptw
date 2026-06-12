@@ -370,6 +370,12 @@ class MainWindow(QMainWindow):
         self._sseListener.eventReceived.connect(self._onSSEEvent)
         self._sseListener.start()
 
+    def _on_request_done_generic(self, err, _):
+        if err:
+            QMessageBox.warning(self, 'Fail', err)
+            return
+        # self.refreshGUI()  # SSE event handles refresh
+
     def toggleTheme(self):
         hints = QApplication.styleHints()
         is_dark = hints.colorScheme() == Qt.ColorScheme.Dark
@@ -392,13 +398,19 @@ class MainWindow(QMainWindow):
             return
 
         self.loggedUser.setTheme(new_theme)
-        err = ClientRequests.updateTheme(self.loggedUser, new_theme)
-        if err:
-            QMessageBox.warning(self, "Error", f"Failed to save theme preference:\n{err}")
-            return
+
+        def on_done(err, _):
+            if err:
+                QMessageBox.warning(self, "Error", f"Failed to save theme preference:\n{err}")
+                return
 
         if msg.clickedButton() == btn_restart:
+            err = ClientRequests.updateTheme(self.loggedUser, new_theme)
+            on_done(err, None)
             self.logout()
+        else:
+            ClientRequests.updateTheme(self.loggedUser, new_theme, callback=on_done)
+
 
     def _sideBarStretch(self):
         spacer = QWidget()
@@ -580,29 +592,36 @@ class MainWindow(QMainWindow):
         dlg = DialogPTW(self, self.loggedUser, newPTW, ptw, True, False, title)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
-        err, ptwId = ClientRequests.addPTW(self.loggedUser, newPTW)
-        if err:
-            QMessageBox.warning(self, "Fail", err)
-            return
-        newPTW.setId(ptwId)
-        if dlg.attachsToBeUploaded:
-            err = ClientRequests.addPtwAttachments(self.loggedUser, newPTW.id, dlg.attachsToBeUploaded)
+        
+        def on_addPTW_done(err, ptwId=None):
+            def on_copy_attachments_done(err, _):
+                if err:
+                    QMessageBox.warning(self, "Error", f"Failed to copy attachments: {err}")
+                    return
+                
+            def on_attachments_uploaded(err, _):
+                if err:
+                    QMessageBox.warning(self, "Error", f"Failed to upload attachments: {err}")
+                    return
+                if ptw:
+                    ClientRequests.copyPtwAttachments(self.loggedUser, ptw.id, newPTW.id, callback=on_copy_attachments_done)
+                # self.refreshGUI()  # SSE event handles refresh
+
             if err:
-                QMessageBox.warning(self, "Error", f"Failed to upload attachments: {err}")
+                QMessageBox.warning(self, "Fail", err)
                 return
-        if ptw:
-            ClientRequests.copyPtwAttachments(self.loggedUser, ptw.id, newPTW.id)
-        # self.refreshGUI()  # SSE event handles refresh
+            newPTW.setId(ptwId)
+            if dlg.attachsToBeUploaded:
+                ClientRequests.addPtwAttachments(self.loggedUser, newPTW.id, dlg.attachsToBeUploaded, callback=on_attachments_uploaded)
+        
+        ClientRequests.addPTW(self.loggedUser, newPTW, callback=on_addPTW_done)
+
 
     def deletePTW(self, row: int, ptw: PTWData):
         self.stack.currentWidget().deletePTW(row)
     
     def archivePTWs(self, rows: list, ptws: list[PTWData]):
-        err = ClientRequests.archivePTWs(self.loggedUser, [ptw.id for ptw in ptws])
-        if err:
-            QMessageBox.warning(self, 'Fail', err)
-            return
-        # self.refreshGUI()  # SSE event handles refresh
+        ClientRequests.archivePTWs(self.loggedUser, [ptw.id for ptw in ptws], callback=self._on_request_done_generic)
     
     def requestToRunPTW(self, row: int, ptw: PTWData):
         for p in globalData.allPTWs:
@@ -612,29 +631,17 @@ class MainWindow(QMainWindow):
         
         pa = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        err = ClientRequests.requestToRunPTW(self.loggedUser, ptw.id, pa, ts)
-        if err:
-            QMessageBox.warning(self, 'Fail', err)
-            return
-        # self.refreshGUI()  # SSE event handles refresh
+        ClientRequests.requestToRunPTW(self.loggedUser, ptw.id, pa, ts, callback=self._on_request_done_generic)
     
     def runAcceptTW(self, row: int, ptw: PTWData):
         ia = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        err = ClientRequests.runResponsePTW(self.loggedUser, ptw.id, ia, ts, True)
-        if err:
-            QMessageBox.warning(self, 'Fail', err)
-            return
-        # self.refreshGUI()  # SSE event handles refresh
+        ClientRequests.runResponsePTW(self.loggedUser, ptw.id, ia, ts, True, callback=self._on_request_done_generic)
 
     def runRejectTW(self, row: int, ptw: PTWData):
         ia = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        err = ClientRequests.runResponsePTW(self.loggedUser, ptw.id, ia, ts, False)
-        if err:
-            QMessageBox.warning(self, 'Fail', err)
-            return 
-        # self.refreshGUI()  # SSE event handles refresh
+        ClientRequests.runResponsePTW(self.loggedUser, ptw.id, ia, ts, False, callback=self._on_request_done_generic)
 
     def requestToClsPTW(self, row: int, ptw: PTWData):
         # QMessageBox.aboutQt(self)
@@ -644,29 +651,17 @@ class MainWindow(QMainWindow):
     
         pa = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        err = ClientRequests.requestToClsPTW(self.loggedUser, ptw.id, pa, ts)
-        if err:
-            QMessageBox.warning(self, 'Fail', err)
-            return
-        # self.refreshGUI()  # SSE event handles refresh
+        ClientRequests.requestToClsPTW(self.loggedUser, ptw.id, pa, ts, callback=self._on_request_done_generic)
     
     def clsAcceptPTW(self, row: int, ptw: PTWData):
         ia = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        err = ClientRequests.clsResponsePTW(self.loggedUser, ptw.id, ia, ts, True)
-        if err:
-            QMessageBox.warning(self, 'Fail', err)
-            return
-        # self.refreshGUI()  # SSE event handles refresh
-    
+        ClientRequests.clsResponsePTW(self.loggedUser, ptw.id, ia, ts, True, callback=self._on_request_done_generic)
+
     def clsRejectPTW(self, row: int, ptw: PTWData):
         ia = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        err = ClientRequests.clsResponsePTW(self.loggedUser, ptw.id, ia, ts, False)
-        if err:
-            QMessageBox.warning(self, 'Fail', err)
-            return 
-        # self.refreshGUI()  # SSE event handles refresh
+        ClientRequests.clsResponsePTW(self.loggedUser, ptw.id, ia, ts, False, callback=self._on_request_done_generic)
 
     def requestToHldPTW(self, row: int, ptw: PTWData):
         dlg = DialogSelectIsolations(self, ptw.isolations, selectable=True, title=f"Hold PTW# {ptw.id} - Select Isolations to Keep")
@@ -676,29 +671,17 @@ class MainWindow(QMainWindow):
         keptTags = dlg.getKeptTags()
         pa = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        err = ClientRequests.requestToHldPTW(self.loggedUser, ptw.id, pa, ts, keptTags)
-        if err:
-            QMessageBox.warning(self, 'Fail', err)
-            return
-        # self.refreshGUI()  # SSE event handles refresh
+        ClientRequests.requestToHldPTW(self.loggedUser, ptw.id, pa, ts, keptTags, callback=self._on_request_done_generic)
 
     def hldAcceptPTW(self, row: int, ptw: PTWData):
         ia = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        err = ClientRequests.hldResponsePTW(self.loggedUser, ptw.id, ia, ts, True)
-        if err:
-            QMessageBox.warning(self, 'Fail', err)
-            return
-        # self.refreshGUI()  # SSE event handles refresh
+        ClientRequests.hldResponsePTW(self.loggedUser, ptw.id, ia, ts, True, callback=self._on_request_done_generic)
 
     def hldRejectPTW(self, row: int, ptw: PTWData):
         ia = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        err = ClientRequests.hldResponsePTW(self.loggedUser, ptw.id, ia, ts, False)
-        if err:
-            QMessageBox.warning(self, 'Fail', err)
-            return
-        # self.refreshGUI()  # SSE event handles refresh
+        ClientRequests.hldResponsePTW(self.loggedUser, ptw.id, ia, ts, False, callback=self._on_request_done_generic)
 
     def hldTakeAction(self, row: int, ptw: PTWData):
         if ptw.running_status != PTWData.RunningStatus.WAITING_HLD_CONFIRM:
@@ -801,17 +784,17 @@ class MainWindow(QMainWindow):
         dlg = DialogSettings(self, user)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
+        
+        def on_update_done(err, _):
+            if err:
+                QMessageBox.warning(self, "Fail", err)
+                return
+            self.loggedUser = user
+            MainWindow.refreshWelcomePage(self)
+            if dlg.new_theme != old_theme:
+                self._applyThemeChange(dlg.new_theme)
 
-        err = ClientRequests.updateUser(self.loggedUser, user)
-        if err:
-            QMessageBox.warning(self, "Fail", err)
-            return
-
-        self.loggedUser = user
-        MainWindow.refreshWelcomePage(self)
-
-        if dlg.new_theme != old_theme:
-            self._applyThemeChange(dlg.new_theme)
+        ClientRequests.updateUser(self.loggedUser, user, callback=on_update_done)
         
     def btnFABUpdatePosition(self):
         margin = 40
@@ -1183,12 +1166,8 @@ class MainWindow(QMainWindow):
 
     def acceptPTW(self, row: int, ptw: PTWData):
         approval = PTWData.Approval(PTWData.ApprovalActions.APPROVED, self.loggedUser.getUsername(), datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
-        err = ClientRequests.updateApprovalPTW(self.loggedUser, ptw.id, approval)
-        if err:
-            QMessageBox.warning(self, "Fail", err)
-            return
-        self.refreshGUI()
-
+        ClientRequests.updateApprovalPTW(self.loggedUser, ptw.id, approval, callback=self._on_request_done_generic)
+        
     def getComment(self, title: str):
         comment = ''
 
@@ -1230,11 +1209,7 @@ class MainWindow(QMainWindow):
             datetime.now().strftime('%d/%m/%Y %H:%M:%S'), 
             comment
         )
-        err = ClientRequests.updateApprovalPTW(self.loggedUser, ptw.id, approval)
-        if err:
-            QMessageBox.warning(self, "Fail", err)
-            return
-        self.refreshGUI()
+        ClientRequests.updateApprovalPTW(self.loggedUser, ptw.id, approval, callback=self._on_request_done_generic)
     
     def requestEdits(self, row: int, ptw: PTWData):
         comment = self.getComment(f'Return PTW# {ptw.id} to be Edited')
@@ -1242,13 +1217,7 @@ class MainWindow(QMainWindow):
             return
         
         approval = PTWData.Approval(PTWData.ApprovalActions.RETURNED, self.loggedUser.getUsername(), datetime.now().strftime('%d/%m/%Y %H:%M:%S'), comment)
-        err = ClientRequests.updateApprovalPTW(self.loggedUser, ptw.id, approval)
-        if err is not None:
-            QMessageBox.critical(self, "Error", err)
-            return
-        
-        ptw.updateApprovals(approval)
-        self.refreshGUI()
+        ClientRequests.updateApprovalPTW(self.loggedUser, ptw.id, approval, callback=self._on_request_done_generic)
 
     def exportPTWs(self, rows: list, ptws: list[PTWData]):
         if not ptws:
