@@ -160,18 +160,21 @@ class TableAttachments(QWidget):
 
     def viewAttachment(self, attachment: Attachment):
         from ReportGenerator import ReportGenerator
-        if attachment.uploaded:
-            err, filepath = ClientRequests.getPtwAttachment(self.loggedUser, self.ptwId, attachment.remoteName)
+
+        def on_parent_fetch_attachs_done(err, filepath):
             if err:
-                err, filepath = ClientRequests.getPtwAttachment(self.loggedUser, self.refPtwId, attachment.remoteName)
-                if err:
-                    QMessageBox.warning(self, 'Error', err)
-                else:
-                    ReportGenerator.openPDF(filepath)
-                if err:
-                    QMessageBox.warning(self, 'Error', err)
+                QMessageBox.warning(self, 'Error', err)
             else:
                 ReportGenerator.openPDF(filepath)
+        
+        def on_ptw_fetch_attachs_done(err, filepath):
+            if err:
+                ClientRequests.getPtwAttachment(self.loggedUser, self.refPtwId, attachment.remoteName, callback=on_parent_fetch_attachs_done)
+            else:
+                ReportGenerator.openPDF(filepath)
+        
+        if attachment.uploaded:
+            ClientRequests.getPtwAttachment(self.loggedUser, self.ptwId, attachment.remoteName, callback=on_ptw_fetch_attachs_done)
         else:
             ReportGenerator.openPDF(attachment.localPath)
 

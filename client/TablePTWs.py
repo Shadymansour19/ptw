@@ -194,27 +194,27 @@ class TablePTWs(QWidget):
             self._applyFilters()
 
     def updatePTW(self, row: int, ptw):
-        err = ClientRequests.updatePTW(self.loggedUser, ptw)
-        if err:
-            QMessageBox.warning(self, "Fail", err)
-            return
-        self.updatePTWInGUI(row, ptw)
+        def on_done(err, _):
+            if err:
+                QMessageBox.warning(self, "Fail", err)
+                return
+            self.updatePTWInGUI(row, ptw)
+        ClientRequests.updatePTW(self.loggedUser, ptw, callback=on_done)
 
     def deletePTW(self, row: int):
+        def on_done(err, _):
+            if err:
+                QMessageBox.warning(self, "Fail", err)
+                return
+            self.ptwsData.pop(row)
+            self.tbl.removeRow(row)
+            if self._filterBar.isVisible():
+                self._populateFilters()
+        
         ptw = self.ptwsData[row]
         reply = QMessageBox.question(self, 'Delete PTW', f"Are you sure you want to delete PTW# '{ptw.id}'?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
-        if reply == QMessageBox.StandardButton.No:
-            return
-
-        err = ClientRequests.deletePTW(self.loggedUser, ptw.id)
-        if err:
-            QMessageBox.warning(self, "Fail", err)
-            return
-
-        self.ptwsData.pop(row)
-        self.tbl.removeRow(row)
-        if self._filterBar.isVisible():
-            self._populateFilters()
+        if reply == QMessageBox.StandardButton.Yes:
+            ClientRequests.deletePTW(self.loggedUser, ptw.id, callback=on_done)
 
     def clear(self):
         self.tbl.clearContents()
