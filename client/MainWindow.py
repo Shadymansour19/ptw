@@ -1151,6 +1151,9 @@ class MainWindow(QMainWindow):
             if refreshArchivedPTWs:
                 self.refreshArchivedPTWs()
 
+            QApplication.beep()
+            self.statusBar().showMessage("GUI refreshed successfully.", 2000)
+
         globalData.refresh(
             self.loggedUser, 
             self.loggedUser.getDepartment() if self.loggedUser.getRole() == UserRoles.USER else None, 
