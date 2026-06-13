@@ -35,21 +35,6 @@ The server binds to plain HTTP on port 5000. Every request sends the username an
 
 ---
 
-### M8 — Blocking network calls on the GUI thread freeze the UI during submit and SSE refresh
-**Files:** `client/MainWindow.py` — `addPTWDialog` (line ~583), `_onSSEEvent` (line ~1076), `refreshPtwUserGUI` (line ~1116); `client/GlobalData.py` — `refresh` (line 10); `client/clientRequests.py` (all methods)
-
-The SSE receive itself is correctly off-thread: `SSEListener` is a `QThread` and the blocking `requests.get(.../events, stream=True)` runs there. But every other server call is synchronous and runs **on the GUI thread**, so the window stops painting and stops accepting input for the duration of the round-trip(s):
-
-- **On submit** — `addPTWDialog` calls `ClientRequests.addPTW(...)` directly on the GUI thread, then optionally `addPtwAttachments` / `copyPtwAttachments`. The submitter's window is frozen until all of these complete.
-- **On every SSE event** — `eventReceived` is delivered to `_onSSEEvent` as a queued connection, so the slot runs on the GUI thread. It calls `refreshGUI()` → `globalData.refresh(...)`, which fires **5 sequential blocking HTTP GETs** (users, PTWs, risks, MIWIs, isolations) followed by a full rebuild of ~10 table tabs. Every recipient's window freezes for that whole sequence. This happens for *every* event type, and the originator is not excluded from the broadcast, so the submitter eats a second full refresh right after its own submit.
-
-This affects both multi-device and same-device (two independent processes) setups identically — each window freezes during its own refresh.
-
-Aggravating factor: **none of the foreground calls in `clientRequests.py` set a `timeout`** (only `SSEListener` does). If the server stalls, the GUI hangs **indefinitely** rather than failing gracefully.
-
-**Fix:** Move all foreground server calls (submit + the `globalData.refresh` block) off the GUI thread using the `QThread`/worker pattern already used for the password-reset request in `Login.py`, marshalling results back via signals. Add an explicit `timeout=` to every `requests` call in `clientRequests.py`. Optionally, make `_onSSEEvent` refresh only what the event changed instead of doing a full 5-request resync on every event.
-
----
 
 ### L4 — `IsolationDb.updateIsolation` has a TOCTOU race across two connections
 **File:** `server/IsolationDb.py` — `updateIsolation` (line 29)
@@ -62,6 +47,13 @@ The existence check (`SELECT EXISTS`) and the subsequent `UPDATE` or `INSERT` ea
 
 
 ## Fixed
+
+### ~~M8 — Blocking network calls on the GUI thread freeze the UI during submit and SSE refresh~~ ✓
+**Files:** `client/clientRequests.py`, `client/RequestWorker.py`
+
+All methods in `clientRequests.py` are now decorated with `@async_request` (from `RequestWorker.py`). When called with a `callback=` keyword argument, the decorator moves the request onto a fresh `QThread`, marshals the result back to the GUI thread via a queued signal, and calls the callback — leaving the GUI fully responsive throughout.
+
+---
 
 ### ~~M6 — `updateRiskAssessmentFromDict` is non-atomic — delete succeeds but insert may fail~~ ✓
 **File:** `server/risksDb.py` — `updateRiskAssessmentFromDict`

@@ -506,9 +506,11 @@ The desktop client is structured around role-based main windows. After login, `M
 | `Login.py`                  | Login screen; handles password reset flow                        |
 | `MainWindow.py`             | Post-login router; loads role-specific window                    |
 | `clientRequests.py`         | HTTP wrapper; all server calls return `(err, data)`              |
+| `RequestWorker.py`          | `@async_request` decorator — moves any request off the GUI thread via `QThread`; marshals result back via queued signal |
 | `GlobalData.py`             | Client-side data cache                                           |
 | `SSEListener.py`            | QThread that connects to `/events` and emits real-time PTW events|
 | `PTWData.py`                | Mirrored data model classes (client-side copy)                   |
+| `Isolation.py`              | Client-side isolation model (tags `StrEnum` + `Isolation` class) |
 | `utils.py`                  | Shared helpers: `resource_path`, `objToDict`, `dictToObj`        |
 | `User.py`                   | User model                                                       |
 | `WidgetPTW.py`              | Full PTW form (create/view/edit)                                 |

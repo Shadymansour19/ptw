@@ -4,8 +4,9 @@ PTW System — File Structure
 /mnt/hdd/software/projects/qt/ptw/
 │
 ├── PROJECT.md                      # Full project documentation (architecture, workflows, API)
+├── README.md                       # Public-facing overview (features, setup, API summary, build)
+├── KNOWN_ISSUES.md                 # Security and bug backlog with fix guidance
 ├── file-structure.txt              # This file
-├── PTWData.py                      # [STALE / DUPLICATE] Old root-level copy of PTWData — not used
 │
 ├── .vscode/
 │   ├── launch.json                 # VS Code debug launch configurations
@@ -39,6 +40,9 @@ PTW System — File Structure
 │   │
 │   │   ── REALTIME & NETWORKING ──
 │   ├── SSEListener.py              # QThread that connects to GET /events and emits PTW change events
+│   ├── RequestWorker.py            # @async_request decorator — wraps any clientRequests method in a
+│   │                               #   QThread; marshals (err, data) result back to GUI thread via
+│   │                               #   a queued signal; callback= keyword arg triggers async path
 │   │
 │   │   ── DIALOGS ──
 │   ├── DialogUser.py               # Create / edit user dialog
@@ -51,12 +55,13 @@ PTW System — File Structure
 │   ├── ReportGenerator.py          # Generates printable PDF permit report for a PTW
 │   │
 │   │   ── ASSETS ──
-│   ├── burullus-logo.png           # Burullus company logo
-│   ├── rashpetco-logo.png          # Rashpetco company logo
-│   ├── sh-logo.png                 # Shell logo (color)
-│   ├── sh-logo-bw.png              # Shell logo (black and white)
-│   ├── icon-settings-48.png        # Settings icon (48px)
-│   ├── qr-summery-*.png            # Generated QR code images for PTW summaries
+│   ├── assets/
+│   │   ├── burullus-logo.png       # Burullus company logo
+│   │   ├── rashpetco-logo.png      # Rashpetco company logo
+│   │   ├── sh-logo.png             # Shell logo (color)
+│   │   ├── sh-logo-bw.png          # Shell logo (black and white)
+│   │   ├── sh-logo-trans.png       # Shell logo (transparent background)
+│   │   └── sh-logo-trans.ico       # App icon
 │   └── fonts/
 │       └── Satisfy/
 │           ├── Satisfy-Regular.ttf # Handwriting-style font (used in reports)

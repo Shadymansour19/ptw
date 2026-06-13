@@ -192,8 +192,10 @@ ptw/
 │   ├── MainWindow.py            # Role-based window router
 │   ├── GlobalData.py            # Client-side data cache
 │   ├── clientRequests.py        # HTTP API wrapper
+│   ├── RequestWorker.py         # @async_request decorator — runs requests off the GUI thread
 │   ├── SSEListener.py           # Real-time event listener (QThread)
 │   ├── PTWData.py               # Client-side data models
+│   ├── Isolation.py             # Client-side isolation model (tags enum + Isolation class)
 │   ├── utils.py                 # Shared helpers (resource_path, objToDict, dictToObj)
 │   ├── WidgetPTW.py             # Full PTW form (create/view/edit)
 │   ├── TablePTWs.py             # PTW list with filters + Excel export
@@ -207,7 +209,9 @@ ptw/
 └── server/                      # Flask REST API
     ├── app.py                   # All route handlers + SSE broadcast
     ├── PTWData.py               # Core data models & enums
+    ├── User.py                  # User model (UserRoles enum, SecuredUser, User classes)
     ├── utils.py                 # Shared helpers (objToDict, dictToObj)
+    ├── commonDb.py              # Shared DB base class (ThreadedConnectionPool, generic CRUD)
     ├── ptwDb.py                 # PTW database operations
     ├── usersDb.py               # User database operations
     ├── IsolationDb.py           # Isolation database operations
