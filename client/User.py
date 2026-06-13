@@ -21,6 +21,13 @@ class UserDepartments(enum.StrEnum):
     IT = 'IT'
     PROD = 'Prod'
     SAFETY = 'Safety'
+    INST = 'Instrumentation'
+    HVAC = 'HVAC'
+    CVL = 'Civil'
+    PTRJ = 'Petrojet'
+    PTRM = 'Petromaint'
+    EGAS = 'Egypt Gas'
+    CTR = 'Contractor'
 
 
 class SecuredUser:
