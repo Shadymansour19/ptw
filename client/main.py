@@ -1,12 +1,14 @@
 import tempfile
 import qtawesome as qta
 from PyQt6.QtWidgets import QApplication, QMessageBox
+from PyQt6.QtCore import QLocale, Qt
 from PyQt6.QtGui import QIcon
 from Login import LoginWindow
 from MainWindow import MainWindow, AdminMainWindow, UserMainWindow, CoordinatorMainWindow, IssuingMainWindow, SafetyMainWindow, ManagerMainWindow
 from User import UserRoles
 from utils import resource_path
 from qdarktheme import load_palette, load_stylesheet
+import i18n
     
 def on_login_success(user):
     mainWindow = None
@@ -46,6 +48,12 @@ def on_logout():
 
 
 app = QApplication([])
+
+_lang = 'ar'   # e.g. 'ar', 'en', 'fr'
+i18n.init(_lang)
+if i18n.is_rtl():
+    app.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+
 # app.setPalette(load_palette('dark'))
 # app.setStyleSheet(load_stylesheet('dark'))
 app.setApplicationName("PTW")

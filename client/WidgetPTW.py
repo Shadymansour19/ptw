@@ -17,6 +17,7 @@ from clientRequests import ClientRequests
 from TableIsolations import TablePTWIsolations
 from functools import partial
 import qtawesome as qta
+from i18n import t
 
 class TabButton(QToolButton):
     TAB_BTN_STYLE = """
@@ -91,14 +92,14 @@ class DialogPTW(QDialog):
         if not new:
             err, attachNames = ClientRequests.getPtwAttachmentNames(loggedUser, self.ptw.id)
             if err:
-                QMessageBox.warning(parent, "Error", f"Failed to fetch attachments: {err}")
+                QMessageBox.warning(parent, t("Error"), t("Failed to fetch attachments:") + f" {err}")
             else:
                 attachs = [Attachment(remoteName=name, uploaded=True) for name in attachNames]
 
         if referencePTW is not None:
             err, refAttachNames = ClientRequests.getPtwAttachmentNames(loggedUser, referencePTW.id)
             if err:
-                QMessageBox.warning(parent, "Error", f"Failed to fetch reference PTW attachments: {err}")
+                QMessageBox.warning(parent, t("Error"), t("Failed to fetch reference PTW attachments:") + f" {err}")
             else:
                 attachs.extend([Attachment(remoteName=name, uploaded=True) for name in refAttachNames])
 
@@ -122,10 +123,10 @@ class DialogPTW(QDialog):
         lytBtns.setContentsMargins(8, 8, 8, 8)
         
         self.stack = QStackedWidget()
-        self.btnBack = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ArrowBack), 'Back')
-        self.btnNext = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ArrowForward), 'Next')
-        self.btnFinish = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_DialogOkButton), 'Finish')
-        self.btnCancel = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_DialogCancelButton), 'Cancel')
+        self.btnBack = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ArrowBack), t('Back'))
+        self.btnNext = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ArrowForward), t('Next'))
+        self.btnFinish = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_DialogOkButton), t('Finish'))
+        self.btnCancel = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_DialogCancelButton), t('Cancel'))
 
         self.setLayout(lyt)
         lyt.addWidget(tabsContainer)
@@ -173,14 +174,14 @@ class DialogPTW(QDialog):
         # self.btnMiwiMos   = QPushButton(qta.icon("fa6.rectangle-list"), 'MIWI/MOS')
         # self.btnAttachments = QPushButton(qta.icon("fa6s.paperclip"), 'Attachs')
 
-        self.btnBasicInfo = TabButton(self.stack, "Basic Info", "mdi6.file-document-outline")
-        self.btnTools     = TabButton(self.stack, "Tools", "fa6s.wrench")
-        self.btnHazards   = TabButton(self.stack, "Hazards", "mdi.alert-octagon-outline")
-        self.btnControls  = TabButton(self.stack, "Controls", "fa6s.shield-halved")
-        self.btnRisks     = TabButton(self.stack, "Risks", "fa5s.exclamation-triangle")
-        self.btnIsolation = TabButton(self.stack, "Isolation", "fa6s.unlock-keyhole")
-        self.btnMiwiMos   = TabButton(self.stack, "MIWI/MOS", "fa6.rectangle-list")
-        self.btnAttachments = TabButton(self.stack, "Attachments", "fa6s.paperclip")
+        self.btnBasicInfo = TabButton(self.stack, t("Basic Info"), "mdi6.file-document-outline")
+        self.btnTools     = TabButton(self.stack, t("Tools"), "fa6s.wrench")
+        self.btnHazards   = TabButton(self.stack, t("Hazards"), "mdi.alert-octagon-outline")
+        self.btnControls  = TabButton(self.stack, t("Controls"), "fa6s.shield-halved")
+        self.btnRisks     = TabButton(self.stack, t("Risks"), "fa5s.exclamation-triangle")
+        self.btnIsolation = TabButton(self.stack, t("Isolation"), "fa6s.unlock-keyhole")
+        self.btnMiwiMos   = TabButton(self.stack, t("MIWI/MOS"), "fa6.rectangle-list")
+        self.btnAttachments = TabButton(self.stack, t("Attachments"), "fa6s.paperclip")
 
         self.tabsBtnsMap: dict[QPushButton, QWidget] = {
             self.btnBasicInfo:      self.tabBasicInfo,
@@ -203,17 +204,17 @@ class DialogPTW(QDialog):
         self.boxPTWId = QLineEdit()
         self.boxPTWType = QComboBox(self.tabBasicInfo)
         for type in PTWData.Types:
-            self.boxPTWType.addItem(type)
+            self.boxPTWType.addItem(t(type), type.value)
         self.boxDate = QLineEdit()
         self.boxDepartment = QLineEdit()
         self.boxRequestor = QLineEdit()
         self.boxPerforming = QLineEdit()
         self.boxLocation = QComboBox(self.tabBasicInfo)
         for location in PTWData.Locations:
-            self.boxLocation.addItem(location)
+            self.boxLocation.addItem(t(location), location.value)
         self.boxAreaClass = QComboBox(self.tabBasicInfo)
         for areaClass in PTWData.AreaClasses:
-            self.boxAreaClass.addItem(areaClass)
+            self.boxAreaClass.addItem(t(areaClass), areaClass.value)
         self.boxEquipment = QLineEdit()
         self.boxDescription = QTextEdit()
         self.boxDescription.setFixedHeight(self.boxDescription.fontMetrics().lineSpacing() * 5 + 10)
@@ -221,13 +222,13 @@ class DialogPTW(QDialog):
         self.boxDescription.setAcceptRichText(False)
 
         self.boxPTWId.setText(str(ptw.id) if ptw.id else '')
-        self.boxPTWType.setCurrentText(str(ptw.type))
+        self.boxPTWType.setCurrentIndex(max(0, self.boxPTWType.findData(str(ptw.type))))
         self.boxDate.setText(date.today().strftime("%d/%m/%Y") if new else str(ptw.date))
         self.boxDepartment.setText(self.loggedUser.department if new else str(ptw.department) if self.loggedUser.department else '')
         self.boxRequestor.setText(self.loggedUser.getUsername() if new else str(ptw.requestor) if ptw.requestor else '')
         self.boxPerforming.setText(str(ptw.performing) if ptw.performing else '')
-        self.boxLocation.setCurrentText(str(ptw.location) if ptw.location else '')
-        self.boxAreaClass.setCurrentText(str(ptw.area_class) if ptw.area_class else '')
+        self.boxLocation.setCurrentIndex(max(0, self.boxLocation.findData(str(ptw.location) if ptw.location else '')))
+        self.boxAreaClass.setCurrentIndex(max(0, self.boxAreaClass.findData(str(ptw.area_class) if ptw.area_class else '')))
         self.boxEquipment.setText(str(ptw.equipment) if ptw.equipment else '')
         self.boxDescription.setText(str(ptw.description) if ptw.description else '')
 
@@ -243,22 +244,23 @@ class DialogPTW(QDialog):
         self.boxDescription.setReadOnly(readOnly)
         self.boxDescription.setTabChangesFocus(True)
 
-        lytBasicInfo.addRow('PTW#:', self.boxPTWId)
-        lytBasicInfo.addRow('Date:', self.boxDate)
-        lytBasicInfo.addRow('Dept:', self.boxDepartment)
-        lytBasicInfo.addRow('Requestor:', self.boxRequestor)
-        lytBasicInfo.addRow('Performing:', self.boxPerforming)
-        lytBasicInfo.addRow('Type:', self.boxPTWType)
-        lytBasicInfo.addRow('Location:', self.boxLocation)
-        lytBasicInfo.addRow('Area Class:', self.boxAreaClass)
-        lytBasicInfo.addRow('Equipment:', self.boxEquipment)
-        lytBasicInfo.addRow('Description:', self.boxDescription)
+        lytBasicInfo.addRow(t('PTW#:'), self.boxPTWId)
+        lytBasicInfo.addRow(t('Date:'), self.boxDate)
+        lytBasicInfo.addRow(t('Dept:'), self.boxDepartment)
+        lytBasicInfo.addRow(t('Requestor:'), self.boxRequestor)
+        lytBasicInfo.addRow(t('Performing:'), self.boxPerforming)
+        lytBasicInfo.addRow(t('Type:'), self.boxPTWType)
+        lytBasicInfo.addRow(t('Location:'), self.boxLocation)
+        lytBasicInfo.addRow(t('Area Class:'), self.boxAreaClass)
+        lytBasicInfo.addRow(t('Equipment:'), self.boxEquipment)
+        lytBasicInfo.addRow(t('Description:'), self.boxDescription)
 
         self.btnsTools: list[QCheckBox] = []
         for i,tool in enumerate(PTWData.ALL_TOOLS):
-            btn = QCheckBox(DialogPTW.checkboxDisplayName(tool))
+            btn = QCheckBox(DialogPTW.checkboxDisplayName(t(tool)))
+            btn.setObjectName(tool)
             btn.clicked.connect(self.checkRequirement)
-            btn.setChecked(DialogPTW.formatCheckBoxText(btn.text()) in ptw.tools)
+            btn.setChecked(tool in ptw.tools)
             btn.setEnabled(not readOnly)
             # btn.setStyleSheet('QCheckBox::indicator { width: 20px; height: 20px; }')
             lytTools.addWidget(btn, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS)
@@ -266,17 +268,18 @@ class DialogPTW(QDialog):
         i += 1
         self.boxOtherTools = QLineEdit()
         self.boxOtherTools.setEnabled(not readOnly)
-        self.boxOtherTools.setPlaceholderText("Others")
-        self.boxOtherTools.setToolTip("Other Tools")
+        self.boxOtherTools.setPlaceholderText(t("Others"))
+        self.boxOtherTools.setToolTip(t("Other Tools"))
         self.boxOtherTools.setText(', '.join(tool for tool in ptw.tools if tool not in PTWData.ALL_TOOLS))
         remaining_cols = DialogPTW.GRID_LYT_COLS - (i % DialogPTW.GRID_LYT_COLS)
         lytTools.addWidget(self.boxOtherTools, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS, 1, remaining_cols)
         
         self.btnsHazard: list[QCheckBox] = []
         for i,hazard in enumerate(PTWData.ALL_HAZARDS):
-            btn = QCheckBox(DialogPTW.checkboxDisplayName(hazard))
+            btn = QCheckBox(DialogPTW.checkboxDisplayName(t(hazard)))
+            btn.setObjectName(hazard)
             btn.clicked.connect(self.checkRequirement)
-            btn.setChecked(DialogPTW.formatCheckBoxText(btn.text()) in ptw.hazards)
+            btn.setChecked(hazard in ptw.hazards)
             btn.setEnabled(not readOnly)
             # btn.setStyleSheet('QCheckBox::indicator { width: 20px; height: 20px; }')
             lytHazards.addWidget(btn, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS)
@@ -284,17 +287,18 @@ class DialogPTW(QDialog):
         i += 1
         self.boxOtherHazards = QLineEdit()
         self.boxOtherHazards.setEnabled(not readOnly)
-        self.boxOtherHazards.setPlaceholderText("Others")
-        self.boxOtherHazards.setToolTip("Other Hazards")
+        self.boxOtherHazards.setPlaceholderText(t("Others"))
+        self.boxOtherHazards.setToolTip(t("Other Hazards"))
         self.boxOtherHazards.setText(', '.join(hazard for hazard in ptw.hazards if hazard not in PTWData.ALL_HAZARDS))
         remaining_cols = DialogPTW.GRID_LYT_COLS - (i % DialogPTW.GRID_LYT_COLS)
         lytHazards.addWidget(self.boxOtherHazards, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS, 1, remaining_cols)
         
         self.btnsControls: list[QCheckBox] = []
         for i,ctrl in enumerate(PTWData.ALL_CONTROLS):
-            btn = QCheckBox(DialogPTW.checkboxDisplayName(ctrl))
+            btn = QCheckBox(DialogPTW.checkboxDisplayName(t(ctrl)))
+            btn.setObjectName(ctrl)
             btn.clicked.connect(self.checkRequirement)
-            btn.setChecked(DialogPTW.formatCheckBoxText(btn.text()) in ptw.controls)
+            btn.setChecked(ctrl in ptw.controls)
             btn.setEnabled(not readOnly)
             # btn.setStyleSheet('QCheckBox::indicator { width: 20px; height: 20px; }')
             lytControls.addWidget(btn, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS)
@@ -302,8 +306,8 @@ class DialogPTW(QDialog):
         i += 1
         self.boxOtherControls = QLineEdit()
         self.boxOtherControls.setEnabled(not readOnly)
-        self.boxOtherControls.setPlaceholderText("Others")
-        self.boxOtherControls.setToolTip("Other Controls")
+        self.boxOtherControls.setPlaceholderText(t("Others"))
+        self.boxOtherControls.setToolTip(t("Other Controls"))
         self.boxOtherControls.setText(', '.join(ctrl for ctrl in ptw.controls if ctrl not in PTWData.ALL_CONTROLS))
         remaining_cols = DialogPTW.GRID_LYT_COLS - (i % DialogPTW.GRID_LYT_COLS)
         lytControls.addWidget(self.boxOtherControls, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS, 1, remaining_cols)
@@ -356,10 +360,10 @@ class DialogPTW(QDialog):
         # self.boxMiwi.setEditable(True)
         self.boxMiwi.setMaxVisibleItems(10)
 
-        self.btnViewMiwi = QPushButton(qta.icon("fa6.eye"), 'View MIWI')
+        self.btnViewMiwi = QPushButton(qta.icon("fa6.eye"), t('View MIWI'))
         self.btnViewMiwi.clicked.connect(self.openMIWI)
 
-        self.btnNewMiwi = QPushButton(qta.icon("fa6s.plus"), 'New MIWI')
+        self.btnNewMiwi = QPushButton(qta.icon("fa6s.plus"), t('New MIWI'))
         self.btnNewMiwi.clicked.connect(self.newMIWI)
 
         miwiLyt = QHBoxLayout()
@@ -376,7 +380,7 @@ class DialogPTW(QDialog):
 
         self.tableAttachments = TableAttachments(self.tabAttachments, loggedUser, self.ptw.id, referencePTW.id if referencePTW else None, attachs, readOnly)
 
-        self.btnNewAttach = QPushButton(qta.icon("fa6s.plus"), 'New Attachment')
+        self.btnNewAttach = QPushButton(qta.icon("fa6s.plus"), t('New Attachment'))
         self.btnNewAttach.clicked.connect(self.newAttachment)
 
         lytAttachments.addWidget(self.tableAttachments, stretch=1)
@@ -407,15 +411,15 @@ class DialogPTW(QDialog):
             btn.blockSignals(True)
             
         for btn in self.btnsTools:
-            btn.setChecked(DialogPTW.formatCheckBoxText(btn.text()) in self.ptw.tools)
+            btn.setChecked(btn.objectName() in self.ptw.tools)
         self.boxOtherTools.setText(', '.join(tool for tool in self.ptw.tools if tool not in PTWData.ALL_TOOLS))
 
         for btn in self.btnsHazard:
-            btn.setChecked(DialogPTW.formatCheckBoxText(btn.text()) in self.ptw.hazards)
+            btn.setChecked(btn.objectName() in self.ptw.hazards)
         self.boxOtherHazards.setText(', '.join(tool for tool in self.ptw.hazards if tool not in PTWData.ALL_HAZARDS))
 
         for btn in self.btnsControls:
-            btn.setChecked(DialogPTW.formatCheckBoxText(btn.text()) in self.ptw.controls)
+            btn.setChecked(btn.objectName() in self.ptw.controls)
         self.boxOtherControls.setText(', '.join(tool for tool in self.ptw.controls if tool not in PTWData.ALL_CONTROLS))
 
         for riskTitle in globalData.allRiskAssessments.keys():
@@ -444,7 +448,7 @@ class DialogPTW(QDialog):
     def openMIWI(self):
         def on_done(err, filepath):
             if err:
-                QMessageBox.warning(self, "Error", err)
+                QMessageBox.warning(self, t("Error"), err)
             else:
                 ReportGenerator.openPDF(filepath)
         miwiName = self.boxMiwi.currentText()
@@ -454,7 +458,7 @@ class DialogPTW(QDialog):
     class SaveAsDialog(QDialog):
         def __init__(self, parent, initName: str = '', invalidList: list[str] = [], title: str = "Save file as"):
             super().__init__(parent)
-            self.setWindowTitle(title)
+            self.setWindowTitle(t(title))
             self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowMaximizeButtonHint & ~Qt.WindowType.WindowMinimizeButtonHint)
             lyt = QFormLayout()
             lyt.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
@@ -468,7 +472,7 @@ class DialogPTW(QDialog):
             self.boxFileName.textChanged.connect(self.checkSaveName)
             self.boxFileName.setStyleSheet("QLineEdit[error='True'] { border: 1px solid red; border-radius: 2px; }")
 
-            lyt.addRow("Save on Server as:", self.boxFileName)
+            lyt.addRow(t("Save on Server as:"), self.boxFileName)
             lyt.addRow(self.btns)
 
             self.btns.accepted.connect(self.collectData)
@@ -488,10 +492,10 @@ class DialogPTW(QDialog):
 
 
     def newMIWI(self):
-        filepath, _ = QFileDialog.getOpenFileName(self, "Select MIWI File", QDir.homePath(), "PDFs (*.pdf);;All Files (*)")
+        filepath, _ = QFileDialog.getOpenFileName(self, t("Select MIWI File"), QDir.homePath(), "PDFs (*.pdf);;All Files (*)")
         if not filepath:
             return
-        
+
         miwiName = QFileInfo(filepath).fileName()
         saveDialog = self.SaveAsDialog(self, initName=miwiName, title="Save MIWI as", invalidList=globalData.allMIWIs)
         resp = saveDialog.exec()
@@ -499,20 +503,20 @@ class DialogPTW(QDialog):
             miwiName = saveDialog.savename
         elif resp == QDialog.DialogCode.Rejected:
             return
-        
+
         err = ClientRequests.uploadMIWI(self.loggedUser, filepath, miwiName)
         if err:
-            QMessageBox.warning(self, "Error", err)
+            QMessageBox.warning(self, t("Error"), err)
             return
         globalData.allMIWIs.append(miwiName)
         self.boxMiwi.addItem(miwiName)
         self.boxMiwi.setCurrentText(miwiName)
     
     def newAttachment(self):
-        filepath, _ = QFileDialog.getOpenFileName(self, "Select File", QDir.homePath(), "PDFs (*.pdf);;All Files (*)")
+        filepath, _ = QFileDialog.getOpenFileName(self, t("Select File"), QDir.homePath(), "PDFs (*.pdf);;All Files (*)")
         if not filepath:
             return
-        
+
         filename = QFileInfo(filepath).fileName()
         saveDialog = self.SaveAsDialog(self, initName=filename, title="Save Attachment as", invalidList=[a.remoteName for a in self.tableAttachments.getAttachments()])
         resp = saveDialog.exec()
@@ -544,12 +548,12 @@ class DialogPTW(QDialog):
             return
         
         self.ptw.setId(self.boxPTWId.text() if self.boxPTWId.text() else None)
-        self.ptw.setType(self.boxPTWType.currentText())
+        self.ptw.setType(self.boxPTWType.currentData())
         self.ptw.setDate(self.boxDate.text())
         self.ptw.setRequestor(self.boxRequestor.text())
         self.ptw.setDepartment(self.boxDepartment.text())
-        self.ptw.setLocation(self.boxLocation.currentText())
-        self.ptw.setAreaClass(self.boxAreaClass.currentText())
+        self.ptw.setLocation(self.boxLocation.currentData())
+        self.ptw.setAreaClass(self.boxAreaClass.currentData())
         self.ptw.setEquipment(self.boxEquipment.text())
         self.ptw.setDescription(self.boxDescription.toPlainText())
         if self.btnMiwi.isChecked():
@@ -562,7 +566,7 @@ class DialogPTW(QDialog):
         self.ptw.tools = []
         for btn in self.btnsTools:
             if btn.isChecked():
-                self.ptw.addTool(DialogPTW.formatCheckBoxText(btn.text()))
+                self.ptw.addTool(btn.objectName())
         if self.boxOtherTools.text():
             for tool in re.split(r'[,/\-+;|]', self.boxOtherTools.text()):
                 tool = tool.strip()
@@ -572,7 +576,7 @@ class DialogPTW(QDialog):
         self.ptw.hazards = []
         for btn in self.btnsHazard:
             if btn.isChecked():
-                self.ptw.addHazard(DialogPTW.formatCheckBoxText(btn.text()))
+                self.ptw.addHazard(btn.objectName())
         if self.boxOtherHazards.text():
             for hazard in re.split(r'[,/\-+;|]', self.boxOtherHazards.text()):
                 hazard = hazard.strip()
@@ -582,7 +586,7 @@ class DialogPTW(QDialog):
         self.ptw.controls = []
         for btn in self.btnsControls:
             if btn.isChecked():
-                self.ptw.addControl(DialogPTW.formatCheckBoxText(btn.text()))
+                self.ptw.addControl(btn.objectName())
         if self.boxOtherControls.text():
             for ctrl in re.split(r'[,/\-+;|]', self.boxOtherControls.text()):
                 ctrl = ctrl.strip()
@@ -607,7 +611,7 @@ class DialogPTW(QDialog):
         self.collectData()
         err = self.ptw.validate()
         if err:
-            QMessageBox.warning(self, "Invalid Data", err)
+            QMessageBox.warning(self, t("Invalid Data"), err)
             return
         
         return super().accept()
