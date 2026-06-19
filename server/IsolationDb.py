@@ -28,14 +28,24 @@ class IsolationDb:
 
     def updateIsolation(self, iso):
         try:
+            data = objToDict(iso)
             with CommonDB.get_conn() as conn:
-                with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                    cursor.execute("SELECT EXISTS(SELECT 1 FROM isolations WHERE tag = %s)", (iso.tag,))
-                    exists = cursor.fetchone()['exists']
-                if exists:
-                    CommonDB.updateRecordFromDict(conn, 'isolations', objToDict(iso), 'tag')
-                else:
-                    CommonDB.addRecordFromDict(conn, 'isolations', objToDict(iso))
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        INSERT INTO isolations (tag, type, description, primary_ptw, latest_ptw,
+                                               linked_ptws, is_physically_isolated, held_by)
+                        VALUES (%(tag)s, %(type)s, %(description)s, %(primary_ptw)s, %(latest_ptw)s,
+                                %(linked_ptws)s, %(is_physically_isolated)s, %(held_by)s)
+                        ON CONFLICT (tag) DO UPDATE SET
+                            type                   = EXCLUDED.type,
+                            description            = EXCLUDED.description,
+                            primary_ptw            = EXCLUDED.primary_ptw,
+                            latest_ptw             = EXCLUDED.latest_ptw,
+                            linked_ptws            = EXCLUDED.linked_ptws,
+                            is_physically_isolated = EXCLUDED.is_physically_isolated,
+                            held_by                = EXCLUDED.held_by
+                    """, data)
+                conn.commit()
             return None
         except Exception as e:
             return e

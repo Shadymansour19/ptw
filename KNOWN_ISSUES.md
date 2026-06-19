@@ -36,17 +36,14 @@ The server binds to plain HTTP on port 5000. Every request sends the username an
 ---
 
 
-### L4 — `IsolationDb.updateIsolation` has a TOCTOU race across two connections
-**File:** `server/IsolationDb.py` — `updateIsolation` (line 29)
+## Fixed
 
-The existence check (`SELECT EXISTS`) and the subsequent `UPDATE` or `INSERT` each borrow a separate connection from the pool. Between the two calls, a concurrent request could insert a row with the same `tag`, causing the second connection's `INSERT` to fail with a unique-key violation. This is a classic check-then-act race condition.
+### ~~L4 — `IsolationDb.updateIsolation` has a TOCTOU race across two connections~~ ✓
+**File:** `server/IsolationDb.py` — `updateIsolation`
 
-**Fix:** Replace the two-step logic with a single upsert: `INSERT INTO isolations (...) VALUES (...) ON CONFLICT (tag) DO UPDATE SET ...`. This is atomic and eliminates the race entirely.
+Replaced the two-step `SELECT EXISTS` + conditional `INSERT`/`UPDATE` (each on separate pool connections) with a single atomic `INSERT ... ON CONFLICT (tag) DO UPDATE SET ...` upsert. The existence check and write are now one statement, eliminating the race entirely.
 
 ---
-
-
-## Fixed
 
 ### ~~M8 — Blocking network calls on the GUI thread freeze the UI during submit and SSE refresh~~ ✓
 **Files:** `client/clientRequests.py`, `client/RequestWorker.py`
