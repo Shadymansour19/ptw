@@ -1,4 +1,5 @@
-from datetime import date
+import copy
+from datetime import date, datetime
 from PyQt6.QtCore import Qt, QSize, QDir, QFileInfo
 from PyQt6.QtWidgets import (QToolButton, QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
                               QGridLayout, QStackedWidget, QWidget, QLineEdit, QComboBox,
@@ -8,13 +9,14 @@ from PyQt6.QtWidgets import (QToolButton, QDialog, QVBoxLayout, QHBoxLayout, QFo
 from PyQt6.QtGui import QFont, QKeySequence, QIcon, QPalette, QShortcut
 import re
 
-from PTWData import PTWData, Attachment
+from PTWData import PTWData, Attachment, RiskAssessment
 from TableRisks import TableRisks
 from TableAttachments import TableAttachments
 from GlobalData import globalData
 from ReportGenerator import ReportGenerator
 from clientRequests import ClientRequests
 from TableIsolations import TablePTWIsolations
+from DialogRisk import DialogRiskAssessment
 from functools import partial
 import qtawesome as qta
 from i18n import t
@@ -143,7 +145,8 @@ class DialogPTW(QDialog):
         self.tabTools     = QWidget(self.stack)
         self.tabHazards   = QWidget(self.stack)
         self.tabControls  = QWidget(self.stack)
-        self.tabRisks     = TableRisks(self.stack, self.loggedUser, readonly=True, selectable=not readOnly)
+        self.tabRisksPage = QWidget(self.stack)
+        self.tabRisks     = TableRisks(self.tabRisksPage, self.loggedUser, readonly=True, selectable=not readOnly)
         self.tabIsolation = QWidget(self.stack)
         self.tabMiwiMos = QWidget(self.stack)
         self.tabAttachments = QWidget(self.stack)
@@ -153,6 +156,9 @@ class DialogPTW(QDialog):
         lytTools = QGridLayout()
         lytHazards = QGridLayout()
         lytControls = QGridLayout()
+        lytRisksPage = QVBoxLayout()
+        lytRisksPage.setContentsMargins(0, 0, 0, 0)
+        lytRisksPage.setSpacing(4)
         lytIsolation = QVBoxLayout()
         lytMiwiMos = QGridLayout()
         lytAttachments = QVBoxLayout()
@@ -161,6 +167,7 @@ class DialogPTW(QDialog):
         self.tabTools.setLayout(lytTools)
         self.tabHazards.setLayout(lytHazards)
         self.tabControls.setLayout(lytControls)
+        self.tabRisksPage.setLayout(lytRisksPage)
         self.tabIsolation.setLayout(lytIsolation)
         self.tabMiwiMos.setLayout(lytMiwiMos)
         self.tabAttachments.setLayout(lytAttachments)
@@ -188,7 +195,7 @@ class DialogPTW(QDialog):
             self.btnTools:          self.tabTools,
             self.btnHazards:        self.tabHazards,
             self.btnControls:       self.tabControls,
-            self.btnRisks:          self.tabRisks,
+            self.btnRisks:          self.tabRisksPage,
             self.btnIsolation:      self.tabIsolation,
             self.btnMiwiMos:        self.tabMiwiMos,
             self.btnAttachments:    self.tabAttachments
@@ -318,16 +325,34 @@ class DialogPTW(QDialog):
             lytHazards.setColumnStretch(col, 1)
             lytControls.setColumnStretch(col, 1)
 
+        self.ptwSpecificRiskAssessment: RiskAssessment = None
+
+        lytRisksPage.addWidget(self.tabRisks, stretch=1)
+        if not readOnly:
+            self.btnAddPTWRisk = QPushButton(qta.icon('fa6s.plus'), t('Add PTW-Specific Risk'))
+            self.btnAddPTWRisk.clicked.connect(self.openPTWSpecificRiskDialog)
+            lytRisksPage.addWidget(self.btnAddPTWRisk, stretch=0)
+
         if self.readonly:
-            self.tabRisks.setRiskAssessmentsInGUI({
+            risks_to_show = {
                 title: risk
                 for title, risk in globalData.allRiskAssessments.items()
                 if title in self.ptw.risks
-            })
+            }
+            # Always include PTW-specific risk (titled with PTW number) if it exists
+            ptw_num = str(self.ptw.id) if self.ptw.id else None
+            if ptw_num and ptw_num in globalData.allRiskAssessments and ptw_num not in risks_to_show:
+                risks_to_show[ptw_num] = globalData.allRiskAssessments[ptw_num]
+            self.tabRisks.setRiskAssessmentsInGUI(risks_to_show)
         else:
             self.tabRisks.setRiskAssessmentsInGUI(globalData.allRiskAssessments)
             for riskTitle in ptw.risks:
                 self.tabRisks.checkRisk(riskTitle)
+            # Pre-load existing PTW-specific risk if editing an existing PTW
+            ptw_num = str(self.ptw.id) if self.ptw.id else None
+            if ptw_num and ptw_num in globalData.allRiskAssessments:
+                self.ptwSpecificRiskAssessment = copy.deepcopy(globalData.allRiskAssessments[ptw_num])
+                self.btnAddPTWRisk.setText(t('Edit PTW-Specific Risk'))
         
 
         self.tableIsolation = TablePTWIsolations(self.tabIsolation, self.ptw.isolations, readOnly)
@@ -397,6 +422,21 @@ class DialogPTW(QDialog):
         self.stack.currentChanged.connect(self.stackTabChanged)
         self.stackTabChanged()
         self.miwiMosSwitch()
+
+    def openPTWSpecificRiskDialog(self):
+        ptw_num = str(self.ptw.id) if self.ptw.id else None
+        if self.ptwSpecificRiskAssessment:
+            risk = copy.deepcopy(self.ptwSpecificRiskAssessment)
+        elif ptw_num and ptw_num in globalData.allRiskAssessments:
+            risk = copy.deepcopy(globalData.allRiskAssessments[ptw_num])
+        else:
+            # Placeholder title — will be replaced with the real PTW number on save
+            risk = RiskAssessment(title=ptw_num or "(PTW-Specific)")
+        label = t("PTW-Specific Risk Assessment") + (f" (PTW# {ptw_num})" if ptw_num else "")
+        dialog = DialogRiskAssessment(self, False, risk, label)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.ptwSpecificRiskAssessment = risk
+            self.btnAddPTWRisk.setText(t('Edit PTW-Specific Risk'))
 
     def checkRequirement(self, state=None):
         self.collectData()

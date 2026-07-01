@@ -49,7 +49,7 @@ def on_logout():
 
 app = QApplication([])
 
-_lang = 'ar'   # e.g. 'ar', 'en', 'fr'
+_lang = QLocale.system().name()[:2]   # e.g. 'ar', 'en', 'fr'
 i18n.init(_lang)
 if i18n.is_rtl():
     app.setLayoutDirection(Qt.LayoutDirection.RightToLeft)

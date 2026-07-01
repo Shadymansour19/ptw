@@ -159,11 +159,17 @@ class ReportGenerator:
             for row in basicInfo
         ])
 
+        risks_bullets = list(ptw.risks)
+        ptw_num = str(ptw.id)
+        if ptw_num in globalData.allRiskAssessments:
+            n = len(globalData.allRiskAssessments[ptw_num].risks)
+            risks_bullets.append(f'PTW-Specific ({n} item{"s" if n != 1 else ""})')
+
         tableAdditionalInfoData = [
-            [Paragraph('Tools', styles['Heading3']), listToBullets(ptw.tools, styles['Normal'])], 
-            [Paragraph('Hazards', styles['Heading3']), listToBullets(ptw.hazards, styles['Normal'])], 
-            [Paragraph('Controls', styles['Heading3']), listToBullets(ptw.controls, styles['Normal'])], 
-            [Paragraph('Risks', styles['Heading3']), listToBullets(ptw.risks, styles['Normal'])], 
+            [Paragraph('Tools', styles['Heading3']), listToBullets(ptw.tools, styles['Normal'])],
+            [Paragraph('Hazards', styles['Heading3']), listToBullets(ptw.hazards, styles['Normal'])],
+            [Paragraph('Controls', styles['Heading3']), listToBullets(ptw.controls, styles['Normal'])],
+            [Paragraph('Risks', styles['Heading3']), listToBullets(risks_bullets, styles['Normal'])],
         ]
         if ptw.miwi:
             tableAdditionalInfoData.append([Paragraph('MIWI', styles['Heading3']), listToBullets([ptw.miwi], styles['Normal'])])
@@ -705,7 +711,11 @@ class ReportGenerator:
         TABLE_WIDTH_WEIGHTS_SUM = sum(TABLE_WIDTH_WEIGHTS)
         MARGIN = 0.35 * inch
 
-        risksTitles = [rt for rt in risksTitles if rt in globalData.allRiskAssessments] 
+        all_titles = list(risksTitles)
+        ptw_num = str(ptwId)
+        if ptw_num not in all_titles and ptw_num in globalData.allRiskAssessments:
+            all_titles.append(ptw_num)
+        risksTitles = [rt for rt in all_titles if rt in globalData.allRiskAssessments]
         if not risksTitles:
             return
 

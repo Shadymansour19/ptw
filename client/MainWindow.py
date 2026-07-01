@@ -611,6 +611,21 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Fail", err)
                 return
             newPTW.setId(ptwId)
+            if dlg.ptwSpecificRiskAssessment and dlg.ptwSpecificRiskAssessment.risks:
+                from datetime import datetime as _dt
+                risk = dlg.ptwSpecificRiskAssessment
+                risk.title = str(ptwId)
+                risk.date = _dt.now().strftime('%d %b %Y')
+                existing_titles = globalData.allRiskAssessments
+                def on_ptw_risk_saved(err, _):
+                    if err:
+                        QMessageBox.warning(self, "Warning", f"PTW saved but failed to save PTW-specific risk: {err}")
+                    else:
+                        globalData.allRiskAssessments[risk.title] = risk
+                if risk.title in existing_titles:
+                    ClientRequests.updateRiskAssessment(self.loggedUser, risk, callback=on_ptw_risk_saved)
+                else:
+                    ClientRequests.addNewRiskAssessment(self.loggedUser, risk, callback=on_ptw_risk_saved)
             if dlg.attachsToBeUploaded:
                 ClientRequests.addPtwAttachments(self.loggedUser, newPTW.id, dlg.attachsToBeUploaded, callback=on_attachments_uploaded)
         

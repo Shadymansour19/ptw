@@ -1036,13 +1036,18 @@ def getAllRiskAssessments():
 @app.route("/risks", methods=["POST"])
 def addNewRiskAssessment():
     user = getVerifiedUser(request.authorization)
-    if user is None or user.getRole() != UserRoles.SAFETY:
-        log.warning("POST /risks unauthorized: requester='%s' (ip=%s)", user.getUsername() if user else "unauthenticated", request.remote_addr)
+    if user is None:
+        log.warning("POST /risks unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     riskAssessmentDict = request.get_json(silent=True) or {}
+    title = riskAssessmentDict.get('title', '')
+    # Non-safety users may only create PTW-specific risks (title is a PTW number)
+    if user.getRole() != UserRoles.SAFETY and not str(title).isdigit():
+        log.warning("POST /risks unauthorized: requester='%s' tried to create non-PTW risk (ip=%s)", user.getUsername(), request.remote_addr)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
     try:
         result = risksDB.addRiskAssessmentFromDict(riskAssessmentDict)
-        log.info("Risk assessment created: title='%s' by='%s'", riskAssessmentDict.get('title'), user.getUsername())
+        log.info("Risk assessment created: title='%s' by='%s'", title, user.getUsername())
         return jsonify({"success": True, "error": result})
     except Exception as e:
         log.error("POST /risks failed: %s", e, exc_info=True)
@@ -1052,13 +1057,18 @@ def addNewRiskAssessment():
 @app.route("/risks", methods=["PUT"])
 def updateRiskAssessment():
     user = getVerifiedUser(request.authorization)
-    if user is None or user.getRole() != UserRoles.SAFETY:
-        log.warning("PUT /risks unauthorized: requester='%s' (ip=%s)", user.getUsername() if user else "unauthenticated", request.remote_addr)
+    if user is None:
+        log.warning("PUT /risks unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     riskAssessmentDict = request.get_json(silent=True) or {}
+    title = riskAssessmentDict.get('title', '')
+    # Non-safety users may only update PTW-specific risks (title is a PTW number)
+    if user.getRole() != UserRoles.SAFETY and not str(title).isdigit():
+        log.warning("PUT /risks unauthorized: requester='%s' tried to update non-PTW risk (ip=%s)", user.getUsername(), request.remote_addr)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
     try:
         result = risksDB.updateRiskAssessmentFromDict(riskAssessmentDict)
-        log.info("Risk assessment updated: title='%s' by='%s'", riskAssessmentDict.get('title'), user.getUsername())
+        log.info("Risk assessment updated: title='%s' by='%s'", title, user.getUsername())
         return jsonify({"success": True, "error": result})
     except Exception as e:
         log.error("PUT /risks failed: %s", e, exc_info=True)
@@ -1068,12 +1078,16 @@ def updateRiskAssessment():
 @app.route("/risks", methods=["DELETE"])
 def deleteRiskAssessment():
     user = getVerifiedUser(request.authorization)
-    if user is None or user.getRole() != UserRoles.SAFETY:
-        log.warning("DELETE /risks unauthorized: requester='%s' (ip=%s)", user.getUsername() if user else "unauthenticated", request.remote_addr)
+    if user is None:
+        log.warning("DELETE /risks unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     data = request.get_json(silent=True) or {}
     try:
         title = data['title']
+        # Non-safety users may only delete PTW-specific risks (title is a PTW number)
+        if user.getRole() != UserRoles.SAFETY and not str(title).isdigit():
+            log.warning("DELETE /risks unauthorized: requester='%s' tried to delete non-PTW risk (ip=%s)", user.getUsername(), request.remote_addr)
+            return jsonify({"success": False, "error": "Unauthorized"}), 401
         result = risksDB.deleteRiskAssessment(title)
         log.info("Risk assessment deleted: title='%s' by='%s'", title, user.getUsername())
         return jsonify({"success": True, "error": result})
