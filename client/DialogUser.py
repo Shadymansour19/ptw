@@ -1,5 +1,6 @@
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QDialog, QFormLayout, QLineEdit, QComboBox, QLabel, QDialogButtonBox, QMessageBox
+import secrets
 
 from User import User, SecuredUser, UserRoles, UserDepartments
 from GlobalData import globalData
@@ -42,7 +43,7 @@ class DialogUser(QDialog):
         self.txtExt.setText(self.toEditUser.getExt())
 
         self.txtUsername.setEnabled(isNew)
-        self.txtPassword.setEnabled(isNew)
+        self.txtPassword.setReadOnly(True)
         self.txtUsername.setStyleSheet("QLineEdit[error='True'] { border: 1px solid red; border-radius: 2px; }")
 
         if readonly:
@@ -56,7 +57,9 @@ class DialogUser(QDialog):
         lyt.addRow("Username:", self.txtUsername)
         if isNew:
             lyt.addRow(self.lblUserExists)
+            password = secrets.token_urlsafe(12)
             lyt.addRow("Password:", self.txtPassword)
+            self.txtPassword.setText(password)
         lyt.addRow("Name:", self.txtName)
         lyt.addRow("Role:", self.txtRole)
         lyt.addRow("Department:", self.txtDepartment)
