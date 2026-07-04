@@ -49,7 +49,7 @@ Each PTW is classified by the nature of the work. The type drives visual theming
 
 ## User Roles
 
-The system defines 10 roles with distinct permissions:
+The system defines 11 roles with distinct permissions:
 
 | Role        | Description                                                    |
 |-------------|----------------------------------------------------------------|
@@ -62,6 +62,7 @@ The system defines 10 roles with distinct permissions:
 | SOD         | System/Operation Director — approval authority                 |
 | DFGM        | Direct Field General Manager — highest approval authority |
 | Isolator    | Manages physical equipment isolations                          |
+| Guest       | Unauthenticated visitor; creates PTWs and views only |
 | Admin       | Full system access; manages users                              |
 
 ---
@@ -302,9 +303,23 @@ Maintenance and Work Instructions (MIWI) are PDF documents stored in `server/miw
 - All API endpoints require HTTP Basic Auth (username + password).
 - Passwords are hashed with **bcrypt** before storage. The server never returns a password hash in any API response.
 - **First boot:** if the `users` table is empty, a random admin password is generated with `secrets.token_urlsafe(12)` and printed once to the server log at `WARNING` level. Change it immediately after first login.
+- **New user creation:** the initial password is auto-generated (`secrets.token_urlsafe(12)`), shown read-only in the admin's "Add User" dialog, and emailed to the new user's registered email address (see **Guest Access** below for the email itself — it uses the same template family as password reset).
 - **Password Reset** flow: user requests a reset → server sends a 6-digit verification code to the user's registered email via Gmail SMTP → code expires after 15 minutes → user submits new password with code.
 - Role-based access control is enforced at the API layer for sensitive operations (user management, risk assessment management, PTW lifecycle: only `ISSUING` can accept/reject run, hold, and close requests).
 - `DELETE /ptws` and `POST /ptws/archive` are open to all authenticated users but are state-gated: deletion requires `REJECTED` or `ARCHIVED` status; archiving requires `REJECTED` or `CLOSED` status.
+
+### Guest Access
+
+Anyone can click "Login as a Guest" without an account. The client prompts for a **name** (becomes their username/requestor identity) and **department** (free text — not restricted to the fixed department list, since guests may be outside contractors). Server-side, `getVerifiedUser()` checks the real `users` table first; only if that fails, the password is empty, and the username doesn't already belong to a real account does it construct an ephemeral `GUEST`-role session — so a guest can never shadow or spoof a real account (if their typed name collides with a real username, they get a plain "Unauthorized" instead).
+
+Guests can create PTWs and request run/hold/close on their own submissions, scoped to their self-reported department (same fetch-filtering as the `User` role). They are explicitly denied on every other mutating endpoint: `PUT /users`, `PATCH /users/theme`, `DELETE /ptws`, `POST /ptws/approvals`, `POST /ptws/archive`, and `POST /ptws/attachments/copy`. Note the department scoping is self-reported, not an authoritative security boundary — there's no real account behind it to validate against.
+
+### Invitation & Notification Email
+
+New-user invitation email (`POST /users`) and the password-reset verification email both use HTML templates sent via Flask-Mail. The two email sends use **different concurrency models** on purpose:
+
+- **Invitation email** — fire-and-forget on a background `threading.Thread(daemon=True)`; `POST /users` returns success as soon as the user row is created, without waiting on the SMTP round-trip. A failed send is only logged server-side, never surfaced to the admin.
+- **Password-reset email** — sent synchronously inside the request handler, so a send failure can be returned to the client as a real error and the reset code is only stored after a confirmed send. `app.run(...)` passes `threaded=True` so this synchronous send only blocks the requesting client, not other users.
 
 ---
 
@@ -521,6 +536,7 @@ The desktop client is structured around role-based main windows. After login, `M
 | `TableAttachments.py`       | PTW attachment management                                        |
 | `TabServerLogs.py`          | Admin-only log viewer: collapsible file panels, lazy load, level filter, color-coded lines |
 | `CheckableComboBox.py`      | Reusable multi-select checkbox combo box with `filterChanged` signal |
+| `SearchableComboBox.py`     | Reusable editable combo box with fuzzy-match autocomplete; accepts free text not in its list |
 | `DialogUser.py`             | Create/edit user dialog                                          |
 | `DialogIsolation.py`        | Create/edit isolation dialog                                     |
 | `DialogRisk.py`             | Risk item creation dialog                                        |
@@ -533,6 +549,7 @@ The desktop client is structured around role-based main windows. After login, `M
 All role-specific views are implemented as classes within `MainWindow.py`. After login, the file routes to the appropriate class based on the user's role:
 
 - `AdminMainWindow` — full access
+- `GuestMainWindow` — unauthenticated visitor; creates/views PTWs
 - `UserMainWindow` — create PTWs, manage own permits
 - `CoordinatorMainWindow` — PTW approval coordination
 - `IssuingMainWindow` — run/hold/close confirmation

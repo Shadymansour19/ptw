@@ -39,7 +39,9 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 - **Archived permits** — Closed PTWs can be archived; archived data is fetched on-demand only to reduce server overhead
 - **File attachments** — Per-permit document uploads (medical certificates, tool checklists, technical drawings)
 - **MIWI documents** — Shared Maintenance & Work Instruction PDFs referenced across permits
-- **Role-based UI** — Each of 10 roles gets a tailored interface showing only relevant actions and data
+- **Role-based UI** — Each of 11 roles gets a tailored interface showing only relevant actions and data
+- **Guest access** — Anyone can log in as a Guest (name + free-text department, no account needed) to create and track their own PTWs
+- **Invitation email** — New users get an emailed username + auto-generated password on account creation
 - **Password reset via email** — 6-digit verification code sent via Gmail SMTP, expires in 15 minutes
 - **Multi-language support** — Language switching built into the UI
 - **Server activity logging** — rotating log files (10 MB, 5 backups) with DEBUG/INFO/WARNING/ERROR/CRITICAL levels; log lines include timestamp, level, and source location
@@ -90,6 +92,7 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 | **SOD** | System/Operation Director approval |
 | **DFGM** | Direct Field General Manager — highest approval authority |
 | **Isolator** | Manages physical equipment isolations |
+| **Guest** | Unauthenticated visitor; creates/views PTWs |
 | **Admin** | Full system access; manages all users |
 
 ---
@@ -201,6 +204,7 @@ ptw/
 │   ├── TablePTWs.py             # PTW list with filters + Excel export
 │   ├── TabServerLogs.py         # Admin log viewer tab (collapsible, color-coded, filterable)
 │   ├── CheckableComboBox.py     # Reusable multi-select checkbox combo box
+│   ├── SearchableComboBox.py    # Reusable fuzzy-autocomplete combo box that accepts free text
 │   ├── ReportGenerator.py       # PDF and Excel report generation
 │   ├── assets/                  # Bundled images and icons
 │   ├── fonts/                   # Bundled fonts
