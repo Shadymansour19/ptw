@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtCore import QLocale, Qt
 from PyQt6.QtGui import QIcon
 from Login import LoginWindow
-from MainWindow import MainWindow, AdminMainWindow, UserMainWindow, CoordinatorMainWindow, IssuingMainWindow, SafetyMainWindow, ManagerMainWindow
+from MainWindow import MainWindow, GuestMainWindow, AdminMainWindow, UserMainWindow, CoordinatorMainWindow, IssuingMainWindow, SafetyMainWindow, ManagerMainWindow
 from User import UserRoles
 from utils import resource_path
 from qdarktheme import load_palette, load_stylesheet
@@ -12,7 +12,9 @@ import i18n
     
 def on_login_success(user):
     mainWindow = None
-    if user.getRole() == UserRoles.USER:
+    if user.getRole() == UserRoles.GUEST:
+        mainWindow = GuestMainWindow(user)
+    elif user.getRole() == UserRoles.USER:
         mainWindow = UserMainWindow(user)
     elif user.getRole() == UserRoles.COORDINATOR:
         mainWindow = CoordinatorMainWindow(user)
@@ -34,7 +36,7 @@ def on_login_success(user):
         mainWindow = MainWindow(user)
 
     if not mainWindow:
-        QMessageBox.warning(self, "Error", "Your user role is not recognized. Please contact the administrator.")
+        QMessageBox.warning("Error", "Your user role is not recognized. Please contact the administrator.")
         return
 
     mainWindow.on_logout.connect(on_logout)

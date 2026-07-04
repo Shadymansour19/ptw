@@ -1113,7 +1113,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Error", f"Failed to refresh data: {err}")
                 return
             self.btnWelcomeName.setText(self.loggedUser.getRole() + ' ' + self.loggedUser.getName().upper() + '!')
-        globalData.refresh(self.loggedUser, self.loggedUser.getDepartment() if self.loggedUser.getRole() == UserRoles.USER else None, refreshUsers=True, callback=on_done)
+        globalData.refresh(self.loggedUser, self.loggedUser.getDepartment() if self.loggedUser.getRole() in (UserRoles.USER, UserRoles.GUEST, UserRoles.ISOLATOR) else None, refreshUsers=True, callback=on_done)
 
     def refreshPtwUserGUI(self, refreshArchivedPTWs: bool = False):
         def on_done(err, _):
@@ -1171,7 +1171,7 @@ class MainWindow(QMainWindow):
 
         globalData.refresh(
             self.loggedUser, 
-            self.loggedUser.getDepartment() if self.loggedUser.getRole() == UserRoles.USER else None, 
+            self.loggedUser.getDepartment() if self.loggedUser.getRole() in (UserRoles.USER, UserRoles.GUEST) else None, 
             refreshUsers=True, refreshPTWs=True, refreshRiskAssessments=True, 
             refreshMIWIs=True, refreshIsolations=True, 
             callback=on_done, 
@@ -1181,7 +1181,7 @@ class MainWindow(QMainWindow):
         self.tabArchivedPTWs.clear()
         globalData.refresh(
             self.loggedUser, 
-            self.loggedUser.getDepartment() if self.loggedUser.getRole() == UserRoles.USER else None, 
+            self.loggedUser.getDepartment() if self.loggedUser.getRole() in (UserRoles.USER, UserRoles.GUEST) else None, 
             refreshArchivedPTWs=True
         )
         for ptw in globalData.archivedPTWs:
@@ -1261,6 +1261,38 @@ class MainWindow(QMainWindow):
         tab: TablePTWs = self.stack.currentWidget()
         for i,ptw in enumerate(tab.ptwsData):
             self.printPTW(i, ptw)
+
+
+
+class GuestMainWindow(MainWindow):
+    def __init__(self, loggedUser):
+        super().__init__(loggedUser)
+        self.setWindowTitle("PTW (Permit To Work) - Guest Window")
+
+        self.tabUnderReviewPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.printOption, self.exportOption])
+
+        self.setAvailableTabs([
+            [self.btnWelcome],
+            [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs, self.btnRejectedPTWs],
+        ])
+
+        self.btnFAB.setToolTip("New PTW [Ctrl+N]")
+        self.btnFAB.setIcon(qta.icon('fa6s.plus', color='white'))
+
+        shortcut = QShortcut(QKeySequence("Ctrl+N"), self)
+        shortcut.activated.connect(self.btnFABHandler)
+
+    def stackTabChanged(self):
+        super().stackTabChanged()
+        tab = self.stack.currentWidget()
+        self.btnFAB.setVisible(tab in [self.tabUnderReviewPTWs])
+
+    def btnFABHandler(self):
+        if self.btnFAB.isVisible():
+            self.addPTWDialog()
+    
+    def refreshGUI(self, refreshArchivedPTWs: bool = False):
+        super().refreshPtwUserGUI()
 
 
 

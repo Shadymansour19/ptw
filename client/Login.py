@@ -1,10 +1,13 @@
 from PyQt6.QtCore import Qt, pyqtSignal, QObject, QThread, QSize
 from PyQt6.QtWidgets import (QLineEdit, QToolButton, QDialog, QFormLayout, QLabel,
                               QStackedWidget, QPushButton, QCheckBox, QDialogButtonBox,
-                              QMessageBox, QMainWindow, QWidget, QSizePolicy, QApplication, QStyle)
+                              QMessageBox, QMainWindow, QWidget, QSizePolicy, QApplication, QStyle,
+                              QHBoxLayout)
 import keyring
 from keyring.errors import KeyringError
 import qtawesome as qta
+
+from SearchableComboBox import SearchableComboBox
 
 
 SERVICE_NAME = "PTW-login-credentials"
@@ -180,7 +183,43 @@ class ResetPasswordDialog(QDialog):
             return
 
         self.accept()
-        
+
+
+class GuestDetailsDialog(QDialog):
+    def __init__(self, departments, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Continue as Guest")
+
+        self.boxName = QLineEdit()
+        self.boxName.setPlaceholderText("Enter your full name")
+
+        self.boxDepartment = SearchableComboBox()
+        self.boxDepartment.setItems([str(dept) for dept in departments])
+
+        lyt = QFormLayout()
+        lyt.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        self.setLayout(lyt)
+
+        lyt.addRow("Name", self.boxName)
+        lyt.addRow("Department", self.boxDepartment)
+
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        btns.accepted.connect(self._onAccept)
+        btns.rejected.connect(self.reject)
+        lyt.addRow(btns)
+
+    def _onAccept(self):
+        if not self.boxName.text().strip():
+            QMessageBox.warning(self, "Error", "Please enter your name.")
+            return
+        self.accept()
+
+    def getName(self) -> str:
+        return self.boxName.text().strip()
+
+    def getDepartment(self):
+        return self.boxDepartment.currentText()
+
 
 class LoginWindow(QMainWindow):
     on_login_success = pyqtSignal(object)
@@ -215,10 +254,18 @@ class LoginWindow(QMainWindow):
         self.boxPassword.returnPressed.connect(self.login)
         self.btnForgotPassword.clicked.connect(self.forgotPassword)
 
-        self.btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        # self.btns.button(QDialogButtonBox.StandardButton.Ok).setText("Login")
-        self.btns.accepted.connect(self.login)
-        self.btns.rejected.connect(self.close)
+        self.btnCancel = QPushButton(qta.icon('fa5s.times'), "Cancel")
+        self.btnLogin = QPushButton(qta.icon('fa6s.arrow-right-to-bracket'), "Login")
+        self.btnGuest = QPushButton(qta.icon('fa5s.user'), "Login as a guest")
+
+        self.btnCancel.clicked.connect(self.close)
+        self.btnLogin.clicked.connect(self.login)
+        self.btnGuest.clicked.connect(self.loginAsGuest)
+
+        btnLayout = QHBoxLayout()
+        btnLayout.addWidget(self.btnCancel)
+        btnLayout.addWidget(self.btnLogin)
+        btnLayout.addWidget(self.btnGuest)
 
         mainLayout = QFormLayout()
         mainLayout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
@@ -239,7 +286,7 @@ class LoginWindow(QMainWindow):
         except KeyringError as e:
             pass
 
-        mainLayout.addRow(self.btns)
+        mainLayout.addRow(btnLayout)
 
         self.adjustSize()
         self.setFixedHeight(self.height())
@@ -295,9 +342,7 @@ class LoginWindow(QMainWindow):
             pass
         
     def login(self):
-        from MainWindow import MainWindow, AdminMainWindow, UserMainWindow, CoordinatorMainWindow, IssuingMainWindow, SafetyMainWindow, ManagerMainWindow
         from clientRequests import ClientRequests
-        from User import UserRoles
 
         username = self.boxUsername.text()
         password : str = self.boxPassword.text()
@@ -318,5 +363,18 @@ class LoginWindow(QMainWindow):
             QApplication.styleHints().setColorScheme(Qt.ColorScheme.Dark)
         elif theme == 'light':
             QApplication.styleHints().setColorScheme(Qt.ColorScheme.Light)
+
+        self.on_login_success.emit(user)
+
+    def loginAsGuest(self):
+        from User import User, UserRoles, UserDepartments
+
+        dlg = GuestDetailsDialog(list(UserDepartments), self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        name = dlg.getName()
+        department = dlg.getDepartment()
+        user = User(username=name, name=name, role=UserRoles.GUEST, department=department, email='')
 
         self.on_login_success.emit(user)

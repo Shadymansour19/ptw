@@ -1662,11 +1662,15 @@ class PTWData:
 
     def getApprovalStatus(self, role = None):
         if role:
+            # Only these roles gate on the previous role's approval; USER/GUEST/ADMIN
+            # aren't sequential approvers, so they're never gated (prvRole stays None).
+            approvalChain = [UserRoles.COORDINATOR, UserRoles.ISSUING, UserRoles.SAFETY,
+                              UserRoles.PDH, UserRoles.PGM, UserRoles.SOD, UserRoles.DFGM, UserRoles.ISOLATOR]
             prvRole = None
-            allRoles = list(UserRoles)
-            idx = allRoles.index(role)
-            if idx > 1:
-                prvRole = allRoles[idx-1]
+            if role in approvalChain:
+                idx = approvalChain.index(role)
+                if idx > 0:
+                    prvRole = approvalChain[idx-1]
             for approval in self.approvals[::-1]:
                 user = globalData.allUsers.get(approval.username)
                 if user is not None and user.getRole() == role:

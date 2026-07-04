@@ -1,69 +1,8 @@
-from PyQt6.QtCore import Qt, QStringListModel, QRect
-from PyQt6.QtWidgets import (QStyledItemDelegate, QApplication, QStyle, QStyleOptionViewItem,
-                              QCompleter, QDialog, QFormLayout, QComboBox, QTextEdit,
-                              QDialogButtonBox, QMessageBox)
-from PyQt6.QtGui import QColor, QFont, QPalette
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QDialog, QFormLayout, QComboBox, QTextEdit, QDialogButtonBox, QMessageBox
 
 from PTWData import Isolation, PTWData
-
-
-class FuzzyHighlightDelegate(QStyledItemDelegate):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.pattern = ''
-
-    def setPattern(self, pattern):
-        self.pattern = pattern.upper()
-
-    def paint(self, painter, option, index):
-        text = index.data(Qt.ItemDataRole.DisplayRole) or ''
-        if not text or not self.pattern:
-            super().paint(painter, option, index)
-            return
-
-        matched = set()
-        j = 0
-        for i, ch in enumerate(text.upper()):
-            if j < len(self.pattern) and ch == self.pattern[j]:
-                matched.add(i)
-                j += 1
-
-        opt = QStyleOptionViewItem(option)
-        self.initStyleOption(opt, index)
-        opt.text = ''
-
-        painter.save()
-        style = opt.widget.style() if opt.widget else QApplication.style()
-        style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, opt.widget)
-
-        is_selected = bool(opt.state & QStyle.StateFlag.State_Selected)
-        text_color = opt.palette.highlightedText().color() if is_selected else opt.palette.text().color()
-        highlight_color = opt.palette.color(QPalette.ColorRole.Highlight)
-
-        margin = style.pixelMetric(QStyle.PixelMetric.PM_FocusFrameHMargin, None, opt.widget) + 1
-        x = opt.rect.x() + margin
-        normal_font = QFont(opt.font)
-        bold_font = QFont(opt.font)
-        bold_font.setBold(True)
-
-        for i, ch in enumerate(text):
-            if i in matched:
-                painter.setFont(bold_font)
-                painter.setPen(highlight_color)
-            else:
-                painter.setFont(normal_font)
-                painter.setPen(text_color)
-            w = painter.fontMetrics().horizontalAdvance(ch)
-            painter.drawText(QRect(x, opt.rect.y(), w, opt.rect.height()), Qt.AlignmentFlag.AlignVCenter, ch)
-            x += w
-
-        painter.restore()
-
-
-class FuzzyCompleter(QCompleter):
-    # Return '' so QCompleter doesn't re-filter our pre-filtered model.
-    def splitPath(self, _path):
-        return ['']
+from SearchableComboBox import SearchableComboBox
 
 
 class DialogIsolation(QDialog):
@@ -78,33 +17,18 @@ class DialogIsolation(QDialog):
         self.setLayout(lyt)
 
         self.typeCombo = QComboBox()
-        self.boxTag = QComboBox()
+        self.boxTag = SearchableComboBox()
         self.boxDescription = QTextEdit()
         self.boxDescription.setFixedHeight(self.boxDescription.fontMetrics().lineSpacing() * 4 + 10)
-        
+
         self.typeCombo.addItems([t.value for t in Isolation.Types])
 
-        self._all_tags = list(PTWData.ALL_ISOLATIONS.keys())
         self._tagsForType = {t.value: [] for t in Isolation.Types}
         for iso in PTWData.ALL_ISOLATIONS.values():
             self._tagsForType[iso.type.value].append(iso.tag)
 
-        self.boxTag.setEditable(True)
-
-        self._completer_model = QStringListModel(self._all_tags)
-        completer = FuzzyCompleter(self._completer_model, self)
-        completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
-        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-        self.boxTag.setCompleter(completer)
-        self._highlight_delegate = FuzzyHighlightDelegate()
-        completer.popup().setItemDelegate(self._highlight_delegate)
         self.typeCombo.currentTextChanged.connect(self._on_type_changed)
-        self.boxTag.lineEdit().textEdited.connect(self._filter_tags)
-        self.boxTag.currentIndexChanged.connect(lambda: self._on_tag_selected(self.boxTag.currentText()))
-        completer.activated.connect(self._on_tag_selected)
-        self.boxTag.lineEdit().editingFinished.connect(
-            lambda: self._on_tag_selected(self.boxTag.currentText())
-        )
+        self.boxTag.itemSelected.connect(self._on_tag_selected)
         self._on_type_changed()
 
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
@@ -117,29 +41,11 @@ class DialogIsolation(QDialog):
         lyt.addWidget(btns)
 
     def _on_type_changed(self, _=None):
-        tags = self._tagsForType[self.typeCombo.currentText()]
-        self.boxTag.clear()
-        self.boxTag.addItems(tags)
-        self.boxTag.setCurrentIndex(0)
-        self._completer_model.setStringList(tags)
+        self.boxTag.setItems(self._tagsForType[self.typeCombo.currentText()])
 
     def _on_tag_selected(self, tag):
         isolation = PTWData.ALL_ISOLATIONS.get(tag)
         self.boxDescription.setText(isolation.description if isolation else '')
-
-    def _filter_tags(self, text):
-        self._highlight_delegate.setPattern(text)
-        tags = self._tagsForType[self.typeCombo.currentText()]
-        if text:
-            pat = text.upper()
-            tags = [t for t in tags if self._fuzzy_match(pat, t.upper())]
-        self._completer_model.setStringList(tags)
-        self.boxTag.completer().complete()
-
-    @staticmethod
-    def _fuzzy_match(pattern, text):
-        it = iter(text)
-        return all(c in it for c in pattern)
 
     def getIsolation(self):
         return self.isolation

@@ -156,9 +156,23 @@ threading.Thread(target=_prune_reset_codes, daemon=True, name="reset-codes-prune
 
 def getVerifiedUser(auth) -> User:
     try:
-        return userDB.getVerifiedUser(auth.username, auth.password)
+        username = auth.username
+        password = auth.password
     except AttributeError:
         return None
+    if not username:
+        return None
+
+    user = userDB.getVerifiedUser(username, password)
+    if user is not None:
+        return user
+
+    # Guests aren't registered accounts: any username that isn't a real,
+    # password-protected account is allowed through unauthenticated as a GUEST.
+    # This never shadows a real account, since isUsernameExists() takes priority above.
+    if not password and not userDB.isUsernameExists(username):
+        return User(username=username, name=username, role=UserRoles.GUEST, department='')
+    return None
 
 
 @app.get("/events")
@@ -511,6 +525,9 @@ def updateUserRequest():
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     userDataDict = request.get_json(silent=True) or {}
     target = userDataDict.get("username")
+    if authUser.getRole() == UserRoles.GUEST:
+        log.warning("PUT /users: guest '%s' attempted to update '%s'", authUser.getUsername(), target)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
     try:
         if authUser.getRole() == UserRoles.ADMIN or authUser.getUsername() == target:
             result = userDB.updateUserFromDict(userDataDict)
@@ -536,6 +553,9 @@ def updateUserTheme():
     authUser = getVerifiedUser(request.authorization)
     if authUser is None:
         log.warning("PATCH /users/theme unauthorized (ip=%s)", request.remote_addr)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    if authUser.getRole() == UserRoles.GUEST:
+        log.warning("PATCH /users/theme: guest '%s' attempted to change theme", authUser.getUsername())
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     data = request.get_json(silent=True) or {}
     username = data.get('username')
@@ -633,6 +653,9 @@ def deletePTWRequest():
     if user is None:
         log.warning("DELETE /ptws unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
+    if user.getRole() == UserRoles.GUEST:
+        log.warning("DELETE /ptws: forbidden for guest '%s'", user.getUsername())
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
     try:
         ptw_id = payload.get('ptw-id')
@@ -657,6 +680,9 @@ def updatePTWApprovals():
     if user is None:
         log.warning("POST /ptws/approvals unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
+    if user.getRole() == UserRoles.GUEST:
+        log.warning("POST /ptws/approvals: forbidden for guest '%s'", user.getUsername())
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
     ptwId = payload.get('ptw-id')
     approvalData = payload.get('approval')
@@ -680,6 +706,9 @@ def archivePTWs():
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ptws/archive unauthorized (ip=%s)", request.remote_addr)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    if user.getRole() == UserRoles.GUEST:
+        log.warning("POST /ptws/archive: forbidden for guest '%s'", user.getUsername())
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
     ptwIds = payload.get('ptw-ids')
@@ -712,6 +741,9 @@ def requestToRunPTW():
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ptws/run-request unauthorized (ip=%s)", request.remote_addr)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    if user.getRole() == UserRoles.GUEST:
+        log.warning("POST /ptws/run-request: forbidden for guest '%s'", user.getUsername())
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
     ptwId = payload.get('ptw-id')
@@ -783,6 +815,9 @@ def requestToHldPTW():
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ptws/hold-request unauthorized (ip=%s)", request.remote_addr)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    if user.getRole() == UserRoles.GUEST:
+        log.warning("POST /ptws/hold-request: forbidden for guest '%s'", user.getUsername())
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
     ptwId = payload.get('ptw-id')
@@ -859,6 +894,9 @@ def requestToClsPTW():
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ptws/close-request unauthorized (ip=%s)", request.remote_addr)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    if user.getRole() == UserRoles.GUEST:
+        log.warning("POST /ptws/close-request: forbidden for guest '%s'", user.getUsername())
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
     ptwId = payload.get('ptw-id')
@@ -1065,6 +1103,9 @@ def copyPtwAttachments():
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ptws/attachments/copy unauthorized (ip=%s)", request.remote_addr)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    if user.getRole() == UserRoles.GUEST:
+        log.warning("POST /ptws/attachments/copy: forbidden for guest '%s'", user.getUsername())
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
     sourcePtwId = payload.get('source-ptw-id')
