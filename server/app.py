@@ -213,22 +213,7 @@ def login():
         return jsonify({"success": False, "error": "Invalid request format"}), 400
 
 
-@app.route("/reset-password-request", methods=["POST"])
-def requestResetPassword():
-    payload = request.get_json(silent=True) or {}
-    username = payload.get('username')
-    if not username:
-        log.warning("Password reset request missing username (ip=%s)", request.remote_addr)
-        return jsonify({"success": False, "error": "No username specified"}), 401
-    try:
-        userEmail = globalData.allUsers[username].getEmail()
-        if not userEmail:
-            raise Exception("No email associated to this user")
-    except Exception as e:
-        log.warning("Password reset: no email found for username='%s': %s", username, e)
-        return jsonify({"success": False, "error": f"Can't find a mail associated to username {username}"}), 400
-
-    code = str(randint(0, 10**6 - 1)).zfill(6)
+def _sendResetPasswordEmail(username, userEmail, code):
     msg = Message(
         subject='PTW Reset Password Verification Code',
         sender=os.environ.get('MAIL_USERNAME'),
@@ -291,10 +276,28 @@ def requestResetPassword():
             </body>
             </html>''',
     )
+    with app.app_context():
+        mail.send(msg)
 
+
+@app.route("/reset-password-request", methods=["POST"])
+def requestResetPassword():
+    payload = request.get_json(silent=True) or {}
+    username = payload.get('username')
+    if not username:
+        log.warning("Password reset request missing username (ip=%s)", request.remote_addr)
+        return jsonify({"success": False, "error": "No username specified"}), 401
     try:
-        with app.app_context():
-            mail.send(msg)
+        userEmail = globalData.allUsers[username].getEmail()
+        if not userEmail:
+            raise Exception("No email associated to this user")
+    except Exception as e:
+        log.warning("Password reset: no email found for username='%s': %s", username, e)
+        return jsonify({"success": False, "error": f"Can't find a mail associated to username {username}"}), 400
+
+    code = str(randint(0, 10**6 - 1)).zfill(6)
+    try:
+        _sendResetPasswordEmail(username, userEmail, code)
         log.info("Password reset code sent: username='%s' email='%s'", username, userEmail)
     except Exception as e:
         log.error("Failed to send password reset email for username='%s': %s", username, e, exc_info=True)
@@ -1293,4 +1296,4 @@ def getLogs():
 
 if __name__ == "__main__":
     log.info("Starting PTW server on 0.0.0.0:5000")
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000, threaded=True)
