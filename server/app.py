@@ -400,6 +400,92 @@ def newUserRequest():
                 except Exception:
                     pass
             log.info("User created: username='%s' by admin='%s'", username, user.getUsername())
+            username = userDataDict.get('username')
+            password = userDataDict.get('password')
+            name = userDataDict.get('name')
+            userEmail = userDataDict.get('email')
+            if userEmail:
+                msg = Message(
+                    subject='PTW Invitation',
+                    sender=os.environ.get('MAIL_USERNAME'),
+                    recipients=[userEmail],
+                    cc=['shady.abdelhady@rashpetco.com'],
+                    html=f'''<!DOCTYPE html>
+                        <html lang="en">
+                        <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+                        <body style="margin:0;padding:0;background-color:#f4f4f4;font-family:Arial,sans-serif;">
+                        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f4;padding:40px 0;">
+                            <tr><td align="center">
+                            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+
+                                <!-- Header -->
+                                <tr>
+                                <td style="background-color:#1a3a5c;padding:28px 40px;text-align:center;">
+                                    <h1 style="margin:0;color:#ffffff;font-size:22px;letter-spacing:1px;">PTW</h1>
+                                    <p style="margin:4px 0 0;color:#a8c4e0;font-size:13px;">Permit to Work System</p>
+                                </td>
+                                </tr>
+
+                                <!-- Body -->
+                                <tr>
+                                <td style="padding:40px 40px 32px;">
+                                    <h2 style="margin:0 0 12px;color:#1a3a5c;font-size:18px;">Welcome to PTW System</h2>
+                                    <p style="margin:0 0 24px;color:#555555;font-size:14px;line-height:1.6;">
+                                    We're excited to have you on board, <strong>{name}</strong>!<br>
+                                    Get started by exploring the features and functionality of our system.
+                                    </p>
+
+                                    <!-- Username box -->
+                                    <table width="100%" cellpadding="0" cellspacing="0">
+                                    <tr><td align="center" style="padding:8px 0 32px;">
+                                        <div style="display:inline-block;background-color:#f0f5fb;border:1px solid #c5d8ee;border-radius:8px;padding:20px 48px;">
+                                        <p style="margin:0 0 4px;color:#6b7280;font-size:11px;letter-spacing:2px;text-transform:uppercase;">Username</p>
+                                        <p style="margin:0;color:#1a3a5c;font-size:36px;font-weight:bold;letter-spacing:10px;">{username}</p>
+                                        </div>
+                                    </td></tr>
+                                    </table>
+
+                                    <!-- Password box -->
+                                    <table width="100%" cellpadding="0" cellspacing="0">
+                                    <tr><td align="center" style="padding:8px 0 32px;">
+                                        <div style="display:inline-block;background-color:#f0f5fb;border:1px solid #c5d8ee;border-radius:8px;padding:20px 48px;">
+                                        <p style="margin:0 0 4px;color:#6b7280;font-size:11px;letter-spacing:2px;text-transform:uppercase;">Initial Password</p>
+                                        <p style="margin:0;color:#1a3a5c;font-size:36px;font-weight:bold;letter-spacing:10px;">{password}</p>
+                                        </div>
+                                    </td></tr>
+                                    </table>
+
+                                    <p style="margin:0;color:#888888;font-size:13px;line-height:1.6;">
+                                    Consider changing this immediately after first login.<br>
+                                    <strong>Do not share this password with anyone.</strong>
+                                    </p>
+                                </td>
+                                </tr>
+
+                                <!-- Footer -->
+                                <tr>
+                                <td style="background-color:#f8f9fa;border-top:1px solid #e9ecef;padding:20px 40px;text-align:center;">
+                                    <p style="margin:0;color:#aaaaaa;font-size:12px;">
+                                    This is an automated message from the PTW System. Please do not reply to this email.
+                                    </p>
+                                </td>
+                                </tr>
+
+                            </table>
+                            </td></tr>
+                        </table>
+                        </body>
+                        </html>''',
+                )
+
+                try:
+                    with app.app_context():
+                        mail.send(msg)
+                    log.info("Invitation email sent: username='%s' email='%s'", username, userEmail)
+                except Exception as e:
+                    log.error("Failed to send invitation email for username='%s': %s", username, e, exc_info=True)
+                    return jsonify({"success": False, "error": "Failed to send invitation email"}), 500
+
         else:
             log.warning("User creation failed for '%s': %s (by admin='%s')", username, err, user.getUsername())
         return jsonify({"success": True, "error": err})
