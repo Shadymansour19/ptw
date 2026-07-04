@@ -1444,7 +1444,7 @@ class SafetyMainWindow(MainWindow):
         tab = self.stack.currentWidget()
         self.btnFAB.setVisible(tab in [self.tabRisks])
     
-    def refreshGUI(self):
+    def refreshGUI(self, refreshArchivedPTWs: bool = False):
         super().refreshPtwUserGUI()
         self.tabRisks.setRiskAssessmentsInGUI(globalData.allRiskAssessments)
 
