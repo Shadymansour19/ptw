@@ -1447,6 +1447,14 @@ class PTWData:
         self.__updateStatus()
         return self
     
+    @staticmethod
+    def backgroundColorForType(ptwType: Types):
+        return PTWData.__backgroundColors.get(ptwType) or PTWData.__backgroundColors.get(PTWData.Types.CW)
+
+    @staticmethod
+    def foregroundColorForType(ptwType: Types):
+        return PTWData.__foregroundColors.get(ptwType) or PTWData.__foregroundColors.get(PTWData.Types.CW)
+
     def backgroundColor(self):
         return PTWData.__backgroundColors.get(self.type) or PTWData.__backgroundColors.get(PTWData.Types.CW)
 

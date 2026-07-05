@@ -108,8 +108,8 @@ class DialogPTW(QDialog):
         lyt = QVBoxLayout()
         lyt.setContentsMargins(0, 0, 0, 0)
         
-        tabsContainer = QWidget()
-        tabsContainer.setStyleSheet("""
+        self.tabsContainer = QWidget()
+        self.tabsContainer.setStyleSheet("""
             QWidget {
                 background: palette(dark);
                 border-bottom: 4px solid rgba(128, 128, 128, 0.5);
@@ -117,7 +117,7 @@ class DialogPTW(QDialog):
                 border-bottom-right-radius: 20px;
             }
         """)
-        lytTabs = QHBoxLayout(tabsContainer)
+        lytTabs = QHBoxLayout(self.tabsContainer)
         lytTabs.setSpacing(2)
         lytTabs.setContentsMargins(8, 8, 8, 8)
 
@@ -131,7 +131,7 @@ class DialogPTW(QDialog):
         self.btnCancel = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_DialogCancelButton), t('Cancel'))
 
         self.setLayout(lyt)
-        lyt.addWidget(tabsContainer)
+        lyt.addWidget(self.tabsContainer)
         lyt.addWidget(self.stack)
         lyt.addLayout(lytBtns)
 
@@ -212,6 +212,7 @@ class DialogPTW(QDialog):
         self.boxPTWType = QComboBox(self.tabBasicInfo)
         for type in PTWData.Types:
             self.boxPTWType.addItem(t(type), type.value)
+        self.boxPTWType.currentIndexChanged.connect(self.ptwTypeChanged)
         self.boxDate = QLineEdit()
         self.boxDepartment = QLineEdit()
         self.boxRequestor = QLineEdit()
@@ -422,6 +423,18 @@ class DialogPTW(QDialog):
         self.stack.currentChanged.connect(self.stackTabChanged)
         self.stackTabChanged()
         self.miwiMosSwitch()
+        self.ptwTypeChanged()
+
+    def ptwTypeChanged(self):
+        color = PTWData.backgroundColorForType(self.boxPTWType.currentData())
+        self.tabsContainer.setStyleSheet(f"""
+            QWidget {{
+                background: {color.name()};
+                border-bottom: 4px solid rgba(128, 128, 128, 0.5);
+                border-right: 4px solid rgba(128, 128, 128, 0.5);
+                border-bottom-right-radius: 20px;
+            }}
+        """)
 
     def openPTWSpecificRiskDialog(self):
         ptw_num = str(self.ptw.id) if self.ptw.id else None
