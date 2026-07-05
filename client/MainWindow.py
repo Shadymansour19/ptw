@@ -59,11 +59,10 @@ class MainWindow(QMainWindow):
         self.hldRequestOption  = TablePTWs.MenuOption('Hold', self.requestToHldPTW, qta.icon('fa6s.pause'))
         self.hldTakeActionOption = TablePTWs.MenuOption('Take Action', self.hldTakeAction, qta.icon('fa6s.pause'))
         self.tstRequestOption  = TablePTWs.MenuOption('Suction for Test', self.requestToSuctionTestPTW, qta.icon('fa6s.plug-circle-exclamation'))
-        self.tstAcceptOption  = TablePTWs.MenuOption('Suction for Test', self.suctionTestAcceptPTW, qta.icon('fa6s.plug-circle-exclamation'))
-        self.tstRejectOption  = TablePTWs.MenuOption('Reject', self.suctionTestRejectPTW, qta.icon('fa5s.times'))
+        self.tstAcceptOption  = TablePTWs.MenuOption('Approve Suction for Test', self.suctionTestAcceptPTW, qta.icon('fa6s.plug-circle-exclamation'))
+        self.tstRejectOption  = TablePTWs.MenuOption('Reject Suction for Test', self.suctionTestRejectPTW, qta.icon('fa5s.times'))
         self.requestEditsOption = TablePTWs.MenuOption('Request Edits', self.requestEdits, qta.icon('fa5s.undo'))
         self.acceptOption = TablePTWs.MenuOption('Accept', self.acceptPTW, qta.icon('fa6s.check'))
-        self.rejectOption = TablePTWs.MenuOption('Reject', self.rejectPTW, qta.icon('fa5s.times'))
         self.exportOption = TablePTWs.MenuOption('Export', self.exportPTWs, qta.icon('fa6s.file-excel'), allAtOnce=True)
         self.printOption = TablePTWs.MenuOption('Print', self.printPTW, qta.icon('fa6s.print'))
         self.printDeIsolationOption = TablePTWs.MenuOption('Print De-Isolation', self.printDeIsolation, qta.icon('fa6s.print'))
@@ -81,7 +80,6 @@ class MainWindow(QMainWindow):
         self.tabUnderReviewPTWs = TablePTWs(self.stack, self.loggedUser, "Under Review PTWs")
         self.tabReturnedPTWs = TablePTWs(self.stack, self.loggedUser, "Returned PTWs")
         self.tabApprovedPTWs = TablePTWs(self.stack, self.loggedUser, "Approved PTWs")
-        self.tabRejectedPTWs = TablePTWs(self.stack, self.loggedUser, "Rejected PTWs")
         self.tabWaitingRunConfirmationPTWs = TablePTWs(self.stack, self.loggedUser, "Waiting Run Confirmation PTWs")
         self.tabRunningPTWs = TablePTWs(self.stack, self.loggedUser, "Running PTWs")
         self.tabWaitingHldConfirmationPTWs = TablePTWs(self.stack, self.loggedUser, "Waiting Hold Confirmation PTWs")
@@ -125,7 +123,6 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.tabUnderReviewPTWs)
         self.stack.addWidget(self.tabReturnedPTWs)
         self.stack.addWidget(self.tabApprovedPTWs)
-        self.stack.addWidget(self.tabRejectedPTWs)
         self.stack.addWidget(self.tabWaitingRunConfirmationPTWs)
         self.stack.addWidget(self.tabRunningPTWs)
         self.stack.addWidget(self.tabWaitingHldConfirmationPTWs)
@@ -144,7 +141,6 @@ class MainWindow(QMainWindow):
         # self.btnUnderReviewPTWs = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxQuestion), "")
         # self.btnReturnedPTWs = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxWarning), "")
         # self.btnApprovedPTWs = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_DialogOkButton), "")
-        # self.btnRejectedPTWs = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_DialogCancelButton), "")
         # self.btnWaitingRunConfirmationPTWs = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxQuestion), "")
         # self.btnRunningPTWs = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay), "")
         # self.btnWaitingHldConfirmationPTWs = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxWarning), "")
@@ -163,7 +159,6 @@ class MainWindow(QMainWindow):
         self.btnUnderReviewPTWs = QPushButton(qta.icon('fa6s.magnifying-glass-chart'), "")
         self.btnReturnedPTWs = QPushButton(qta.icon('fa5s.undo'), "")
         self.btnApprovedPTWs = QPushButton(qta.icon('fa6s.check'), "")
-        self.btnRejectedPTWs = QPushButton(qta.icon('fa5s.times'), "")
         self.btnWaitingRunConfirmationPTWs = QPushButton(qta.icon('fa6.clock'), "")
         self.btnRunningPTWs = QPushButton(qta.icon('fa6s.play'), "")
         self.btnWaitingHldConfirmationPTWs = QPushButton(qta.icon('fa5s.hourglass-half'), "")
@@ -186,7 +181,6 @@ class MainWindow(QMainWindow):
         self.btnUnderReviewPTWs.setToolTip("Under Review PTWs")
         self.btnReturnedPTWs.setToolTip("Returned PTWs")
         self.btnApprovedPTWs.setToolTip("Approved PTWs")
-        self.btnRejectedPTWs.setToolTip("Rejected PTWs")
         self.btnWaitingRunConfirmationPTWs.setToolTip("Waiting Run Confirmation PTWs")
         self.btnRunningPTWs.setToolTip("Running PTWs")
         self.btnWaitingHldConfirmationPTWs.setToolTip("Waiting Hold Confirmation PTWs")
@@ -209,7 +203,6 @@ class MainWindow(QMainWindow):
             self.btnUnderReviewPTWs:            self.tabUnderReviewPTWs,
             self.btnReturnedPTWs:               self.tabReturnedPTWs,
             self.btnApprovedPTWs:               self.tabApprovedPTWs,
-            self.btnRejectedPTWs:               self.tabRejectedPTWs,
             self.btnWaitingRunConfirmationPTWs: self.tabWaitingRunConfirmationPTWs,
             self.btnRunningPTWs:                self.tabRunningPTWs,
             self.btnWaitingHldConfirmationPTWs: self.tabWaitingHldConfirmationPTWs,
@@ -737,7 +730,6 @@ class MainWindow(QMainWindow):
             return
         DialogUser(self, True, False, self.loggedUser, globalData.allUsers[username], f"{role} - View Mode - User {username}").exec()
     
-
     def viewRequestor(self, row: int, ptw: PTWData):
         self.viewUser(ptw.requestor, 'Requestor')
 
@@ -794,6 +786,9 @@ class MainWindow(QMainWindow):
         # self.refreshGUI()
 
     def dlgSettings(self):
+        if self.loggedUser.getRole() == UserRoles.GUEST:
+            QMessageBox.warning(self, "Access Denied", "Guest users cannot access settings.")
+            return
         user = copy.deepcopy(self.loggedUser)
         old_theme = self.loggedUser.getTheme()
         dlg = DialogSettings(self, user)
@@ -818,7 +813,10 @@ class MainWindow(QMainWindow):
         self.btnFAB.move(x, y)
     
     def setAvailableTabs(self, groups: list[list[QPushButton]]):
-        FOOTER_BTNS: list[QPushButton] = [self.btnTheme, self.btnSettings, self.btnRefresh, self.btnLogout]
+        FOOTER_BTNS: list[QPushButton] = []
+        if self.loggedUser.getRole() != UserRoles.GUEST:
+            FOOTER_BTNS.extend([self.btnTheme, self.btnSettings])
+        FOOTER_BTNS.extend([self.btnRefresh, self.btnLogout])
 
         # --- Sidebar ---
         self.sideBarLayout.clear()
@@ -1029,7 +1027,7 @@ class MainWindow(QMainWindow):
             UserRoles.ISSUING: (
                 "As an <b>Issuing Authority</b>, you are responsible for formally approving "
                 "and issuing work permits. You can oversee active isolations. "
-                "Authorizing work to run, and you can request edits or reject permits that "
+                "Authorizing work to run, and you can request edits permits that "
                 "do not meet requirements."
                 "Use the <b>Under Review</b> tab to review permits waiting for your review."
                 "Use the <b>Waiting Run/Hold/Close Confirmation</b> tabs to review permits waiting your coordination."
@@ -1121,7 +1119,6 @@ class MainWindow(QMainWindow):
                 self.tabUnderReviewPTWs,
                 self.tabApprovedPTWs,
                 self.tabReturnedPTWs,
-                self.tabRejectedPTWs,
                 self.tabWaitingRunConfirmationPTWs,
                 self.tabRunningPTWs,
                 self.tabWaitingHldConfirmationPTWs,
@@ -1151,8 +1148,6 @@ class MainWindow(QMainWindow):
                     self.tabClosedPTWs.addPTWToGUI(ptw)
                 elif st == PTWData.ApprovalStatus.APPROVED:
                     self.tabApprovedPTWs.addPTWToGUI(ptw)
-                elif st == PTWData.ApprovalStatus.REJECTED:
-                    self.tabRejectedPTWs.addPTWToGUI(ptw)
                 elif st == PTWData.ApprovalStatus.RETURNED:
                     self.tabReturnedPTWs.addPTWToGUI(ptw)
                 elif st == PTWData.ApprovalStatus.UNDER_REVIEW and mySt == PTWData.ApprovalStatus.UNDER_REVIEW:
@@ -1221,19 +1216,6 @@ class MainWindow(QMainWindow):
         if dlg.exec() == QDialog.DialogCode.Accepted:
             return comment
         return None
-
-    def rejectPTW(self, row: int, ptw: PTWData):
-        comment = self.getComment(f'Reject PTW# {ptw.id}')
-        if not comment:
-            return
-        
-        approval = PTWData.Approval(
-            PTWData.ApprovalActions.REJECTED, 
-            self.loggedUser.getUsername(), 
-            datetime.now().strftime('%d/%m/%Y %H:%M:%S'), 
-            comment
-        )
-        ClientRequests.updateApprovalPTW(self.loggedUser, ptw.id, approval, callback=self._on_request_done_generic)
     
     def requestEdits(self, row: int, ptw: PTWData):
         comment = self.getComment(f'Return PTW# {ptw.id} to be Edited')
@@ -1270,10 +1252,12 @@ class GuestMainWindow(MainWindow):
         self.setWindowTitle("PTW (Permit To Work) - Guest Window")
 
         self.tabUnderReviewPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.printOption, self.exportOption])
+        self.tabReturnedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.printOption, self.exportOption])
+        self.tabApprovedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.printOption, self.exportOption])
 
         self.setAvailableTabs([
             [self.btnWelcome],
-            [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs, self.btnRejectedPTWs],
+            [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
         ])
 
         self.btnFAB.setToolTip("New PTW [Ctrl+N]")
@@ -1305,7 +1289,6 @@ class UserMainWindow(MainWindow):
         self.tabUnderReviewPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.printOption, self.exportOption])
         self.tabReturnedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.dltOption, self.printOption, self.exportOption])
         self.tabApprovedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.runRequestOption, self.printOption, self.exportOption])
-        self.tabRejectedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.dltOption, self.printOption, self.archiveOption, self.exportOption])
         self.tabWaitingRunConfirmationPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewPerformingOption, self.viewApprovalsOption, self.requestPTWOption, self.printOption, self.exportOption])
         self.tabRunningPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewPerformingOption, self.viewApprovalsOption, self.requestPTWOption, self.clsRequestOption, self.hldRequestOption, self.printOption, self.exportOption])
         self.tabWaitingClsConfirmationPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewPerformingOption, self.viewApprovalsOption, self.requestPTWOption, self.printOption, self.exportOption])
@@ -1317,7 +1300,7 @@ class UserMainWindow(MainWindow):
 
         self.setAvailableTabs([
             [self.btnWelcome],
-            [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs, self.btnRejectedPTWs],
+            [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
             [self.btnWaitingRunConfirmationPTWs, self.btnRunningPTWs, self.btnWaitingHldConfirmationPTWs, self.btnHeldPTWs, self.btnWaitingClsConfirmationPTWs, self.btnClosedPTWs, self.btnArchivedPTWs],
             [self.btnIsolations],
         ])
@@ -1352,7 +1335,6 @@ class CoordinatorMainWindow(MainWindow):
         self.tabUnderReviewPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.requestEditsOption, self.acceptOption, self.printOption, self.exportOption])
         self.tabReturnedPTWs.addOptions([self.viewOption, self.viewApprovalsOption, self.viewRequestorOption, self.printOption, self.exportOption])
         self.tabApprovedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.printOption, self.exportOption])
-        self.tabRejectedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.dltOption, self.printOption, self.archiveOption, self.exportOption])
         self.tabWaitingRunConfirmationPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewPerformingOption, self.viewApprovalsOption, self.printOption, self.exportOption])
         self.tabRunningPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewPerformingOption, self.viewApprovalsOption, self.printOption, self.exportOption])
         self.tabWaitingClsConfirmationPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewPerformingOption, self.viewApprovalsOption, self.printOption, self.exportOption])
@@ -1363,7 +1345,7 @@ class CoordinatorMainWindow(MainWindow):
 
         self.setAvailableTabs([
             [self.btnWelcome],
-            [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs, self.btnRejectedPTWs],
+            [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
             [self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs, self.btnArchivedPTWs],
             [self.btnIsolations],
         ])
@@ -1397,10 +1379,9 @@ class IssuingMainWindow(MainWindow):
         super().__init__(loggedUser)
         self.setWindowTitle("PTW (Permit To Work) - Issuing Window")
 
-        self.tabUnderReviewPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestEditsOption, self.acceptOption, self.rejectOption, self.printOption, self.exportOption])
+        self.tabUnderReviewPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestEditsOption, self.acceptOption, self.printOption, self.exportOption])
         self.tabReturnedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.printOption, self.exportOption])
         self.tabApprovedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.printOption, self.exportOption])
-        self.tabRejectedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.dltOption, self.printOption, self.archiveOption, self.exportOption])
         self.tabWaitingRunConfirmationPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewPerformingOption, self.viewApprovalsOption, self.runAcceptOption, self.runRejectOption, self.printOption, self.exportOption])
         self.tabRunningPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewPerformingOption, self.viewApprovalsOption, self.printOption, self.exportOption])
         self.tabWaitingHldConfirmationPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewPerformingOption, self.viewApprovalsOption, self.viewIsolationsOption, self.hldTakeActionOption, self.printOption, self.exportOption])
@@ -1411,7 +1392,7 @@ class IssuingMainWindow(MainWindow):
 
         self.setAvailableTabs([
             [self.btnWelcome],
-            [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs, self.btnRejectedPTWs],
+            [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
             [self.btnWaitingRunConfirmationPTWs, self.btnRunningPTWs, self.btnWaitingHldConfirmationPTWs, self.btnHeldPTWs, self.btnWaitingClsConfirmationPTWs, self.btnClosedPTWs, self.btnArchivedPTWs],
             [self.btnIsolations],
         ])
@@ -1488,10 +1469,9 @@ class ManagerMainWindow(MainWindow):
         super().__init__(loggedUser)
         self.setWindowTitle(f"PTW (Permit To Work) - {role} Window")
 
-        self.tabUnderReviewPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestEditsOption, self.acceptOption, self.rejectOption, self.printOption, self.exportOption])
+        self.tabUnderReviewPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestEditsOption, self.acceptOption, self.printOption, self.exportOption])
         self.tabReturnedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.printOption, self.exportOption])
         self.tabApprovedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.printOption, self.exportOption])
-        self.tabRejectedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.dltOption, self.printOption, self.archiveOption, self.exportOption])
         self.tabRunningPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewPerformingOption, self.viewApprovalsOption, self.printOption, self.exportOption])
         self.tabHeldPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.viewIsolationsOption, self.printDeIsolationOption, self.printOption, self.exportOption])
         self.tabClosedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.printDeIsolationOption, self.printOption, self.archiveOption, self.exportOption])
@@ -1499,7 +1479,7 @@ class ManagerMainWindow(MainWindow):
 
         self.setAvailableTabs([
             [self.btnWelcome],
-            [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs, self.btnRejectedPTWs],
+            [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
             [self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs],
             [self.btnIsolations],
         ])

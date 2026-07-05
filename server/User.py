@@ -11,6 +11,7 @@ class UserRoles(enum.StrEnum):
     SOD = 'SOD'
     DFGM = 'DFGM'
     ISOLATOR = 'Isolator'
+    GUEST = 'Guest'
     ADMIN = 'Admin'
 
 

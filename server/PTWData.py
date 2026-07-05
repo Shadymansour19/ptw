@@ -152,13 +152,11 @@ class PTWData:
     class ApprovalActions(enum.StrEnum):
         APPROVED = 'Approved'
         RETURNED = 'Returned'
-        REJECTED = 'Rejected'
 
     class ApprovalStatus(enum.StrEnum):
         UNDER_REVIEW = 'Under Review'
         APPROVED = 'Approved'
         RETURNED = 'Returned'
-        REJECTED = 'Rejected'
     
     class RunningStatus(enum.StrEnum):
         NOT_RUNNING = 'Not Running'
