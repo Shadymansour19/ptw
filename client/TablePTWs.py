@@ -30,8 +30,8 @@ class TablePTWs(QWidget):
         self.loggedUser = loggedUser
         self.options = []
 
-        self.summeryLabels = ['PTW#', 'Type', 'Date', 'Department', 'Requestor', 'Location', 'Equipment', 'Description']
-        self.summeryFields = ['id',   'type', 'date', 'department', 'requestor', 'location', 'equipment', 'description']
+        self.summeryLabels = ['PTW#', 'Type', 'Request Time', 'Department', 'Requestor', 'Location', 'Equipment', 'Description']
+        self.summeryFields = ['id',   'type', 'request_date', 'department', 'requestor', 'location', 'equipment', 'description']
 
         lblLyt = QHBoxLayout()
         lblLyt.setContentsMargins(10, 0, 10, 0)
@@ -226,7 +226,7 @@ class TablePTWs(QWidget):
             combo._updateText()
 
     def sort(self):
-        self.tbl.sortItems(0, Qt.SortOrder.DescendingOrder)
+        self.tbl.sortItems(0, Qt.SortOrder.AscendingOrder)
         self._syncPtwsData()
 
     def _syncPtwsData(self):

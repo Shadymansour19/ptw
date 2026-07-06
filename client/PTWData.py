@@ -314,9 +314,6 @@ class PTWData:
         ),
         'Scaffolding': CheckBox(
             title='Scaffolding',
-            requirements=[
-                Requirement(type=Requirement.Types.HAZARD, description='Working at Height'), 
-            ],
         ), 
         'Working at Height': CheckBox(
             title='Working at Height',
@@ -413,6 +410,7 @@ class PTWData:
         'Radios': CheckBox(
             title='Radios', 
         ),
+        None: CheckBox(title=None), 
         'Fire Retardant Coverall': CheckBox(
             title='Fire Retardant Coverall', 
         ),
@@ -1562,7 +1560,7 @@ class PTWData:
     def __init__(self, data: dict = {}):
         self.id : str = data.get('id')
         self.type : str = data.get('type')
-        self.date : str = datetime.now().strftime("%d/%m/%Y")
+        self.request_date : str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         self.location : str = data.get('location')
         self.equipment : str = data.get('equipment')
         self.area_class : str = data.get('area_class')
@@ -1658,7 +1656,7 @@ class PTWData:
         return self
     
     def setDate(self, date: str):
-        self.date = date
+        self.request_date = date
         return self
     
     def setRequestor(self, requestor: str):
@@ -1877,8 +1875,10 @@ class PTWData:
     
     def requiredApprovers(self):
         requiredApprovers = [UserRoles.COORDINATOR, UserRoles.ISSUING, UserRoles.SAFETY]
-        if self.type == PTWData.Types.HT or any(isolation.type == Isolation.Types.PROTECTIVE for isolation in self.isolations):
+        if any(isolation.type == Isolation.Types.PROTECTIVE for isolation in self.isolations) and self.mos:
             requiredApprovers.extend([UserRoles.PDH, UserRoles.PGM, UserRoles.SOD, UserRoles.DFGM])
+        elif self.type in [PTWData.Types.HT, PTWData.Types.CS]:
+            requiredApprovers.extend([UserRoles.PGM, UserRoles.DFGM])
         return requiredApprovers
         
     def __updateStatus(self):

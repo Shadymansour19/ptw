@@ -412,6 +412,7 @@ class PTWData:
         'Radios': CheckBox(
             title='Radios', 
         ),
+        None: CheckBox(title=None), 
         'Fire Retardant Coverall': CheckBox(
             title='Fire Retardant Coverall', 
         ),
@@ -499,7 +500,7 @@ class PTWData:
     def __init__(self, data: dict = {}):
         self.id : str = data.get('id')
         self.type : str = data.get('type')
-        self.date : str = datetime.now().strftime("%d/%m/%Y")
+        self.request_date : str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         self.location : str = data.get('location')
         self.equipment : str = data.get('equipment')
         self.area_class : str = data.get('area_class')
@@ -581,7 +582,7 @@ class PTWData:
         return self
     
     def setDate(self, date: str):
-        self.date = date
+        self.request_date = date
         return self
     
     def setRequestor(self, requestor: str):

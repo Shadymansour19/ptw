@@ -1,11 +1,11 @@
 import copy
-from datetime import date, datetime
+from datetime import datetime
 from PyQt6.QtCore import Qt, QSize, QDir, QFileInfo
 from PyQt6.QtWidgets import (QToolButton, QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
                               QGridLayout, QStackedWidget, QWidget, QLineEdit, QComboBox,
                               QTextEdit, QPushButton, QCheckBox, QRadioButton, QButtonGroup,
                               QDialogButtonBox, QMessageBox, QApplication, QStyle,
-                              QFileDialog, QSizePolicy)
+                              QFileDialog, QSizePolicy, QFrame)
 from PyQt6.QtGui import QFont, QKeySequence, QIcon, QPalette, QShortcut, QColor
 import re
 
@@ -264,7 +264,7 @@ class DialogPTW(QDialog):
 
         self.boxPTWId.setText(str(ptw.id) if ptw.id else '')
         self.boxPTWType.setCurrentIndex(max(0, self.boxPTWType.findData(str(ptw.type))))
-        self.boxDate.setText(date.today().strftime("%d/%m/%Y") if new else str(ptw.date))
+        self.boxDate.setText(datetime.now().strftime("%d/%m/%Y %H:%M:%S") if new else str(ptw.request_date))
         self.boxDepartment.setText(self.loggedUser.department if new else str(ptw.department) if self.loggedUser.department else '')
         self.boxRequestor.setText(self.loggedUser.getUsername() if new else str(ptw.requestor) if ptw.requestor else '')
         self.boxPerforming.setText(str(ptw.performing) if ptw.performing else '')
@@ -286,7 +286,7 @@ class DialogPTW(QDialog):
         self.boxDescription.setTabChangesFocus(True)
 
         lytBasicInfo.addRow(t('PTW#:'), self.boxPTWId)
-        lytBasicInfo.addRow(t('Date:'), self.boxDate)
+        lytBasicInfo.addRow(t('Request Time:'), self.boxDate)
         lytBasicInfo.addRow(t('Dept:'), self.boxDepartment)
         lytBasicInfo.addRow(t('Requestor:'), self.boxRequestor)
         lytBasicInfo.addRow(t('Performing:'), self.boxPerforming)
@@ -297,7 +297,16 @@ class DialogPTW(QDialog):
         lytBasicInfo.addRow(t('Description:'), self.boxDescription)
 
         self.btnsTools: dict[str, QCheckBox] = {}
-        for i,tool in enumerate(PTWData.ALL_TOOLS):
+        i = 0
+        for tool in PTWData.ALL_TOOLS:
+            if tool is None:        # Add separator
+                i = DialogPTW.GRID_LYT_COLS * ((i + DialogPTW.GRID_LYT_COLS - 1) // DialogPTW.GRID_LYT_COLS)
+                line = QFrame()
+                line.setFrameShape(QFrame.Shape.HLine)
+                line.setFrameShadow(QFrame.Shadow.Sunken)
+                lytTools.addWidget(line, i // DialogPTW.GRID_LYT_COLS, 0, 1, DialogPTW.GRID_LYT_COLS)
+                i += DialogPTW.GRID_LYT_COLS
+                continue
             btn = QCheckBox(DialogPTW.checkboxDisplayName(t(tool)))
             btn.setObjectName(tool)
             btn.clicked.connect(self.checkRequirement)
@@ -306,7 +315,7 @@ class DialogPTW(QDialog):
             # btn.setStyleSheet('QCheckBox::indicator { width: 20px; height: 20px; }')
             lytTools.addWidget(btn, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS)
             self.btnsTools[tool] = btn
-        i += 1
+            i += 1
         self.boxOtherTools = QLineEdit()
         self.boxOtherTools.setEnabled(not readOnly)
         self.boxOtherTools.setPlaceholderText(t("Others"))
@@ -316,7 +325,16 @@ class DialogPTW(QDialog):
         lytTools.addWidget(self.boxOtherTools, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS, 1, remaining_cols)
         
         self.btnsHazard: dict[str, QCheckBox] = {}
-        for i,hazard in enumerate(PTWData.ALL_HAZARDS):
+        i = 0
+        for hazard in PTWData.ALL_HAZARDS:
+            if hazard is None:        # Add separator
+                i = DialogPTW.GRID_LYT_COLS * ((i + DialogPTW.GRID_LYT_COLS - 1) // DialogPTW.GRID_LYT_COLS)
+                line = QFrame()
+                line.setFrameShape(QFrame.Shape.HLine)
+                line.setFrameShadow(QFrame.Shadow.Sunken)
+                lytHazards.addWidget(line, i // DialogPTW.GRID_LYT_COLS, 0, 1, DialogPTW.GRID_LYT_COLS)
+                i += DialogPTW.GRID_LYT_COLS
+                continue
             btn = QCheckBox(DialogPTW.checkboxDisplayName(t(hazard)))
             btn.setObjectName(hazard)
             btn.clicked.connect(self.checkRequirement)
@@ -325,7 +343,7 @@ class DialogPTW(QDialog):
             # btn.setStyleSheet('QCheckBox::indicator { width: 20px; height: 20px; }')
             lytHazards.addWidget(btn, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS)
             self.btnsHazard[hazard] = btn
-        i += 1
+            i += 1
         self.boxOtherHazards = QLineEdit()
         self.boxOtherHazards.setEnabled(not readOnly)
         self.boxOtherHazards.setPlaceholderText(t("Others"))
@@ -335,7 +353,16 @@ class DialogPTW(QDialog):
         lytHazards.addWidget(self.boxOtherHazards, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS, 1, remaining_cols)
         
         self.btnsControls: dict[str, QCheckBox] = {}
-        for i,ctrl in enumerate(PTWData.ALL_CONTROLS):
+        i = 0
+        for ctrl in PTWData.ALL_CONTROLS:
+            if ctrl is None:        # Add separator
+                i = DialogPTW.GRID_LYT_COLS * ((i + DialogPTW.GRID_LYT_COLS - 1) // DialogPTW.GRID_LYT_COLS)
+                line = QFrame()
+                line.setFrameShape(QFrame.Shape.HLine)
+                line.setFrameShadow(QFrame.Shadow.Sunken)
+                lytControls.addWidget(line, i // DialogPTW.GRID_LYT_COLS, 0, 1, DialogPTW.GRID_LYT_COLS)
+                i += DialogPTW.GRID_LYT_COLS
+                continue
             btn = QCheckBox(DialogPTW.checkboxDisplayName(t(ctrl)))
             btn.setObjectName(ctrl)
             btn.clicked.connect(self.checkRequirement)
@@ -344,7 +371,7 @@ class DialogPTW(QDialog):
             # btn.setStyleSheet('QCheckBox::indicator { width: 20px; height: 20px; }')
             lytControls.addWidget(btn, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS)
             self.btnsControls[ctrl] = btn
-        i += 1
+            i += 1
         self.boxOtherControls = QLineEdit()
         self.boxOtherControls.setEnabled(not readOnly)
         self.boxOtherControls.setPlaceholderText(t("Others"))
@@ -675,7 +702,7 @@ class DialogPTW(QDialog):
         
         self.ptw.setId(self.boxPTWId.text() if self.boxPTWId.text() else None)
         self.ptw.setType(self.boxPTWType.currentData())
-        self.ptw.setDate(self.boxDate.text())
+        self.ptw.setDate(datetime.now().strftime("%d/%m/%Y %H:%M:%S") if self.new else self.boxDate.text())
         self.ptw.setRequestor(self.boxRequestor.text())
         self.ptw.setDepartment(self.boxDepartment.text())
         self.ptw.setLocation(self.boxLocation.currentData())
