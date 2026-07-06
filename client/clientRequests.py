@@ -654,13 +654,13 @@ class ClientRequests:
 
 
     @async_request
-    def getMIWI(loggedUser: User, filename: str) -> tuple[str, str]:
+    def getMIWI(loggedUser: User, filename: str, department: UserDepartments = None) -> tuple[str, str]:
         response = None
         try:
             response = requests.get(
                 f'{ClientRequests.SERVER_URL}/miwi',
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                json={'filename': filename}
+                json={'filename': filename, 'department': department}
             )
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
@@ -677,12 +677,13 @@ class ClientRequests:
 
 
     @async_request
-    def getAllMIWIs(loggedUser: User) -> tuple[str, list[str]]:
+    def getAllMIWIs(loggedUser: User, department: UserDepartments = None) -> tuple[str, list[str]]:
         response = None
         try:
             response = requests.get(
                 f'{ClientRequests.SERVER_URL}/miwis',
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                json={'department': department}
             )
             response.raise_for_status()
             data = response.json()
@@ -707,6 +708,7 @@ class ClientRequests:
                     f'{ClientRequests.SERVER_URL}/miwi',
                     auth=(loggedUser.getUsername(), loggedUser.getPassword()),
                     files=files,
+                    data={'department': loggedUser.getDepartment()},
                 )
                 response.raise_for_status()
                 data = response.json()

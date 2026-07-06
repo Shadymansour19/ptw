@@ -17,7 +17,7 @@ from usersDb import UsersDb
 from ptwDb import PtwsDb
 from risksDb import RisksDb
 from IsolationDb import IsolationDb
-from User import User, UserRoles
+from User import User, UserRoles, UserDepartments
 from GlobalData import globalData
 from PTWData import PTWData, Isolation
 from utils import objToDict
@@ -28,6 +28,42 @@ _BASE_DIR = os.path.dirname(sys.executable if getattr(sys, 'frozen', False) or g
 _MIWI_DIR = os.path.join(_BASE_DIR, 'miwi')
 _LOGS_DIR = os.path.join(_BASE_DIR, 'logs')
 os.makedirs(_MIWI_DIR, exist_ok=True)
+_MIWI_DEPARTMENTS = {d.value for d in UserDepartments}
+# Same roles MainWindow.py restricts to their own department for PTW listing;
+# everyone else (coordinators, issuing, safety, PDH/PGM/SOD/DFGM, admin, ...) is
+# an approver-type role that may view MIWIs across all departments.
+_RESTRICTED_MIWI_ROLES = {UserRoles.USER, UserRoles.GUEST, UserRoles.ISOLATOR}
+
+
+def _resolveMiwiPath(filename: str, department: str = None, restrictToDepartment: bool = False) -> str:
+    """Find `filename` under the MIWI store.
+
+    When `restrictToDepartment` is True (non-approver roles), only that exact
+    department folder is ever consulted — no cross-department or legacy flat
+    fallback. Otherwise `department` is preferred but the legacy flat layout
+    and every other department folder are also searched, since an approver may
+    legitimately view a MIWI belonging to any department.
+    """
+    if restrictToDepartment:
+        if department not in _MIWI_DEPARTMENTS:
+            return None
+        filepath = os.path.abspath(os.path.join(_MIWI_DIR, department, filename))
+        if filepath.startswith(os.path.abspath(_MIWI_DIR)) and os.path.isfile(filepath):
+            return filepath
+        return None
+
+    candidateDirs = []
+    if department in _MIWI_DEPARTMENTS:
+        candidateDirs.append(os.path.join(_MIWI_DIR, department))
+    candidateDirs.append(_MIWI_DIR)
+    candidateDirs.extend(os.path.join(_MIWI_DIR, d) for d in _MIWI_DEPARTMENTS if d != department)
+    for dirpath in candidateDirs:
+        filepath = os.path.abspath(os.path.join(dirpath, filename))
+        if not filepath.startswith(os.path.abspath(_MIWI_DIR)):
+            continue
+        if os.path.isfile(filepath):
+            return filepath
+    return None
 
 _LOG_FORMAT = "%(asctime)s [%(levelname)-8s] %(location)-35s - %(message)s"
 _LOG_DATE   = "%Y-%m-%d %H:%M:%S"
@@ -1284,15 +1320,14 @@ def getMIWI():
     payload = request.get_json(silent=True) or {}
     try:
         filename = payload.get('filename')
+        department = payload.get('department')
         if not filename:
             log.warning("GET /miwi: filename not provided (user='%s')", user.getUsername())
             return jsonify({"success": False, "error": "Filename not provided"}), 400
-        filepath = os.path.join(_MIWI_DIR, filename)
-        if not os.path.abspath(filepath).startswith(os.path.abspath(_MIWI_DIR)):
-            log.warning("GET /miwi: path traversal attempt '%s' (user='%s')", filename, user.getUsername())
-            return jsonify({"success": False, "error": "Invalid filename"}), 400
-        if not os.path.isfile(filepath):
-            log.warning("GET /miwi: file not found '%s' (user='%s')", filename, user.getUsername())
+        restricted = user.getRole() in _RESTRICTED_MIWI_ROLES
+        filepath = _resolveMiwiPath(filename, department, restrictToDepartment=restricted)
+        if filepath is None:
+            log.warning("GET /miwi: file not found '%s' department='%s' (user='%s')", filename, department, user.getUsername())
             return jsonify({"success": False, "error": "File not found"}), 404
         log.debug("MIWI served: file='%s' to user='%s'", filename, user.getUsername())
         return send_file(filepath, as_attachment=True)
@@ -1307,9 +1342,25 @@ def getAllMIWIs():
     if user is None:
         log.warning("GET /miwis unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
+    payload = request.get_json(silent=True) or {}
+    department = payload.get('department')
+    restricted = user.getRole() in _RESTRICTED_MIWI_ROLES
     try:
-        filenames = [f for f in os.listdir(_MIWI_DIR) if os.path.isfile(os.path.join(_MIWI_DIR, f))]
-        log.debug("GET /miwis: %d files returned to user='%s'", len(filenames), user.getUsername())
+        if restricted and department not in _MIWI_DEPARTMENTS:
+            log.warning("GET /miwis: restricted role='%s' missing/invalid department='%s' (user='%s')", user.getRole(), department, user.getUsername())
+            filenames = []
+        elif department in _MIWI_DEPARTMENTS:
+            deptDir = os.path.join(_MIWI_DIR, department)
+            filenames = [f for f in os.listdir(deptDir) if os.path.isfile(os.path.join(deptDir, f))] if os.path.isdir(deptDir) else []
+        else:
+            # No (valid) department scoping requested: return everything across all
+            # department folders plus any legacy files left at the flat top level.
+            filenames = [f for f in os.listdir(_MIWI_DIR) if os.path.isfile(os.path.join(_MIWI_DIR, f))]
+            for d in _MIWI_DEPARTMENTS:
+                deptDir = os.path.join(_MIWI_DIR, d)
+                if os.path.isdir(deptDir):
+                    filenames.extend(f for f in os.listdir(deptDir) if os.path.isfile(os.path.join(deptDir, f)))
+        log.debug("GET /miwis: %d files returned to user='%s' department='%s'", len(filenames), user.getUsername(), department)
         return jsonify({"success": True, "miwis": filenames})
     except Exception as e:
         log.error("GET /miwis failed: %s", e, exc_info=True)
@@ -1332,16 +1383,23 @@ def uploadMIWI():
         log.warning("POST /miwi: no filename provided (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "No file selected for uploading"}), 400
 
+    department = request.values.get('department')
+    if department not in _MIWI_DEPARTMENTS:
+        log.warning("POST /miwi: invalid department='%s' (user='%s')", department, user.getUsername())
+        return jsonify({"success": False, "error": "Invalid or missing department"}), 400
+
     try:
-        filepath = os.path.join(_MIWI_DIR, filename)
+        deptDir = os.path.join(_MIWI_DIR, department)
+        filepath = os.path.join(deptDir, filename)
         if not os.path.abspath(filepath).startswith(os.path.abspath(_MIWI_DIR)):
             log.warning("POST /miwi: path traversal attempt '%s' (user='%s')", filename, user.getUsername())
             return jsonify({"success": False, "error": "Invalid filename"}), 400
         if os.path.exists(filepath):
-            log.warning("POST /miwi: file already exists '%s' (user='%s')", filename, user.getUsername())
+            log.warning("POST /miwi: file already exists '%s' department='%s' (user='%s')", filename, department, user.getUsername())
             return jsonify({"success": False, "error": "File with the same name already exists"}), 400
+        os.makedirs(deptDir, exist_ok=True)
         file.save(filepath)
-        log.info("MIWI uploaded: file='%s' by='%s'", filename, user.getUsername())
+        log.info("MIWI uploaded: file='%s' department='%s' by='%s'", filename, department, user.getUsername())
         return jsonify({"success": True, "message": "File uploaded successfully"})
     except Exception as e:
         log.error("POST /miwi failed for file='%s': %s", filename, e, exc_info=True)

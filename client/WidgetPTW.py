@@ -606,7 +606,8 @@ class DialogPTW(QDialog):
                 ReportGenerator.openPDF(filepath)
         miwiName = self.boxMiwi.currentText()
         if miwiName:
-            ClientRequests.getMIWI(self.loggedUser, miwiName, callback=on_done)
+            department = self.ptw.department or self.loggedUser.department
+            ClientRequests.getMIWI(self.loggedUser, miwiName, department=department, callback=on_done)
 
     class SaveAsDialog(QDialog):
         def __init__(self, parent, initName: str = '', invalidList: list[str] = [], title: str = "Save file as"):

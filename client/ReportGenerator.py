@@ -394,7 +394,7 @@ class ReportGenerator:
             ReportGenerator.openPDF(ptwPdfFile.name)
         # ReportGenerator.MOSReport(ptw.mos, ptw.id, ptw.description)
         if ptw.miwi:
-            err, filepath = ClientRequests.getMIWI(loggedUser, ptw.miwi)
+            err, filepath = ClientRequests.getMIWI(loggedUser, ptw.miwi, department=ptw.department)
             if err:
                 return err
             else:

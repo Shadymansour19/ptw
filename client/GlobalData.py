@@ -55,7 +55,7 @@ class GlobalData:
             self.isolations = allIsolations
 
         if refreshMIWIs or refreshAll:
-            err, allMIWIs = ClientRequests.getAllMIWIs(loggedUser)
+            err, allMIWIs = ClientRequests.getAllMIWIs(loggedUser, department=department)
             if err:
                 return err
             self.allMIWIs = allMIWIs
