@@ -38,7 +38,7 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 - **Real-time notifications** — Server-Sent Events (SSE) push PTW changes to all connected clients instantly; no polling required
 - **Archived permits** — Closed PTWs can be archived; archived data is fetched on-demand only to reduce server overhead
 - **File attachments** — Per-permit document uploads (medical certificates, tool checklists, technical drawings)
-- **MIWI documents** — Shared Maintenance & Work Instruction PDFs referenced across permits
+- **MIWI documents** — Per-department Maintenance & Work Instruction PDFs referenced across permits; approver roles can view across all departments, other roles are confined to their own
 - **Role-based UI** — Each of 11 roles gets a tailored interface showing only relevant actions and data
 - **Guest access** — Anyone can log in as a Guest (name + free-text department, no account needed) to create and track their own PTWs
 - **Invitation email** — New users get an emailed username + auto-generated password on account creation
@@ -222,7 +222,7 @@ ptw/
     ├── IsolationDb.py           # Isolation database operations
     ├── risksDb.py               # Risk assessment DB operations
     ├── GlobalData.py            # Server-side in-memory cache
-    ├── miwi/                    # MIWI PDF documents
+    ├── miwi/                    # MIWI PDFs, one subfolder per department (e.g. miwi/Turbo/)
     └── logs/                    # Rotating server log files (gitignored)
 ```
 

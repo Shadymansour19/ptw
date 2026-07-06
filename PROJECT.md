@@ -306,7 +306,17 @@ Each PTW has its own attachment directory on the server: `ptw-{id}-attachments/`
 
 ## MIWI Documents
 
-Maintenance and Work Instructions (MIWI) are PDF documents stored in `server/miwi/`. They describe the steps for a specific job. Any authenticated user can download them; any authenticated user can upload new ones. MIWIs are not copied for every PTW, instead a PTW is linked to the MIWI to minimize used space.
+Maintenance and Work Instructions (MIWI) are PDF documents describing the steps for a specific job, stored per-department on the server: `server/miwi/<department>/` (e.g. `server/miwi/Turbo/`). MIWIs are not copied for every PTW, instead a PTW is linked to the MIWI to minimize used space.
+
+**Uploads** always land in the uploading user's own department folder — `POST /miwi` takes the department from the client-supplied field (the uploader's own department), whitelisted against the `UserDepartments` enum, and creates the folder on demand.
+
+**Access control** is enforced server-side by role (`server/app.py` — `_RESTRICTED_MIWI_ROLES`), not just by what the client requests:
+
+- `User`, `Guest`, and `Isolator` can only list/download MIWIs from their own department. They cannot reach another department's folder or the legacy flat files even by omitting `department` from the request — the server always confines them.
+- All other roles (Coordinator, Issuing, Safety, PDH, PGM, SOD, DFGM, Admin) can view MIWIs across every department, and see the merged list (plus legacy flat files) when `department` is omitted from `GET /miwis`.
+- Downloading a specific MIWI already referenced by a PTW (`GET /miwi`) always resolves correctly for approver-type roles regardless of which department it belongs to, since a PTW may be reviewed by approvers outside its own department.
+
+A handful of legacy files still sit directly under `server/miwi/` (uploaded before the per-department layout existed) and are only reachable by approver-type roles until sorted into department folders manually.
 
 ---
 
@@ -414,11 +424,14 @@ The server broadcasts role-filtered events over this stream. The client connects
 | DELETE | `/risks` | Delete a risk assessment           | Safety only   |
 
 ### MIWI Documents
-| Method | Endpoint  | Description                   |
-|--------|-----------|-------------------------------|
-| GET    | `/miwi`   | Download a MIWI PDF by name   |
-| GET    | `/miwis`  | List all MIWI filenames       |
-| POST   | `/miwi`   | Upload a new MIWI PDF         |
+
+| Method | Endpoint | Description                                                    |
+|--------|----------|----------------------------------------------------------------|
+| GET    | `/miwi`  | Download a MIWI PDF by name, optionally scoped by `department` |
+| GET    | `/miwis` | List MIWI filenames, optionally scoped by `department`         |
+| POST   | `/miwi`  | Upload a new MIWI PDF into the uploader's own department       |
+
+`department` is only advisory for approver-type roles (used to narrow results); for `User`/`Guest`/`Isolator` it's enforced server-side regardless of what's sent — see [MIWI Documents](#miwi-documents).
 
 ### Logs
 Admin-only. The request body is JSON (`{"filename": "<name>"}`) to fetch a specific file; omit the body to list all files.
@@ -577,4 +590,4 @@ All role-specific views are implemented as classes within `MainWindow.py`. After
 
 See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for the full backlog of open bugs and security items with fix guidance.
 
-- **File storage is local filesystem** — attachments and MIWI documents are stored on the server's local disk. Regular backups of `server/miwi/` and `server/ptw-*-attachments/` are recommended.
+- **File storage is local filesystem** — attachments and MIWI documents are stored on the server's local disk. Regular backups of `server/miwi/` (per-department subfolders) and `server/ptw-*-attachments/` are recommended.
