@@ -1531,10 +1531,23 @@ class AdminMainWindow(MainWindow):
     def addNewUserDialog(self):
         if not self.btnFAB.isVisible():
             return
-        newUser = User()
-        dlg = DialogUser(self, False, True, self.loggedUser, newUser, 'New User')
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            self.tabAllUsers.addUser(newUser)
+
+        msgBox = QMessageBox(self)
+        msgBox.setWindowTitle("Add Users")
+        msgBox.setText("How would you like to add new user(s)?")
+        btnManual = msgBox.addButton("Add Manually", QMessageBox.ButtonRole.AcceptRole)
+        btnImport = msgBox.addButton("Import from Excel", QMessageBox.ButtonRole.ActionRole)
+        msgBox.addButton(QMessageBox.StandardButton.Cancel)
+        msgBox.exec()
+        clicked = msgBox.clickedButton()
+
+        if clicked == btnManual:
+            newUser = User()
+            dlg = DialogUser(self, False, True, self.loggedUser, newUser, 'New User')
+            if dlg.exec() == QDialog.DialogCode.Accepted:
+                self.tabAllUsers.addUser(newUser)
+        elif clicked == btnImport:
+            self.tabAllUsers.importUsersFromExcel()
 
     def stackTabChanged(self):
         super().stackTabChanged()

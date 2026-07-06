@@ -1,13 +1,15 @@
 import copy
-from PyQt6.QtCore import Qt, QPoint
+from PyQt6.QtCore import Qt, QPoint, QDir
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QTableWidget, QLabel, QAbstractItemView,
-                              QHeaderView, QTableWidgetItem, QMenu, QDialog, QMessageBox)
+                              QHeaderView, QTableWidgetItem, QMenu, QDialog, QMessageBox, QFileDialog)
 from PyQt6.QtGui import QFont, QAction
 from typing import Iterable
 import qtawesome as qta
 
 from DialogUser import DialogUser
 from clientRequests import ClientRequests
+from ImportUsersExcel import ImportUsersExcel, DialogUsersPreview
+from GlobalData import globalData
 
 class TableUsers(QWidget):
     def __init__(self, parent, loggedUser, label: str):
@@ -154,3 +156,64 @@ class TableUsers(QWidget):
         dialog = DialogUser(self, False, True, self.loggedUser, newUser, "New User")
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.addUser(newUser)
+
+    def importUsersFromExcel(self):
+        filepath, _ = QFileDialog.getOpenFileName(self, "Select Users File", QDir.homePath(), "Excel/CSV Files (*.xlsx *.csv);;Excel Files (*.xlsx);;CSV Files (*.csv);;All Files (*)")
+        if not filepath:
+            return
+
+        try:
+            rows = ImportUsersExcel.parseFile(filepath, set(globalData.allUsers.keys()))
+        except Exception as e:
+            QMessageBox.critical(self, "Import Failed", f"Could not read the selected file.\n{e}")
+            return
+
+        if not rows:
+            QMessageBox.information(self, "Import", "The selected file has no data rows.")
+            return
+
+        headers = ImportUsersExcel.HEADERS + ['Password', 'Status']
+        preview = DialogUsersPreview(self, "Preview Import", headers, [r.asRecord() for r in rows], mode='confirm')
+        if preview.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        toImport = [r for r in rows if r.user is not None]
+        if not toImport:
+            self.finishImport(rows)
+            return
+
+        remaining = len(toImport)
+
+        def makeHandler(row):
+            def on_done(err, _):
+                nonlocal remaining
+                if err:
+                    row.status = f"Failed: {err}"
+                else:
+                    row.status = "Success"
+                    self.addUserToGUI(row.user)
+                remaining -= 1
+                if remaining == 0:
+                    self.finishImport(rows)
+            return on_done
+
+        for row in toImport:
+            ClientRequests.addNewUser(self.loggedUser, row.user, callback=makeHandler(row))
+
+    def finishImport(self, rows: list):
+        succeededCount = sum(1 for r in rows if r.status == "Success")
+        attemptedCount = sum(1 for r in rows if r.user is not None)
+        summary = f"{succeededCount} of {attemptedCount} user(s) imported successfully."
+
+        headers = ImportUsersExcel.HEADERS + ['Password', 'Status']
+
+        def onExport():
+            savePath, _ = QFileDialog.getSaveFileName(self, "Save Import Result", "import_result.xlsx", "Excel Files (*.xlsx)")
+            if not savePath:
+                return
+            try:
+                ImportUsersExcel.exportResult(savePath, rows)
+            except Exception as e:
+                QMessageBox.critical(self, "Export Failed", f"Could not save the result file.\n{e}")
+
+        DialogUsersPreview(self, "Import Result", headers, [r.asRecord() for r in rows], mode='result', summary=summary, onExport=onExport).exec()
