@@ -544,7 +544,8 @@ The desktop client is structured around role-based main windows. After login, `M
 | `User.py`                   | User model                                                       |
 | `WidgetPTW.py`              | Full PTW form (create/view/edit)                                 |
 | `TablePTWs.py`              | Table listing all PTWs with filters; supports Excel export       |
-| `TableUsers.py`             | Admin user management table                                      |
+| `TableUsers.py`             | Admin user management table; supports bulk user import from Excel|
+| `ImportUsersExcel.py`       | Parses bulk-user Excel/CSV imports + DialogUsersPreview dialog   |
 | `TableRisks.py`             | Risk assessment list and editor                                  |
 | `TableIsolations.py`        | All available isolation points table                             |
 | `TableAttachments.py`       | PTW attachment management                                        |
