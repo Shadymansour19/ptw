@@ -592,6 +592,27 @@ class ClientRequests:
         return None, {title: RiskAssessment().setAll(riskAssessmentDict) for title, riskAssessmentDict in data["risks"].items()}
 
     @async_request
+    def getPTWSpecificRiskAssessment(loggedUser: User, ptw_id: int) -> tuple[str, RiskAssessment]:
+        response = None
+        try:
+            response = requests.get(
+                f'{ClientRequests.SERVER_URL}/risks/ptw',
+                json={'ptw_id': ptw_id},
+                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+            )
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to get PTW-specific risk\n{err}", None
+
+        if not data.get("success"):
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to get PTW-specific risk\n{err}", None
+
+        return None, RiskAssessment().setAll(data["risk"]) if data.get("risk") else None
+
+    @async_request
     def addNewRiskAssessment(loggedUser: User, riskAssessment: RiskAssessment) ->  str:
         response = None
         try:
@@ -633,12 +654,12 @@ class ClientRequests:
 
 
     @async_request
-    def deleteRiskAssessment(loggedUser: User, riskTitle: str) ->  str:
+    def deleteRiskAssessment(loggedUser: User, riskTitle: str, ptw_id: int = None) ->  str:
         response = None
         try:
             response = requests.delete(
-                '/risks',
-                json={'title': riskTitle},
+                f'{ClientRequests.SERVER_URL}/risks',
+                json={'title': riskTitle, 'ptw_id': ptw_id},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword())
             )
             response.raise_for_status()

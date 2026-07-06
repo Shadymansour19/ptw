@@ -26,9 +26,10 @@ class RiskItem:
     
 
 class RiskAssessment:
-    def __init__(self, title: str = None, date: str = None, risks: Iterable = None):
+    def __init__(self, title: str = None, date: str = None, risks: Iterable = None, ptw_id: int = None):
         self.title = title
         self.date = date
+        self.ptw_id = ptw_id
         self.risks = list(risks) if risks is not None else []
     
     def setAll(self, data: dict):
@@ -681,8 +682,8 @@ class PTWData:
                         return "'{}' requires hazard '{}'".format(item, requirement.description)
                     elif requirement.type == PTWData.Requirement.Types.CONTROL and requirement.description not in self.controls:
                         return "'{}' requires control '{}'".format(item, requirement.description)
-                    elif requirement.type == PTWData.Requirement.Types.RISK and requirement.description not in self.risks:
-                        return "'{}' requires risk assessment '{}'".format(item, requirement.description)
+                    # elif requirement.type == PTWData.Requirement.Types.RISK and requirement.description not in self.risks:
+                    #     return "'{}' requires risk assessment '{}'".format(item, requirement.description)
 
         for required in self.requiredAttachs():
             if not any(attach.startswith(required + '.') for attach in self.attachs):

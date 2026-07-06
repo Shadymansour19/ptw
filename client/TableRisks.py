@@ -171,14 +171,15 @@ class TableRisks(QWidget):
         reply = QMessageBox.question(self, 'Delete Risk Assessment', f"Are you sure you want to delete Risk Assessment '{riskTitle}'?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.No:
             return
-        
+
         def on_done(err, _):
             if err:
                 QMessageBox.warning(self, "Fail", err)
                 return
             self.risks.pop(riskTitle)
             self.refreshGUI()
-        ClientRequests.deleteRiskAssessment(self.loggedUser, riskTitle, callback=on_done)
+        ptw_id = self.risks[riskTitle].ptw_id if riskTitle in self.risks else None
+        ClientRequests.deleteRiskAssessment(self.loggedUser, riskTitle, ptw_id, callback=on_done)
     
     def addNewRiskAssessmentDialog(self):
         newRiskAssessment = RiskAssessment()

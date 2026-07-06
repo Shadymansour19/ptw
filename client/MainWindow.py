@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QStackedWidget, QVBoxLayout, 
                               QMessageBox, QApplication, QGraphicsOpacityEffect)
 from PyQt6.QtGui import QFont, QIcon, QPalette, QKeySequence, QPainter, QPixmap, QAction, QActionGroup, QShortcut
 
-from PTWData import PTWData
+from PTWData import PTWData, RiskAssessment
 from TablePTWs import TablePTWs
 from WidgetPTW import DialogPTW
 from DialogUser import DialogUser
@@ -569,7 +569,16 @@ class MainWindow(QMainWindow):
     def viewPTW(self, row: int, ptw: PTWData):
         viewPTWDialog = DialogPTW(self, self.loggedUser, ptw, None, False, True, f'View Mode - PTW# {ptw.id}')
         viewPTWDialog.exec()
-    
+
+    def _savePTWRiskAssessment(self, ptwId: int, riskItems: list, callback=None):
+        """Persist (or clear) the materialized, previewed risk table for a PTW. Update is a
+        delete-then-insert upsert server-side, so it's correct whether or not a row already exists."""
+        if riskItems:
+            risk = RiskAssessment(title=str(ptwId), date=datetime.now().strftime('%d %b %Y'), risks=riskItems, ptw_id=ptwId)
+            ClientRequests.updateRiskAssessment(self.loggedUser, risk, callback=callback)
+        else:
+            ClientRequests.deleteRiskAssessment(self.loggedUser, str(ptwId), ptwId, callback=callback)
+
     def editPTW(self, row: int, ptw: PTWData):
         toEditPtw = copy.deepcopy(ptw)
         wasReturned = toEditPtw.approval_status == PTWData.ApprovalStatus.RETURNED
@@ -578,6 +587,12 @@ class MainWindow(QMainWindow):
             if wasReturned:
                 toEditPtw.clearApprovals()
             ptw = toEditPtw
+
+            def on_risk_saved(err, _):
+                if err:
+                    QMessageBox.warning(self, "Warning", f"PTW saved but failed to save risk assessment: {err}")
+            self._savePTWRiskAssessment(ptw.id, editPTWDialog.previewRiskItems, callback=on_risk_saved)
+
             self.stack.currentWidget().updatePTW(row, ptw)
 
     def addPTWDialog(self, row: int = None, ptw: PTWData = None):
@@ -588,13 +603,13 @@ class MainWindow(QMainWindow):
         dlg = DialogPTW(self, self.loggedUser, newPTW, ptw, True, False, title)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
-        
+
         def on_addPTW_done(err, ptwId=None):
             def on_copy_attachments_done(err, _):
                 if err:
                     QMessageBox.warning(self, "Error", f"Failed to copy attachments: {err}")
                     return
-                
+
             def on_attachments_uploaded(err, _):
                 if err:
                     QMessageBox.warning(self, "Error", f"Failed to upload attachments: {err}")
@@ -607,24 +622,18 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Fail", err)
                 return
             newPTW.setId(ptwId)
-            if dlg.ptwSpecificRiskAssessment and dlg.ptwSpecificRiskAssessment.risks:
-                from datetime import datetime as _dt
-                risk = dlg.ptwSpecificRiskAssessment
-                risk.title = str(ptwId)
-                risk.date = _dt.now().strftime('%d %b %Y')
-                existing_titles = globalData.allRiskAssessments
-                def on_ptw_risk_saved(err, _):
-                    if err:
-                        QMessageBox.warning(self, "Warning", f"PTW saved but failed to save PTW-specific risk: {err}")
-                    else:
-                        globalData.allRiskAssessments[risk.title] = risk
-                if risk.title in existing_titles:
-                    ClientRequests.updateRiskAssessment(self.loggedUser, risk, callback=on_ptw_risk_saved)
-                else:
-                    ClientRequests.addNewRiskAssessment(self.loggedUser, risk, callback=on_ptw_risk_saved)
+
+            def on_risk_saved(err, _):
+                if err:
+                    QMessageBox.warning(self, "Warning", f"PTW saved but failed to save risk assessment: {err}")
+            self._savePTWRiskAssessment(ptwId, dlg.previewRiskItems, callback=on_risk_saved)
+            # On re-request, the server also copies the original PTW's own risk rows onto
+            # this new ptw_id (server/app.py copyPtwAttachments), additively — so any custom
+            # rows from the original that weren't re-selected/re-added here still carry over.
+
             if dlg.attachsToBeUploaded:
                 ClientRequests.addPtwAttachments(self.loggedUser, newPTW.id, dlg.attachsToBeUploaded, callback=on_attachments_uploaded)
-        
+
         ClientRequests.addPTW(self.loggedUser, newPTW, callback=on_addPTW_done)
 
 
@@ -1447,7 +1456,6 @@ class SafetyMainWindow(MainWindow):
     
 
     def addNewRiskDialog(self):
-        from PTWData import RiskAssessment
         from DialogRisk import DialogRiskAssessment
 
         if not self.btnFAB.isVisible():

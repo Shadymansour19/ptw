@@ -12,9 +12,8 @@ import qrcode
 from PIL import Image as PILImage, ImageDraw as PILImageDraw
 import webbrowser
 from datetime import datetime
-from typing import Iterable
 from GlobalData import globalData
-from PTWData import PTWData
+from PTWData import PTWData, RiskAssessment
 import io
 import tempfile
 import platform
@@ -159,11 +158,12 @@ class ReportGenerator:
             for row in basicInfo
         ])
 
-        risks_bullets = list(ptw.risks)
-        ptw_num = str(ptw.id)
-        if ptw_num in globalData.allRiskAssessments:
-            n = len(globalData.allRiskAssessments[ptw_num].risks)
-            risks_bullets.append(f'PTW-Specific ({n} item{"s" if n != 1 else ""})')
+        err, ptwSpecificRisk = ClientRequests.getPTWSpecificRiskAssessment(loggedUser, ptw.id)
+        if err:
+            ptwSpecificRisk = None
+
+        n = len(ptwSpecificRisk.risks) if ptwSpecificRisk else 0
+        risks_bullets = [f'Risk Assessment ({n} item{"s" if n != 1 else ""})'] if n else []
 
         tableAdditionalInfoData = [
             [Paragraph('Tools', styles['Heading3']), listToBullets(ptw.tools, styles['Normal'])],
@@ -399,7 +399,7 @@ class ReportGenerator:
                 return err
             else:
                 ReportGenerator.openPDF(filepath)
-        ReportGenerator.riskAssessmentReport(ptw.risks, ptw.id, ptw.description)
+        ReportGenerator.riskAssessmentReport(ptw.id, ptw.description, ptwSpecificRisk)
 
         err, attachs = ClientRequests.getPtwAttachmentNames(loggedUser, ptw.id)
         if err:
@@ -704,19 +704,14 @@ class ReportGenerator:
             ReportGenerator.openPDF(mosPdfFile.name)
         
 
-    def riskAssessmentReport(risksTitles: Iterable[str], ptwId: str, ptwTitle: str):
+    def riskAssessmentReport(ptwId: str, ptwTitle: str, ptwSpecificRisk: RiskAssessment = None):
         LOGO_IMG_WIDTH = 35*mm
         # Cols: No | Hazard | Effect | S | L | Risk(free) | Control | S | L | Risk(ctrl) | Evaluation
         TABLE_WIDTH_WEIGHTS = [7, 30, 33, 4, 4, 9, 52, 5, 5, 10, 20]
         TABLE_WIDTH_WEIGHTS_SUM = sum(TABLE_WIDTH_WEIGHTS)
         MARGIN = 0.35 * inch
 
-        all_titles = list(risksTitles)
-        ptw_num = str(ptwId)
-        if ptw_num not in all_titles and ptw_num in globalData.allRiskAssessments:
-            all_titles.append(ptw_num)
-        risksTitles = [rt for rt in all_titles if rt in globalData.allRiskAssessments]
-        if not risksTitles:
+        if not ptwSpecificRisk or not ptwSpecificRisk.risks:
             return
 
         buffer = io.BytesIO()
@@ -784,25 +779,22 @@ class ReportGenerator:
                 Paragraph('',                     styles['Heading3']), 
             ],
         ]
-        for riskTitle in risksTitles:
-            if riskTitle not in globalData.allRiskAssessments:
-                continue
-            for riskItem in globalData.allRiskAssessments[riskTitle].risks:
-                sf, lf, rf = slr(riskItem.free_analysis)
-                sc, lc, rc = slr(riskItem.ctrl_analysis)
-                data.append([
-                    Paragraph(str(len(data) - 1),           styles['NormalCenter']),
-                    bulleted(riskItem.hazard),
-                    bulleted(riskItem.effect),
-                    Paragraph(sf,                           styles['NormalCenter']),
-                    Paragraph(lf,                           styles['NormalCenter']),
-                    Paragraph(rf,                           styles['NormalCenter']),
-                    bulleted(riskItem.ctrl),
-                    Paragraph(sc,                           styles['NormalCenter']),
-                    Paragraph(lc,                           styles['NormalCenter']),
-                    Paragraph(rc,                           styles['NormalCenter']),
-                    Paragraph(riskItem.eval,                styles['NormalCenter']),
-                ])
+        for riskItem in ptwSpecificRisk.risks:
+            sf, lf, rf = slr(riskItem.free_analysis)
+            sc, lc, rc = slr(riskItem.ctrl_analysis)
+            data.append([
+                Paragraph(str(len(data) - 1),           styles['NormalCenter']),
+                bulleted(riskItem.hazard),
+                bulleted(riskItem.effect),
+                Paragraph(sf,                           styles['NormalCenter']),
+                Paragraph(lf,                           styles['NormalCenter']),
+                Paragraph(rf,                           styles['NormalCenter']),
+                bulleted(riskItem.ctrl),
+                Paragraph(sc,                           styles['NormalCenter']),
+                Paragraph(lc,                           styles['NormalCenter']),
+                Paragraph(rc,                           styles['NormalCenter']),
+                Paragraph(riskItem.eval,                styles['NormalCenter']),
+            ])
 
         table = Table(data, repeatRows=2, colWidths=[w * dataTableWidth / TABLE_WIDTH_WEIGHTS_SUM for w in TABLE_WIDTH_WEIGHTS])
         table.setStyle(TableStyle([

@@ -201,11 +201,12 @@ The system pre-loads a library all known isolation points (tags like `XV-7227A`,
 
 ## Risk Assessments
 
-Safety department create and maintain risk assessment documents that can be referenced in PTWs.
+Safety department creates and maintains a **generic risk assessment library** — reusable documents that can be selected while requesting a PTW.
 
 Each `RiskAssessment` contains:
-- `title`: unique assessment name
-- `date`: creation date
+- `title`: assessment name (unique for generic entries; `str(ptw_id)` for a PTW-specific row set)
+- `date`: creation/last-update date
+- `ptw_id`: `NULL` for a generic library entry; set to a PTW's id for that PTW's own materialized risk table
 - `risks`: list of `RiskItem` entries
 
 Each `RiskItem` documents:
@@ -216,7 +217,19 @@ Each `RiskItem` documents:
 - `ctrl_analysis`: analysis after applying controls
 - `eval`: final risk evaluation/rating
 
-Only users with the **Safety** role can create or update risk assessments. Deleting a risk assessment is applicable but NOT allowed to keep already done PTWs valid.
+Only users with the **Safety** role can create/update/delete *generic* assessments (`ptw_id IS NULL`). Any user can create/update/delete the *PTW-specific* row set for a PTW (`ptw_id` set) — enforced server-side in `POST`/`PUT`/`DELETE /risks` by checking `ptw_id is not None`, not by trusting a client-declared role. Deleting a generic assessment is applicable but NOT allowed to keep already-done PTWs valid — a PTW's materialized rows (below) are independent copies, unaffected by later edits or deletion of the generic assessment they were derived from.
+
+### PTW-specific risk assessment (Preview flow)
+
+When requesting a PTW, the user still selects generic risk assessments via checkboxes — unchanged, and this still drives `ptw.risks` (the list of titles used by `PTWData.validate()`/`updateRequirements()` for required-risk-assessment rules per selected tool/hazard/control).
+
+Clicking **Preview Risk Assessment** (`WidgetPTW.DialogPTW.openRiskPreviewDialog`, backed by `RiskPreviewTable.py`) materializes every `RiskItem` from the currently-checked generic assessments into one flat, deduplicated table, where the user can edit any cell directly, delete individual rows, or add new rows from scratch. **This materialized table — not the raw checkbox selection — is what actually gets persisted**, as a single `RiskAssessment` with `title = str(ptw_id)` and `ptw_id = <the PTW's id>`, on submit (`MainWindow._savePTWRiskAssessment`, upsert via `PUT /risks`).
+
+It's an **accumulate** model: (re-)checking a generic merges its items in, deduped against what's already there; *unchecking* a generic never retroactively strips its already-materialized rows — only an explicit row delete in Preview does. If the user never opens Preview at all, the same merge runs silently at submit time so nothing checked is ever lost.
+
+Viewing an already-submitted PTW shows this materialized table directly, read-only (`RiskItemsTable(readonly=True)`) — not the old per-generic-title list. PTWs submitted before this table existed (no `ptw_id` row) simply show an empty table; there is no backfill migration.
+
+On **re-request**, the server additively copies the original PTW's `ptw_id` row set onto the new PTW's `ptw_id` (`risksDb.copyRiskAssessmentForPTW`, run from `POST /ptws/attachments/copy` right after the attachment file copy), so custom rows from the original carry over even if the user doesn't reselect or retype them in the new request.
 
 ---
 
@@ -408,7 +421,7 @@ The server broadcasts role-filtered events over this stream. The client connects
 | POST   | `/ptws/attachments`         | Upload files to a PTW                |
 | GET    | `/ptws/attachments`         | List or download PTW attachments     |
 | DELETE | `/ptws/attachments`         | Delete attachments except for `keep-list`       |
-| POST   | `/ptws/attachments/copy`    | Copy attachments from one PTW to another |
+| POST   | `/ptws/attachments/copy`    | Copy attachments from one PTW to another (also additively copies the source PTW's risk assessment onto the target) |
 
 ### Isolations
 | Method | Endpoint      | Description                     |
@@ -416,12 +429,13 @@ The server broadcasts role-filtered events over this stream. The client connects
 | GET    | `/isolations` | Get all active isolation records|
 
 ### Risk Assessments
-| Method | Endpoint | Description                        | Auth Required |
-|--------|----------|------------------------------------|---------------|
-| GET    | `/risks` | Get all risk assessments           | Any           |
-| POST   | `/risks` | Create new risk assessment         | Safety only   |
-| PUT    | `/risks` | Update a risk assessment           | Safety only   |
-| DELETE | `/risks` | Delete a risk assessment           | Safety only   |
+| Method | Endpoint     | Description                                                      | Auth Required |
+|--------|--------------|-------------------------------------------------------------------|---------------|
+| GET    | `/risks`     | Get all **generic** risk assessments (`ptw_id IS NULL`)          | Any           |
+| GET    | `/risks/ptw` | Get one PTW's specific risk assessment (body: `{"ptw_id": ...}`) | Any (department-scoped for non-approver roles) |
+| POST   | `/risks`     | Create a risk assessment                                          | Safety (generic) or any user for their own PTW's row (`ptw_id` set) |
+| PUT    | `/risks`     | Update a risk assessment                                          | same as POST  |
+| DELETE | `/risks`     | Delete a risk assessment                                          | same as POST  |
 
 ### MIWI Documents
 
@@ -514,6 +528,7 @@ held_by                TEXT[]       NOT NULL DEFAULT '{}'
 ```sql
 title          VARCHAR(300) NOT NULL
 date           VARCHAR(100) NOT NULL
+ptw_id         INTEGER               -- NULL = generic library entry; set = that PTW's own materialized row
 hazard         VARCHAR(300) NOT NULL
 effect         VARCHAR(300)
 free_analysis  VARCHAR(300)
@@ -521,6 +536,8 @@ ctrl           VARCHAR(300)
 ctrl_analysis  VARCHAR(300)
 eval           VARCHAR(300)
 ```
+
+Indexed on `ptw_id` (`idx_risks_ptw_id`) for fast per-PTW lookups.
 
 ---
 
@@ -535,7 +552,7 @@ The desktop client is structured around role-based main windows. After login, `M
 - `allPTWs` — list of PTWData objects (non-archived)
 - `archivedPTWs` — list of PTWData objects (archived permits)
 - `isolations` — dict of tag → Isolation
-- `allRiskAssessments` — dict of title → RiskAssessment
+- `allRiskAssessments` — dict of title → RiskAssessment (generic library only; a PTW's own specific row set is fetched on demand via `GET /risks/ptw`, never cached globally)
 - `allMIWIs` — list of MIWI filenames
 
 `allPTWs` is refreshed on login and after any mutation. `archivedPTWs` is fetched **on-demand only** (not automatically refreshed) to reduce server overhead — archived permits are stable and rarely queried.
@@ -559,7 +576,8 @@ The desktop client is structured around role-based main windows. After login, `M
 | `TablePTWs.py`              | Table listing all PTWs with filters; supports Excel export       |
 | `TableUsers.py`             | Admin user management table; supports bulk user import from Excel|
 | `ImportUsersExcel.py`       | Parses bulk-user Excel/CSV imports + DialogUsersPreview dialog   |
-| `TableRisks.py`             | Risk assessment list and editor                                  |
+| `TableRisks.py`             | Generic risk assessment list and editor (checkbox selector when requesting a PTW; CRUD table in the Safety admin tab) |
+| `RiskPreviewTable.py`       | Flat editable/read-only risk-item table + Preview dialog — materializes a PTW's own risk assessment from selected generics |
 | `TableIsolations.py`        | All available isolation points table                             |
 | `TableAttachments.py`       | PTW attachment management                                        |
 | `TabServerLogs.py`          | Admin-only log viewer: collapsible file panels, lazy load, level filter, color-coded lines |

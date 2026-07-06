@@ -1201,18 +1201,25 @@ def copyPtwAttachments():
     try:
         sourceDir = os.path.join(_BASE_DIR, f'ptw-{sourcePtwId}-attachments')
         targetDir = os.path.join(_BASE_DIR, f'ptw-{targetPtwId}-attachments')
-        if not os.path.exists(sourceDir):
-            log.warning("Attachments copy: source PTW #%s dir not found", sourcePtwId)
-            return jsonify({"success": False, "error": "Source PTW attachments not found"}), 404
-        os.makedirs(targetDir, exist_ok=True)
         successfullyCopied = []
-        for filename in os.listdir(sourceDir):
-            sourceFilePath = os.path.join(sourceDir, filename)
-            if os.path.isfile(sourceFilePath):
-                shutil.copy2(sourceFilePath, os.path.join(targetDir, filename))
-                successfullyCopied.append(filename)
-        log.info("Attachments copied: PTW #%s -> PTW #%s files=%s by='%s'", sourcePtwId, targetPtwId, successfullyCopied, user.getUsername())
-        return jsonify({"success": True, "message": "Attachments copied successfully"})
+        if os.path.exists(sourceDir):
+            os.makedirs(targetDir, exist_ok=True)
+            for filename in os.listdir(sourceDir):
+                sourceFilePath = os.path.join(sourceDir, filename)
+                if os.path.isfile(sourceFilePath):
+                    shutil.copy2(sourceFilePath, os.path.join(targetDir, filename))
+                    successfullyCopied.append(filename)
+            log.info("Attachments copied: PTW #%s -> PTW #%s files=%s by='%s'", sourcePtwId, targetPtwId, successfullyCopied, user.getUsername())
+        else:
+            log.info("Attachments copy skipped: source PTW #%s has no attachments dir", sourcePtwId)
+
+        riskErr = risksDB.copyRiskAssessmentForPTW(sourcePtwId, targetPtwId)
+        if riskErr:
+            log.error("Risk assessment copy failed: PTW #%s -> PTW #%s: %s", sourcePtwId, targetPtwId, riskErr)
+        else:
+            log.info("Risk assessment copied: PTW #%s -> PTW #%s by='%s'", sourcePtwId, targetPtwId, user.getUsername())
+
+        return jsonify({"success": True, "message": "Attachments copied successfully", "risk-copy-error": riskErr})
     except Exception as e:
         log.error("POST /ptws/attachments/copy failed %s->%s: %s", sourcePtwId, targetPtwId, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
@@ -1248,6 +1255,39 @@ def getAllRiskAssessments():
         return jsonify({"success": False, "error": str(e)}), 400
 
 
+@app.route("/risks/ptw", methods=["GET"])
+def getPTWSpecificRiskAssessment():
+    user = getVerifiedUser(request.authorization)
+    if user is None:
+        log.warning("GET /risks/ptw unauthorized (ip=%s)", request.remote_addr)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    payload = request.get_json(silent=True) or {}
+    ptw_id = payload.get('ptw_id')
+    if ptw_id is None:
+        log.warning("GET /risks/ptw: missing ptw_id (user='%s')", user.getUsername())
+        return jsonify({"success": False, "error": "Missing required fields"}), 400
+    try:
+        ptw_id = int(ptw_id)
+    except (TypeError, ValueError):
+        log.warning("GET /risks/ptw: invalid ptw_id=%r (user='%s')", ptw_id, user.getUsername())
+        return jsonify({"success": False, "error": "Invalid PTW id"}), 400
+    ptw = ptwDB.getPTWById(ptw_id)
+    if ptw is None:
+        log.warning("GET /risks/ptw: PTW #%s not found (user='%s')", ptw_id, user.getUsername())
+        return jsonify({"success": False, "error": "PTW not found"}), 404
+    # Same department restriction as MIWI access: non-approver roles are confined to their own department
+    if user.getRole() in _RESTRICTED_MIWI_ROLES and ptw.department != user.getDepartment():
+        log.warning("GET /risks/ptw unauthorized: requester='%s' (dept='%s') tried to access PTW #%s risk (dept='%s')", user.getUsername(), user.getDepartment(), ptw_id, ptw.department)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    try:
+        risk = risksDB.getPTWSpecificRiskAssessment(ptw_id)
+        log.debug("GET /risks/ptw: PTW #%s risk returned to user='%s'", ptw_id, user.getUsername())
+        return jsonify({"success": True, "risk": objToDict(risk) if risk else None})
+    except Exception as e:
+        log.error("GET /risks/ptw failed: %s", e, exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
 @app.route("/risks", methods=["POST"])
 def addNewRiskAssessment():
     user = getVerifiedUser(request.authorization)
@@ -1256,8 +1296,9 @@ def addNewRiskAssessment():
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     riskAssessmentDict = request.get_json(silent=True) or {}
     title = riskAssessmentDict.get('title', '')
-    # Non-safety users may only create PTW-specific risks (title is a PTW number)
-    if user.getRole() != UserRoles.SAFETY and not str(title).isdigit():
+    ptw_id = riskAssessmentDict.get('ptw_id')
+    # Non-safety users may only create PTW-specific risks (ptw_id set)
+    if user.getRole() != UserRoles.SAFETY and ptw_id is None:
         log.warning("POST /risks unauthorized: requester='%s' tried to create non-PTW risk (ip=%s)", user.getUsername(), request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     try:
@@ -1277,8 +1318,9 @@ def updateRiskAssessment():
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     riskAssessmentDict = request.get_json(silent=True) or {}
     title = riskAssessmentDict.get('title', '')
-    # Non-safety users may only update PTW-specific risks (title is a PTW number)
-    if user.getRole() != UserRoles.SAFETY and not str(title).isdigit():
+    ptw_id = riskAssessmentDict.get('ptw_id')
+    # Non-safety users may only update PTW-specific risks (ptw_id set)
+    if user.getRole() != UserRoles.SAFETY and ptw_id is None:
         log.warning("PUT /risks unauthorized: requester='%s' tried to update non-PTW risk (ip=%s)", user.getUsername(), request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     try:
@@ -1299,8 +1341,9 @@ def deleteRiskAssessment():
     data = request.get_json(silent=True) or {}
     try:
         title = data['title']
-        # Non-safety users may only delete PTW-specific risks (title is a PTW number)
-        if user.getRole() != UserRoles.SAFETY and not str(title).isdigit():
+        ptw_id = data.get('ptw_id')
+        # Non-safety users may only delete PTW-specific risks (ptw_id set)
+        if user.getRole() != UserRoles.SAFETY and ptw_id is None:
             log.warning("DELETE /risks unauthorized: requester='%s' tried to delete non-PTW risk (ip=%s)", user.getUsername(), request.remote_addr)
             return jsonify({"success": False, "error": "Unauthorized"}), 401
         result = risksDB.deleteRiskAssessment(title)

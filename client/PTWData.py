@@ -24,12 +24,32 @@ class RiskItem:
                 except Exception as e:
                     pass
         return self
-    
+
+
+RISK_ITEM_FIELDS = ('hazard', 'effect', 'free_analysis', 'ctrl', 'ctrl_analysis', 'eval')
+
+
+def riskItemKey(item: RiskItem) -> tuple:
+    return tuple((getattr(item, f) or '').strip().casefold() for f in RISK_ITEM_FIELDS)
+
+
+def dedupeRiskItems(items: Iterable) -> list:
+    seen = set()
+    deduped = []
+    for item in items:
+        key = riskItemKey(item)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return deduped
+
 
 class RiskAssessment:
-    def __init__(self, title: str = None, date: str = None, risks: Iterable = None):
+    def __init__(self, title: str = None, date: str = None, risks: Iterable = None, ptw_id: int = None):
         self.title = title
         self.date = date
+        self.ptw_id = ptw_id
         self.risks = list(risks) if risks is not None else []
     
     def setAll(self, data: dict):
@@ -1755,8 +1775,8 @@ class PTWData:
                         return "'{}' requires hazard '{}'".format(item, requirement.description)
                     elif requirement.type == PTWData.Requirement.Types.CONTROL and requirement.description not in self.controls:
                         return "'{}' requires control '{}'".format(item, requirement.description)
-                    elif requirement.type == PTWData.Requirement.Types.RISK and requirement.description not in self.risks:
-                        return "'{}' requires risk assessment '{}'".format(item, requirement.description)
+                    # elif requirement.type == PTWData.Requirement.Types.RISK and requirement.description not in self.risks:
+                    #     return "'{}' requires risk assessment '{}'".format(item, requirement.description)
 
         for required in self.requiredAttachs():
             if not any(attach.startswith(required + '.') for attach in self.attachs):

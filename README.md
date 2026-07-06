@@ -32,7 +32,7 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 - **Full running lifecycle** — Run / Hold / Close with two-party confirmation (Performing Authority + Issuing Authority)
 - **Equipment isolation management** — Tracks shared isolation points across multiple concurrent PTWs; enforces primary/latest ownership rules
 - **Color-coded permit types** — Cold Work (blue), Spark (yellow), Hot Work (red), HydroCarbon (black), Excavation (gray), Confined Space (green)
-- **Risk assessment library** — Safety team maintains reusable risk assessment documents linked to permits
+- **Risk assessment library** — Safety team maintains a reusable generic risk assessment library; requesting a PTW merges selected items into an editable, deduplicated Preview table that becomes that PTW's own permanent risk record, carried over automatically on re-request
 - **PDF permit reports** — Printable PDF generation for each PTW
 - **Excel export** — Export the PTW list to a formatted, color-coded `.xlsx` spreadsheet
 - **Real-time notifications** — Server-Sent Events (SSE) push PTW changes to all connected clients instantly; no polling required

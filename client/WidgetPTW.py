@@ -9,14 +9,14 @@ from PyQt6.QtWidgets import (QToolButton, QDialog, QVBoxLayout, QHBoxLayout, QFo
 from PyQt6.QtGui import QFont, QKeySequence, QIcon, QPalette, QShortcut, QColor
 import re
 
-from PTWData import PTWData, Attachment, RiskAssessment
+from PTWData import PTWData, Attachment, RiskAssessment, RiskItem, dedupeRiskItems
 from TableRisks import TableRisks
 from TableAttachments import TableAttachments
 from GlobalData import globalData
 from ReportGenerator import ReportGenerator
 from clientRequests import ClientRequests
 from TableIsolations import TablePTWIsolations
-from DialogRisk import DialogRiskAssessment
+from RiskPreviewTable import RiskItemsTable, DialogRiskPreview
 from functools import partial
 import qtawesome as qta
 from i18n import t
@@ -180,7 +180,9 @@ class DialogPTW(QDialog):
         self.tabHazards   = QWidget(self.stack)
         self.tabControls  = QWidget(self.stack)
         self.tabRisksPage = QWidget(self.stack)
-        self.tabRisks     = TableRisks(self.tabRisksPage, self.loggedUser, readonly=True, selectable=not readOnly)
+        # self.tabRisks is built further down, once we know whether to show the checkbox
+        # selector (edit/create) or the read-only consolidated risk table (view mode).
+        self.tabRisks = None
         self.tabIsolation = QWidget(self.stack)
         self.tabMiwiMos = QWidget(self.stack)
         self.tabAttachments = QWidget(self.stack)
@@ -386,35 +388,34 @@ class DialogPTW(QDialog):
             lytHazards.setColumnStretch(col, 1)
             lytControls.setColumnStretch(col, 1)
 
-        self.ptwSpecificRiskAssessment: RiskAssessment = None
+        # globalData.allRiskAssessments only ever holds generic (non-PTW-specific) risks now —
+        # the server filters those out. This PTW's own materialized risk table (if any) is
+        # fetched separately, on demand, so other PTWs' specific risks are never sent to the client.
+        self.previewRiskItems: list[RiskItem] = []
+        if self.ptw.id:
+            err, ptwSpecificRisk = ClientRequests.getPTWSpecificRiskAssessment(self.loggedUser, self.ptw.id)
+            if err:
+                QMessageBox.warning(self, t("Warning"), t("Failed to load PTW-specific risk assessment") + f"\n{err}")
+            elif ptwSpecificRisk:
+                self.previewRiskItems = ptwSpecificRisk.risks
 
-        lytRisksPage.addWidget(self.tabRisks, stretch=1)
-        if not readOnly:
-            self.btnAddPTWRisk = QPushButton(qta.icon('fa6s.plus'), t('Add PTW-Specific Risk'))
-            self.btnAddPTWRisk.clicked.connect(self.openPTWSpecificRiskDialog)
-            lytRisksPage.addWidget(self.btnAddPTWRisk, stretch=0)
-
-        if self.readonly:
-            risks_to_show = {
-                title: risk
-                for title, risk in globalData.allRiskAssessments.items()
-                if title in self.ptw.risks
-            }
-            # Always include PTW-specific risk (titled with PTW number) if it exists
-            ptw_num = str(self.ptw.id) if self.ptw.id else None
-            if ptw_num and ptw_num in globalData.allRiskAssessments and ptw_num not in risks_to_show:
-                risks_to_show[ptw_num] = globalData.allRiskAssessments[ptw_num]
-            self.tabRisks.setRiskAssessmentsInGUI(risks_to_show)
+        if readOnly:
+            # The materialized, deduped table is the definitive risk record for a submitted PTW —
+            # shown flat instead of the per-generic-title checkbox/list view used while requesting.
+            self.tabRisks = RiskItemsTable(self.tabRisksPage, self.previewRiskItems, readonly=True)
+            lytRisksPage.addWidget(self.tabRisks, stretch=1)
         else:
-            self.tabRisks.setRiskAssessmentsInGUI(globalData.allRiskAssessments)
+            self.tabRisks = TableRisks(self.tabRisksPage, self.loggedUser, readonly=True, selectable=True)
+            lytRisksPage.addWidget(self.tabRisks, stretch=1)
+
+            self.btnPreviewRisk = QPushButton(qta.icon('fa6s.eye'), t('Preview Risk Assessment'))
+            self.btnPreviewRisk.clicked.connect(self.openRiskPreviewDialog)
+            lytRisksPage.addWidget(self.btnPreviewRisk, stretch=0)
+
+            self.tabRisks.setRiskAssessmentsInGUI(dict(globalData.allRiskAssessments))
             for riskTitle in ptw.risks:
                 self.tabRisks.checkRisk(riskTitle)
-            # Pre-load existing PTW-specific risk if editing an existing PTW
-            ptw_num = str(self.ptw.id) if self.ptw.id else None
-            if ptw_num and ptw_num in globalData.allRiskAssessments:
-                self.ptwSpecificRiskAssessment = copy.deepcopy(globalData.allRiskAssessments[ptw_num])
-                self.btnAddPTWRisk.setText(t('Edit PTW-Specific Risk'))
-        
+
 
         self.tableIsolation = TablePTWIsolations(self.tabIsolation, self.ptw.isolations, readOnly)
         lytIsolation.addWidget(self.tableIsolation, stretch=1)
@@ -505,20 +506,21 @@ class DialogPTW(QDialog):
         if not self.readonly:
             self.checkRequirement()
 
-    def openPTWSpecificRiskDialog(self):
-        ptw_num = str(self.ptw.id) if self.ptw.id else None
-        if self.ptwSpecificRiskAssessment:
-            risk = copy.deepcopy(self.ptwSpecificRiskAssessment)
-        elif ptw_num and ptw_num in globalData.allRiskAssessments:
-            risk = copy.deepcopy(globalData.allRiskAssessments[ptw_num])
-        else:
-            # Placeholder title — will be replaced with the real PTW number on save
-            risk = RiskAssessment(title=ptw_num or "(PTW-Specific)")
-        label = t("PTW-Specific Risk Assessment") + (f" (PTW# {ptw_num})" if ptw_num else "")
-        dialog = DialogRiskAssessment(self, False, risk, label)
+    def _mergedPreviewRiskItems(self) -> list[RiskItem]:
+        """Currently-materialized preview items, plus items from currently-checked generic
+        assessments merged in (deduped). Unchecking a generic afterward never retroactively
+        strips its already-merged rows — only an explicit row delete in the preview does."""
+        merged = list(self.previewRiskItems)
+        for genericRisk in self.tabRisks.getSelectedRiskAssessments():
+            merged.extend(copy.deepcopy(item) for item in genericRisk.risks)
+        return dedupeRiskItems(merged)
+
+    def openRiskPreviewDialog(self):
+        merged = self._mergedPreviewRiskItems()
+        label = t("Risk Assessment Preview") + (f" (PTW# {self.ptw.id})" if self.ptw.id else "")
+        dialog = DialogRiskPreview(self, merged, label)
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.ptwSpecificRiskAssessment = risk
-            self.btnAddPTWRisk.setText(t('Edit PTW-Specific Risk'))
+            self.previewRiskItems = dialog.getRiskItems()
 
     def checkRequirement(self, state=None):
         if not self.readonly:
@@ -750,6 +752,10 @@ class DialogPTW(QDialog):
         self.ptw.risks = []
         for riskAssessment in self.tabRisks.getSelectedRiskAssessments():
             self.ptw.risks.append(riskAssessment.title)
+
+        # Safety net: merge in whatever's currently checked even if Preview was never opened,
+        # so a submission never silently drops selected generic risk content.
+        self.previewRiskItems = self._mergedPreviewRiskItems()
 
         self.ptw.isolations = []
         for isolation in self.tableIsolation.getIsolations():

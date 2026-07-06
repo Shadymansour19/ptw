@@ -38,6 +38,13 @@ The server binds to plain HTTP on port 5000. Every request sends the username an
 
 ## Fixed
 
+### ~~M11 — PTW-specific risk assessments were visible/selectable across all other PTWs~~ ✓
+**Files:** `server/risksDb.py`, `server/app.py`, `client/WidgetPTW.py`, `client/MainWindow.py`, `client/ReportGenerator.py`
+
+Risk assessment rows only had a `title` column, and the convention was that a numeric `title` meant "specific to the PTW with that number." Nothing in the schema or the `GET /risks` handler enforced or filtered on that convention — every client received every PTW's specific risk rows on every fetch, and the PTW create/edit dialog then displayed *all* of them (not just its own) in the selectable risk list, letting a user accidentally attach another PTW's specific risk data to their own submission. Fixed by adding a real `ptw_id INTEGER` column (indexed as `idx_risks_ptw_id`): `GET /risks` now only ever returns generic rows (`ptw_id IS NULL`); a new `GET /risks/ptw` fetches one PTW's own row set on demand, department-scoped like MIWI access; and the `POST`/`PUT`/`DELETE /risks` authorization checks use `ptw_id is not None` instead of guessing from `title.isdigit()`. This was then superseded by the Preview-based materialized-table redesign — see [PROJECT.md § Risk Assessments](PROJECT.md#risk-assessments).
+
+---
+
 ### ~~M9 — `POST /ptws` never validated incoming PTW data~~ ✓
 
 **File:** `server/app.py` — `addPTWRequest`
