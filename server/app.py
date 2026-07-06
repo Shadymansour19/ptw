@@ -634,7 +634,12 @@ def addPTWRequest():
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     ptwDict = request.get_json(silent=True) or {}
     try:
-        ptw_id = ptwDB.addPTWFromDict(ptwDict)
+        ptw = PTWData(ptwDict)
+        err = ptw.validate()
+        if err:
+            log.warning("POST /ptws rejected: %s (by='%s')", err, user.getUsername())
+            return jsonify({"success": False, "error": err}), 400
+        ptw_id = ptwDB.addPTWFromDict(objToDict(ptw))
         new_ptw = ptwDB.getPTWById(ptw_id)
         if new_ptw:
             with globalData.lock:
@@ -660,7 +665,7 @@ def deletePTWRequest():
     try:
         ptw_id = payload.get('ptw-id')
         ptw = globalData.allPTWs.get(ptw_id)
-        if ptw is not None and ptw.approval_status != PTWData.ApprovalStatus.REJECTED:
+        if ptw is not None and ptw.approval_status != PTWData.ApprovalStatus.RETURNED:
             log.warning("DELETE /ptws: forbidden — PTW #%s status='%s' user='%s'", ptw_id, ptw.approval_status, user.getUsername())
             return jsonify({"success": False, "error": "Can only delete REJECTED or ARCHIVED PTWs"}), 403
         result = ptwDB.deletePTW(ptw_id)

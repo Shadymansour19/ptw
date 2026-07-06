@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (QToolButton, QDialog, QVBoxLayout, QHBoxLayout, QFo
                               QTextEdit, QPushButton, QCheckBox, QRadioButton, QButtonGroup,
                               QDialogButtonBox, QMessageBox, QApplication, QStyle,
                               QFileDialog, QSizePolicy)
-from PyQt6.QtGui import QFont, QKeySequence, QIcon, QPalette, QShortcut
+from PyQt6.QtGui import QFont, QKeySequence, QIcon, QPalette, QShortcut, QColor
 import re
 
 from PTWData import PTWData, Attachment, RiskAssessment
@@ -20,6 +20,13 @@ from DialogRisk import DialogRiskAssessment
 from functools import partial
 import qtawesome as qta
 from i18n import t
+
+def lightenColor(color: QColor, amount: float = 0.4) -> QColor:
+    return QColor(
+        int(color.red()   + (255 - color.red())   * amount),
+        int(color.green() + (255 - color.green()) * amount),
+        int(color.blue()  + (255 - color.blue())  * amount),
+    )
 
 class TabButton(QToolButton):
     TAB_BTN_STYLE = """
@@ -45,11 +52,12 @@ class TabButton(QToolButton):
             font-weight: bold;
         }
     """
-    
+
     def __init__(self, parent = None, text = '', icon = ''):
         super().__init__(parent)
         self.setText(text)
         self.setFont(QFont("Helvetica", 12, QFont.Weight.Bold))
+        self.iconName = icon
         highlighted_text = QApplication.palette().color(QPalette.ColorRole.HighlightedText).name()
         self.icon = qta.icon(icon) if icon else None
         self.selection_icon = qta.icon(icon, color=highlighted_text) if icon else None
@@ -59,6 +67,32 @@ class TabButton(QToolButton):
 
     def setIcon(self, isSelected):
         super().setIcon(self.selection_icon if isSelected and self.selection_icon else self.icon if self.icon else QIcon())
+
+    def setHighlightColor(self, bgColor: QColor, textColor: QColor):
+        self.selection_icon = qta.icon(self.iconName, color=textColor.name()) if self.iconName else None
+        self.setStyleSheet(f"""
+            QToolButton {{
+                background: transparent;
+                border: none;
+                border-radius: 12px;
+                padding: 10px 20px;
+                color: palette(window-text);
+            }}
+
+            QToolButton:hover {{
+                background: rgba(128, 128, 128, 0.15);
+            }}
+
+            QToolButton:pressed {{
+                background: rgba(128, 128, 128, 0.30);
+            }}
+
+            QToolButton[selected="true"] {{
+                background: {bgColor.name()};
+                color: {textColor.name()};
+                font-weight: bold;
+            }}
+        """)
 
 class DialogPTW(QDialog):
     GRID_LYT_COLS = 3
@@ -263,7 +297,7 @@ class DialogPTW(QDialog):
         lytBasicInfo.addRow(t('Equipment:'), self.boxEquipment)
         lytBasicInfo.addRow(t('Description:'), self.boxDescription)
 
-        self.btnsTools: list[QCheckBox] = []
+        self.btnsTools: dict[str, QCheckBox] = {}
         for i,tool in enumerate(PTWData.ALL_TOOLS):
             btn = QCheckBox(DialogPTW.checkboxDisplayName(t(tool)))
             btn.setObjectName(tool)
@@ -272,7 +306,7 @@ class DialogPTW(QDialog):
             btn.setEnabled(not readOnly)
             # btn.setStyleSheet('QCheckBox::indicator { width: 20px; height: 20px; }')
             lytTools.addWidget(btn, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS)
-            self.btnsTools.append(btn)
+            self.btnsTools[tool] = btn
         i += 1
         self.boxOtherTools = QLineEdit()
         self.boxOtherTools.setEnabled(not readOnly)
@@ -282,7 +316,7 @@ class DialogPTW(QDialog):
         remaining_cols = DialogPTW.GRID_LYT_COLS - (i % DialogPTW.GRID_LYT_COLS)
         lytTools.addWidget(self.boxOtherTools, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS, 1, remaining_cols)
         
-        self.btnsHazard: list[QCheckBox] = []
+        self.btnsHazard: dict[str, QCheckBox] = {}
         for i,hazard in enumerate(PTWData.ALL_HAZARDS):
             btn = QCheckBox(DialogPTW.checkboxDisplayName(t(hazard)))
             btn.setObjectName(hazard)
@@ -291,7 +325,7 @@ class DialogPTW(QDialog):
             btn.setEnabled(not readOnly)
             # btn.setStyleSheet('QCheckBox::indicator { width: 20px; height: 20px; }')
             lytHazards.addWidget(btn, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS)
-            self.btnsHazard.append(btn)
+            self.btnsHazard[hazard] = btn
         i += 1
         self.boxOtherHazards = QLineEdit()
         self.boxOtherHazards.setEnabled(not readOnly)
@@ -301,7 +335,7 @@ class DialogPTW(QDialog):
         remaining_cols = DialogPTW.GRID_LYT_COLS - (i % DialogPTW.GRID_LYT_COLS)
         lytHazards.addWidget(self.boxOtherHazards, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS, 1, remaining_cols)
         
-        self.btnsControls: list[QCheckBox] = []
+        self.btnsControls: dict[str, QCheckBox] = {}
         for i,ctrl in enumerate(PTWData.ALL_CONTROLS):
             btn = QCheckBox(DialogPTW.checkboxDisplayName(t(ctrl)))
             btn.setObjectName(ctrl)
@@ -310,7 +344,7 @@ class DialogPTW(QDialog):
             btn.setEnabled(not readOnly)
             # btn.setStyleSheet('QCheckBox::indicator { width: 20px; height: 20px; }')
             lytControls.addWidget(btn, i // DialogPTW.GRID_LYT_COLS, i % DialogPTW.GRID_LYT_COLS)
-            self.btnsControls.append(btn)
+            self.btnsControls[ctrl] = btn
         i += 1
         self.boxOtherControls = QLineEdit()
         self.boxOtherControls.setEnabled(not readOnly)
@@ -427,14 +461,22 @@ class DialogPTW(QDialog):
 
     def ptwTypeChanged(self):
         color = PTWData.backgroundColorForType(self.boxPTWType.currentData())
+        accentColor = lightenColor(color)
+        textColor = PTWData.foregroundColorForType(self.boxPTWType.currentData())
         self.tabsContainer.setStyleSheet(f"""
             QWidget {{
                 background: {color.name()};
-                border-bottom: 4px solid rgba(128, 128, 128, 0.5);
-                border-right: 4px solid rgba(128, 128, 128, 0.5);
+                border-bottom: 4px solid {accentColor.name()};
+                border-right: 4px solid {accentColor.name()};
                 border-bottom-right-radius: 20px;
             }}
         """)
+        for btn in self.tabsBtnsMap:
+            btn.setHighlightColor(accentColor, textColor)
+        self.stackTabChanged()
+
+        if not self.readonly:
+            self.checkRequirement()
 
     def openPTWSpecificRiskDialog(self):
         ptw_num = str(self.ptw.id) if self.ptw.id else None
@@ -452,27 +494,58 @@ class DialogPTW(QDialog):
             self.btnAddPTWRisk.setText(t('Edit PTW-Specific Risk'))
 
     def checkRequirement(self, state=None):
-        self.collectData()
-        self.ptw.updateRequirements()
-        self.refreshUI()
-        
+        if not self.readonly:
+            self.collectData()
+            self.ptw.updateRequirements()
+            self.refreshUI()
 
     def refreshUI(self):
-        all_check_btns = self.btnsTools + self.btnsHazard + self.btnsControls
+        ptwType = self.boxPTWType.currentData()
 
-        for btn in all_check_btns:
+        all_check_btns: dict[str, QCheckBox] = {}
+        for btns in [self.btnsTools, self.btnsHazard, self.btnsControls]:
+            all_check_btns.update(btns)
+
+        for btn in all_check_btns.values():
             btn.blockSignals(True)
             
-        for btn in self.btnsTools:
-            btn.setChecked(btn.objectName() in self.ptw.tools)
+        for title, btn in self.btnsTools.items():
+            checkBox = PTWData.ALL_TOOLS.get(title)
+            required = checkBox.isRequired(ptwType)
+            restricted = checkBox.isRestricted(ptwType)
+            if required:
+                btn.setChecked(True)
+            elif restricted:
+                btn.setChecked(False)
+            else:
+                btn.setChecked(title in self.ptw.tools)
+            btn.setEnabled(not (required or restricted))
         self.boxOtherTools.setText(', '.join(tool for tool in self.ptw.tools if tool not in PTWData.ALL_TOOLS))
 
-        for btn in self.btnsHazard:
-            btn.setChecked(btn.objectName() in self.ptw.hazards)
+        for title, btn in self.btnsHazard.items():
+            checkBox = PTWData.ALL_HAZARDS.get(title)
+            required = checkBox.isRequired(ptwType)
+            restricted = checkBox.isRestricted(ptwType)
+            if required:
+                btn.setChecked(True)
+            elif restricted:
+                btn.setChecked(False)
+            else:
+                btn.setChecked(title in self.ptw.hazards)
+            btn.setEnabled(not (required or restricted))
         self.boxOtherHazards.setText(', '.join(tool for tool in self.ptw.hazards if tool not in PTWData.ALL_HAZARDS))
 
-        for btn in self.btnsControls:
-            btn.setChecked(btn.objectName() in self.ptw.controls)
+        for title, btn in self.btnsControls.items():
+            checkBox = PTWData.ALL_CONTROLS.get(title)
+            required = checkBox.isRequired(ptwType)
+            restricted = checkBox.isRestricted(ptwType)
+            if required:
+                btn.setChecked(True)
+            elif restricted:
+                btn.setChecked(False)
+            else:
+                btn.setChecked(title in self.ptw.controls)
+            btn.setEnabled(not (required or restricted))
         self.boxOtherControls.setText(', '.join(tool for tool in self.ptw.controls if tool not in PTWData.ALL_CONTROLS))
 
         for riskTitle in globalData.allRiskAssessments.keys():
@@ -482,7 +555,7 @@ class DialogPTW(QDialog):
         self.requiredAttachs = self.ptw.requiredAttachs()
         self.tableAttachments.setRequiredAttachs(self.requiredAttachs)
 
-        for btn in all_check_btns:
+        for btn in all_check_btns.values():
             btn.blockSignals(False)
 
     def miwiMosSwitch(self):
@@ -617,9 +690,9 @@ class DialogPTW(QDialog):
             self.ptw.setMiwi(None)
         
         self.ptw.tools = []
-        for btn in self.btnsTools:
+        for title, btn in self.btnsTools.items():
             if btn.isChecked():
-                self.ptw.addTool(btn.objectName())
+                self.ptw.addTool(title)
         if self.boxOtherTools.text():
             for tool in re.split(r'[,/\-+;|]', self.boxOtherTools.text()):
                 tool = tool.strip()
@@ -627,9 +700,9 @@ class DialogPTW(QDialog):
                     self.ptw.addTool(tool)
 
         self.ptw.hazards = []
-        for btn in self.btnsHazard:
+        for title, btn in self.btnsHazard.items():
             if btn.isChecked():
-                self.ptw.addHazard(btn.objectName())
+                self.ptw.addHazard(title)
         if self.boxOtherHazards.text():
             for hazard in re.split(r'[,/\-+;|]', self.boxOtherHazards.text()):
                 hazard = hazard.strip()
@@ -637,9 +710,9 @@ class DialogPTW(QDialog):
                     self.ptw.addHazard(hazard)
         
         self.ptw.controls = []
-        for btn in self.btnsControls:
+        for title, btn in self.btnsControls.items():
             if btn.isChecked():
-                self.ptw.addControl(btn.objectName())
+                self.ptw.addControl(title)
         if self.boxOtherControls.text():
             for ctrl in re.split(r'[,/\-+;|]', self.boxOtherControls.text()):
                 ctrl = ctrl.strip()
