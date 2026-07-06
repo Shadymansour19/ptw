@@ -38,6 +38,22 @@ The server binds to plain HTTP on port 5000. Every request sends the username an
 
 ## Fixed
 
+### ~~M9 — `POST /ptws` never validated incoming PTW data~~ ✓
+
+**File:** `server/app.py` — `addPTWRequest`
+
+The server persisted whatever `tools`/`hazards`/`controls`/`attachs` a client sent, with no check against the type-specific required/restricted rules or required attachments defined in `PTWData`. A buggy or malicious client (or a stale build) could submit a PTW violating those rules and the server would store it as-is. Fixed by constructing a `PTWData` from the payload and calling `validate()` before persisting; a failing submission is rejected with `400` and the reason, and nothing is written to the database. The server only validates — it does not call `updateRequirements()` or otherwise rewrite the submitted selections.
+
+---
+
+### ~~M10 — Required-attachment check compared bare titles against filenames with extensions~~ ✓
+    
+**Files:** `server/PTWData.py`, `client/PTWData.py` — `validate()`
+
+`requiredAttachs()` returns bare descriptions (e.g. `"Power Tools Checklist"`), but `self.attachs` stores filenames with an extension appended (e.g. `"Power Tools Checklist.pdf"`, per `TableAttachments.uploadRequiredAttachment`). The old check (`required not in self.attachs`) could never match, so a required-attachment violation would never actually be caught. Fixed to a prefix match — `attach.startswith(required + '.')` — which matches regardless of the extension, including multi-dot extensions.
+
+---
+
 ### ~~L4 — `IsolationDb.updateIsolation` has a TOCTOU race across two connections~~ ✓
 **File:** `server/IsolationDb.py` — `updateIsolation`
 

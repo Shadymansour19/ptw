@@ -277,6 +277,18 @@ risks       — List of referenced risk assessment titles
 isolations  — List of Isolation objects (type, tag, description)
 ```
 
+### Tools, Hazards & Controls Rules
+
+`tools`, `hazards`, and `controls` are each backed by a lookup table in `PTWData` — `ALL_TOOLS`, `ALL_HAZARDS`, `ALL_CONTROLS` — mapping title → `CheckBox`:
+
+- `title` — display name (e.g. `'Power Tools'`, `'Confined Space'`)
+- `isRequired(ptwType)` / `isRestricted(ptwType)` — per-permit-type rules, e.g. `'Non-Ex Tools'` is restricted for Cold Work; the `'Electrical / Mechanical Spark'` hazard is required for Spark permits and restricted for Cold Work
+- `requirements` — a list of `Requirement` objects (`TOOL` / `HAZARD` / `CONTROL` / `RISK` / `ATTACH` / `DOC`) that must also be satisfied once this item is selected, e.g. selecting the `'Scaffolding'` hazard also requires the `'Working at Height'` hazard; selecting `'Power Tools'` requires the `'Power Tools Checklist'` attachment
+
+**`updateRequirements()`** (client-only, called from `WidgetPTW.checkRequirement()`) walks these tables to auto-check required items, auto-uncheck restricted ones, and cascade-add linked requirements — keeping the checkbox UI in sync as the user picks a permit type. This method only exists to drive the live UI; it is never called server-side.
+
+**`validate()`** (called client-side before submit, and server-side on `POST /ptws`) independently re-checks the same three rules — required, restricted, and cascading requirements — plus required attachments (matched by filename prefix, since uploaded attachments carry a file extension: `"Power Tools Checklist.pdf"` satisfies the requirement `"Power Tools Checklist"`). It returns a descriptive error string on the first violation found. The server only validates and rejects; it never silently "fixes" or rewrites incoming tool/hazard/control selections.
+
 ### Status Fields
 
 ```
@@ -357,6 +369,8 @@ New-user invitation email (`POST /users`) and the password-reset verification em
 | POST   | `/ptws/close`               | IA accepts or rejects close request        |
 | GET    | `/ptws/archive`             | Get all archived PTWs                      |
 | POST   | `/ptws/archive`             | Archive a closed PTW                       |
+
+`POST /ptws` runs `PTWData.validate()` (required/restricted/requirements rules for tools, hazards, controls, plus required attachments — see [Tools, Hazards & Controls Rules](#tools-hazards--controls-rules)) before persisting; a failing submission is rejected with `400` and never written to the database.
 
 ### Real-Time Events (SSE)
 | Method | Endpoint   | Description                                              |

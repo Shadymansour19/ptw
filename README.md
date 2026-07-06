@@ -47,6 +47,7 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 - **Server activity logging** — rotating log files (10 MB, 5 backups) with DEBUG/INFO/WARNING/ERROR/CRITICAL levels; log lines include timestamp, level, and source location
 - **Admin log viewer** — dedicated tab for Admins with collapsible per-file panels, lazy loading, per-level color coding, and a level filter
 - **Light/dark theme** — full UI theme switching (system / light / dark) with preference saved server-side per user
+- **Type-aware safety rules** — tools, hazards, and controls can be required, restricted, or trigger cascading requirements (e.g. a hazard requiring an attachment) depending on the permit type; enforced in the UI and independently re-validated server-side on submit
 
 ---
 
