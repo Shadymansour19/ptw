@@ -572,8 +572,11 @@ class MainWindow(QMainWindow):
     
     def editPTW(self, row: int, ptw: PTWData):
         toEditPtw = copy.deepcopy(ptw)
-        editPTWDialog = DialogPTW(self, self.loggedUser, toEditPtw, None, False, False, 'Edit Mode - PTW# {ptw.id}')
+        wasReturned = toEditPtw.approval_status == PTWData.ApprovalStatus.RETURNED
+        editPTWDialog = DialogPTW(self, self.loggedUser, toEditPtw, None, False, False, f'Edit Mode - PTW# {ptw.id}')
         if editPTWDialog.exec() == QDialog.DialogCode.Accepted:
+            if wasReturned:
+                toEditPtw.clearApprovals()
             ptw = toEditPtw
             self.stack.currentWidget().updatePTW(row, ptw)
 
@@ -1086,6 +1089,8 @@ class MainWindow(QMainWindow):
             return f"PTW #{ptw_id} deleted by {by}"
         if event_type == "ptw_approval":
             return f"PTW #{ptw_id}: {data.get('action', 'status update')} by {by}"
+        if event_type == "ptw_updated":
+            return f"PTW #{ptw_id}: edited and resubmitted by {by}"
         if event_type == "ptw_run_request":
             return f"PTW #{ptw_id}: run requested by {by}"
         if event_type == "ptw_run":
@@ -1287,7 +1292,7 @@ class UserMainWindow(MainWindow):
 
         self.tabRegisteredPTWs.addOptions([self.viewOption, self.editOption, self.requestPTWOption, self.viewRequestorOption, self.dltOption, self.exportOption])
         self.tabUnderReviewPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.printOption, self.exportOption])
-        self.tabReturnedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.dltOption, self.printOption, self.exportOption])
+        self.tabReturnedPTWs.addOptions([self.viewOption, self.editOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.dltOption, self.printOption, self.exportOption])
         self.tabApprovedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.runRequestOption, self.printOption, self.exportOption])
         self.tabWaitingRunConfirmationPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewPerformingOption, self.viewApprovalsOption, self.requestPTWOption, self.printOption, self.exportOption])
         self.tabRunningPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewPerformingOption, self.viewApprovalsOption, self.requestPTWOption, self.clsRequestOption, self.hldRequestOption, self.printOption, self.exportOption])

@@ -99,8 +99,12 @@ class CommonDB:
         except Exception as e:
             raise e
 
-        set_clauses = ', '.join([f"{k} = %s" for k in data if k != primaryKey])
-        values = [v for k, v in data.items() if k != primaryKey]
+        columns = [k for k in data if k != primaryKey]
+        set_clauses = ', '.join(
+            f"{k} = %s::jsonb[]" if isinstance(data[k], list) and all(isinstance(i, dict) for i in data[k]) else f"{k} = %s"
+            for k in columns
+        )
+        values = [[Json(d) for d in data[k]] if isinstance(data[k], list) and all(isinstance(i, dict) for i in data[k]) else data[k] for k in columns]
         values.append(data[primaryKey])
         query = f"UPDATE {table} SET {set_clauses} WHERE {primaryKey} = %s"
         try:

@@ -246,7 +246,6 @@ class DialogPTW(QDialog):
         self.boxPTWType = QComboBox(self.tabBasicInfo)
         for type in PTWData.Types:
             self.boxPTWType.addItem(t(type), type.value)
-        self.boxPTWType.currentIndexChanged.connect(self.ptwTypeChanged)
         self.boxDate = QLineEdit()
         self.boxDepartment = QLineEdit()
         self.boxRequestor = QLineEdit()
@@ -455,6 +454,7 @@ class DialogPTW(QDialog):
         self.btnCancel.clicked.connect(self.reject)
         self.btnFinish.clicked.connect(self.accept)
         self.stack.currentChanged.connect(self.stackTabChanged)
+        self.boxPTWType.currentIndexChanged.connect(self.ptwTypeChanged)
         self.stackTabChanged()
         self.miwiMosSwitch()
         self.ptwTypeChanged()

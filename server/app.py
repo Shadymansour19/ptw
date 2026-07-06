@@ -652,6 +652,44 @@ def addPTWRequest():
         return jsonify({"success": False, "error": str(e)}), 400
 
 
+@app.route("/ptws", methods=["PUT"])
+def updatePTWRequest():
+    user = getVerifiedUser(request.authorization)
+    if user is None:
+        log.warning("PUT /ptws unauthorized (ip=%s)", request.remote_addr)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    ptwDict = request.get_json(silent=True) or {}
+    ptwId = ptwDict.get('id')
+    try:
+        ptwId = int(ptwId)
+    except (TypeError, ValueError):
+        log.warning("PUT /ptws: invalid PTW id=%r (user='%s')", ptwId, user.getUsername())
+        return jsonify({"success": False, "error": "Invalid PTW id"}), 400
+    existing = globalData.allPTWs.get(ptwId)
+    if existing is None:
+        log.warning("PUT /ptws: PTW #%s not found (user='%s')", ptwId, user.getUsername())
+        return jsonify({"success": False, "error": "PTW not found"}), 404
+    if existing.department != user.getDepartment() or existing.approval_status != PTWData.ApprovalStatus.RETURNED:
+        log.warning("PUT /ptws: forbidden — PTW #%s status='%s' department='%s' user='%s' (dept='%s')", ptwId, existing.approval_status, existing.department, user.getUsername(), user.getDepartment())
+        return jsonify({"success": False, "error": "Can only edit RETURNED PTWs from your own department"}), 403
+    try:
+        ptw = PTWData(ptwDict)
+        err = ptw.validate()
+        if err:
+            log.warning("PUT /ptws rejected: %s (by='%s')", err, user.getUsername())
+            return jsonify({"success": False, "error": err}), 400
+        dbErr = ptwDB.updatePTWFromDict(objToDict(ptw))
+        if dbErr:
+            raise dbErr
+        _sync_ptw(ptwId)
+        _broadcast("ptw_updated", {"ptw_id": ptwId, "by": user.getUsername()}, roles=[UserRoles.USER, UserRoles.COORDINATOR])
+        log.info("PTW updated: id=%s by='%s'", ptwId, user.getUsername())
+        return jsonify({"success": True, "ptw-id": ptwId})
+    except Exception as e:
+        log.error("PUT /ptws failed for id=%s: %s", ptwId, e, exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
 @app.route("/ptws", methods=["DELETE"])
 def deletePTWRequest():
     user = getVerifiedUser(request.authorization)
