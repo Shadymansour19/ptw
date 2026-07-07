@@ -94,7 +94,7 @@ class RiskItemsTable(QWidget):
     COLUMN_LABELS = ['Hazard', 'Effect', 'Free Analysis', 'Control', 'Controlled Analysis', 'Evaluation']
     FIELDS        = ['hazard', 'effect', 'free_analysis', 'ctrl', 'ctrl_analysis', 'eval']
     TABLE_WIDTH_WEIGHTS = [30, 33, 20, 52, 20, 20]
-    ROW_PADDING = 12
+    ROW_PADDING = 20
 
     def __init__(self, parent, items: list[RiskItem], readonly: bool = True):
         super().__init__(parent)
@@ -201,9 +201,12 @@ class RiskItemsTable(QWidget):
         msgBox = QMessageBox(self)
         msgBox.setWindowTitle("Add Risk Items")
         msgBox.setText("How would you like to add new risk items?")
-        btnManual = msgBox.addButton("Add Manually", QMessageBox.ButtonRole.AcceptRole)
-        btnGeneric = msgBox.addButton("Use Generic Risks", QMessageBox.ButtonRole.ActionRole)
-        btnImport = msgBox.addButton("Import from Excel", QMessageBox.ButtonRole.ActionRole)
+        btnManual = msgBox.addButton("&Type Manually", QMessageBox.ButtonRole.AcceptRole)
+        btnGeneric = msgBox.addButton("Use &Generic Risks", QMessageBox.ButtonRole.ActionRole)
+        btnImport = msgBox.addButton("Import from E&xcel", QMessageBox.ButtonRole.ActionRole)
+        btnManual.setIcon(qta.icon('fa6s.keyboard'))
+        btnGeneric.setIcon(qta.icon('fa6s.bookmark'))
+        btnImport.setIcon(qta.icon('fa6s.file-excel'))
         msgBox.addButton(QMessageBox.StandardButton.Cancel)
         msgBox.exec()
         clicked = msgBox.clickedButton()
@@ -375,9 +378,9 @@ class _RiskPreviewDialog(QDialog):
 
         btnLyt = QHBoxLayout()
         
-        self.btnAddItems = QPushButton(qta.icon('fa6s.plus'), t('Add Items'))
-        self.btnDeleteItems = QPushButton(qta.icon('fa6s.trash-can'), t('Delete Selected Items'))
-        self.btnPrint  = QPushButton(qta.icon('fa6s.print'), t('Print Preview'))
+        self.btnAddItems = QPushButton(qta.icon('fa6s.plus'), '&' + t('Add Items'))
+        self.btnDeleteItems = QPushButton(qta.icon('fa6s.trash-can'), '&' + t('Delete Selected Items'))
+        self.btnPrint  = QPushButton(qta.icon('fa6s.print'), '&' + t('Print Preview'))
         
         self.btnAddItems.clicked.connect(lambda: self.table.addRiskItemsDialog())
         self.btnDeleteItems.clicked.connect(lambda: self.table.deleteSelectedRows())
@@ -415,7 +418,7 @@ class _RiskPreviewDialog(QDialog):
     
     def printPreview(self):
         from ReportGenerator import ReportGenerator
-        ReportGenerator.riskAssessmentReport(riskAssessment=self.riskAssessment)
+        ReportGenerator.riskAssessmentReport(ptwId=self.riskAssessment.ptw_id or '', ptwTitle=self.riskAssessment.title or '', riskAssessment=self.riskAssessment)
 
 
 class _RiskPreviewWidget(QWidget):
@@ -435,9 +438,9 @@ class _RiskPreviewWidget(QWidget):
 
         btnLyt = QHBoxLayout()
         
-        self.btnAddItems = QPushButton(qta.icon('fa6s.plus'), t('Add Items'))
-        self.btnDeleteItems = QPushButton(qta.icon('fa6s.trash-can'), t('Delete Selected Items'))
-        self.btnPrint  = QPushButton(qta.icon('fa6s.print'), t('Print Preview'))
+        self.btnAddItems = QPushButton(qta.icon('fa6s.plus'), '&' + t('Add Items'))
+        self.btnDeleteItems = QPushButton(qta.icon('fa6s.trash-can'), '&' + t('Delete Selected Items'))
+        self.btnPrint  = QPushButton(qta.icon('fa6s.print'), '&' + t('Print Preview'))
         
         self.btnAddItems.clicked.connect(lambda: self.table.addRiskItemsDialog())
         self.btnDeleteItems.clicked.connect(lambda: self.table.deleteSelectedRows())
@@ -458,7 +461,7 @@ class _RiskPreviewWidget(QWidget):
 
     def printPreview(self):
         from ReportGenerator import ReportGenerator
-        ReportGenerator.riskAssessmentReport(riskAssessment=self.riskAssessment)
+        ReportGenerator.riskAssessmentReport(ptwId=self.riskAssessment.ptw_id or '', ptwTitle=self.riskAssessment.title or '', riskAssessment=self.riskAssessment)
 
 
 def RiskAssessmentPreview(parent, riskAssessment: RiskAssessment, readonly: bool = False, popup: bool = False):
