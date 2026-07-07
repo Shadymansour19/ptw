@@ -21,8 +21,7 @@ client/nuitka*
 # Operational data — user uploads and company PDFs
 server/miwi/
 server/ptw-*-attachments/
-*.xlsx
-*.csv
+test_data
 
 # Server logs
 server/logs/

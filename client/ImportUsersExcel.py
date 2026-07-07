@@ -3,6 +3,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QTableWidget, QTableWidgetItem,
                               QAbstractItemView, QHeaderView, QDialogButtonBox)
 from User import User, UserRoles, UserDepartments
+from utils import parseTabularFile
 
 
 class DialogUsersPreview(QDialog):
@@ -81,32 +82,8 @@ class ImportUsersExcel:
     FIELDS = FIELDS
 
     @staticmethod
-    def _readRows(filepath: str) -> list:
-        if filepath.lower().endswith('.csv'):
-            import csv
-            with open(filepath, newline='', encoding='utf-8-sig') as f:
-                return [tuple(row) for row in csv.reader(f)]
-
-        import openpyxl
-        wb = openpyxl.load_workbook(filepath, read_only=True, data_only=True)
-        ws = wb.active
-        rows = list(ws.iter_rows(values_only=True))
-        wb.close()
-        return rows
-
-    @staticmethod
     def parseFile(filepath: str, existingUsernames: set) -> list[ImportRow]:
-        allRows = ImportUsersExcel._readRows(filepath)
-
-        if not allRows:
-            return []
-
-        headerRow = [str(h).strip() if h is not None else '' for h in allRows[0]]
-        headerIndex = {h.lower(): i for i, h in enumerate(headerRow)}
-
-        missing = [h for h in HEADERS if h.lower() not in headerIndex]
-        if missing:
-            raise ValueError(f"Missing required column(s): {', '.join(missing)}")
+        dataRows = parseTabularFile(filepath, HEADERS)
 
         roleValues = {r.value.lower(): r.value for r in UserRoles}
         deptValues = {d.value.lower(): d.value for d in UserDepartments}
@@ -114,15 +91,11 @@ class ImportUsersExcel:
         rows = []
         seenUsernames = set()
 
-        for rowNum, row in enumerate(allRows[1:], start=2):
-            if row is None or all(c is None or str(c).strip() == '' for c in row):
+        for rowNum, record in enumerate(dataRows, start=2):
+            if all(not v for v in record):
                 continue
 
-            data = {}
-            for field, header in zip(FIELDS, HEADERS):
-                idx = headerIndex[header.lower()]
-                value = row[idx] if idx < len(row) else None
-                data[field] = str(value).strip() if value is not None else ''
+            data = dict(zip(FIELDS, record))
 
             username = data['username']
             name = data['name']

@@ -704,14 +704,14 @@ class ReportGenerator:
             ReportGenerator.openPDF(mosPdfFile.name)
         
 
-    def riskAssessmentReport(ptwId: str, ptwTitle: str, ptwSpecificRisk: RiskAssessment = None):
+    def riskAssessmentReport(ptwId: str = '', ptwTitle: str = '', riskAssessment: RiskAssessment = None):
         LOGO_IMG_WIDTH = 35*mm
         # Cols: No | Hazard | Effect | S | L | Risk(free) | Control | S | L | Risk(ctrl) | Evaluation
         TABLE_WIDTH_WEIGHTS = [7, 30, 33, 4, 4, 9, 52, 5, 5, 10, 20]
         TABLE_WIDTH_WEIGHTS_SUM = sum(TABLE_WIDTH_WEIGHTS)
         MARGIN = 0.35 * inch
 
-        if not ptwSpecificRisk or not ptwSpecificRisk.risks:
+        if not riskAssessment or not riskAssessment.risks:
             return
 
         buffer = io.BytesIO()
@@ -779,7 +779,7 @@ class ReportGenerator:
                 Paragraph('',                     styles['Heading3']), 
             ],
         ]
-        for riskItem in ptwSpecificRisk.risks:
+        for riskItem in riskAssessment.risks:
             sf, lf, rf = slr(riskItem.free_analysis)
             sc, lc, rc = slr(riskItem.ctrl_analysis)
             data.append([

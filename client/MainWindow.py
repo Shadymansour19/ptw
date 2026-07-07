@@ -591,7 +591,7 @@ class MainWindow(QMainWindow):
             def on_risk_saved(err, _):
                 if err:
                     QMessageBox.warning(self, "Warning", f"PTW saved but failed to save risk assessment: {err}")
-            self._savePTWRiskAssessment(ptw.id, editPTWDialog.previewRiskItems, callback=on_risk_saved)
+            self._savePTWRiskAssessment(ptw.id, editPTWDialog.riskAssessmentPreviewTable.getRiskItems(), callback=on_risk_saved)
 
             self.stack.currentWidget().updatePTW(row, ptw)
 
@@ -626,7 +626,7 @@ class MainWindow(QMainWindow):
             def on_risk_saved(err, _):
                 if err:
                     QMessageBox.warning(self, "Warning", f"PTW saved but failed to save risk assessment: {err}")
-            self._savePTWRiskAssessment(ptwId, dlg.previewRiskItems, callback=on_risk_saved)
+            self._savePTWRiskAssessment(ptwId, dlg.riskAssessmentPreviewTable.getRiskItems(), callback=on_risk_saved)
             # On re-request, the server also copies the original PTW's own risk rows onto
             # this new ptw_id (server/app.py copyPtwAttachments), additively — so any custom
             # rows from the original that weren't re-selected/re-added here still carry over.
@@ -1456,14 +1456,10 @@ class SafetyMainWindow(MainWindow):
     
 
     def addNewRiskDialog(self):
-        from DialogRisk import DialogRiskAssessment
-
         if not self.btnFAB.isVisible():
             return
-        riskAssessment = RiskAssessment()
-        newPTWDialog = DialogRiskAssessment(self, False, riskAssessment, "New Risk Assessment")
-        if newPTWDialog.exec() == QDialog.DialogCode.Accepted:
-            self.stack.currentWidget().addRiskAssessment(riskAssessment)
+        
+        self.tabRisks.addNewRiskAssessmentDialog()
 
     def stackTabChanged(self):
         super().stackTabChanged()

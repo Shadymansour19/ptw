@@ -6,7 +6,7 @@ from PyQt6.QtGui import QFont
 import qtawesome as qta
 
 from clientRequests import ClientRequests
-from DialogRisk import DialogRiskAssessment
+from RiskPreview import RiskAssessmentPreview
 from PTWData import RiskAssessment
 from User import User
 
@@ -151,12 +151,15 @@ class TableRisks(QWidget):
             riskRecord.btnCheck.setChecked(item.isSelected())
 
     def viewRiskAssessment(self, riskTitle: str):
-        dialog = DialogRiskAssessment(self, True, self.risks[riskTitle], f"View Mode - Risk Assessment {riskTitle}")
+        title = f"View Mode - Risk Assessment {riskTitle}"
+        dialog = RiskAssessmentPreview(self, self.risks[riskTitle], readonly=True, popup=True)
         dialog.exec()
 
     def editRiskAssessment(self, riskTitle: str):
         riskAssessment = copy.deepcopy(self.risks[riskTitle])
-        dialog = DialogRiskAssessment(self, False, riskAssessment, f"Edit Mode - Risk Assessment {riskTitle}")
+        title = f"Edit Mode - Risk Assessment {riskTitle}"
+        dialog = RiskAssessmentPreview(self, riskAssessment, readonly=False, popup=True)
+        # dialog = DialogRiskAssessment(self, False, riskAssessment, f"Edit Mode - Risk Assessment {riskTitle}")
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
@@ -182,7 +185,46 @@ class TableRisks(QWidget):
         ClientRequests.deleteRiskAssessment(self.loggedUser, riskTitle, ptw_id, callback=on_done)
     
     def addNewRiskAssessmentDialog(self):
+        from PyQt6.QtWidgets import QLineEdit, QDialogButtonBox
+        dlgPromptTitle = QDialog(self)
+        dlgPromptTitle.setWindowTitle("New Risk Assessment")
+        dlgPromptTitle.setModal(True)
+        lyt = QVBoxLayout(dlgPromptTitle)
+        lbl = QLabel("Enter title for new Risk Assessment:")
+        err = QLabel("")
+        err.setStyleSheet("QLabel { color: red; }")
+        lyt.addWidget(lbl)
+        txtTitle = QLineEdit()
+        txtTitle.setStyleSheet("QLineEdit[error='True'] { border: 1px solid red; border-radius: 2px; }")
+        lyt.addWidget(txtTitle)
+        lyt.addWidget(err)
+        def checkTitle():
+            title = txtTitle.text().strip()
+            notValid = (title in self.risks)
+            txtTitle.setProperty('error', str(notValid))
+            txtTitle.style().unpolish(txtTitle)
+            txtTitle.style().polish(txtTitle)
+            err.setText("A Risk Assessment with this title already exists." if notValid else "")
+            buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(not notValid)
+        txtTitle.textChanged.connect(checkTitle)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        lyt.addWidget(buttons)
+        buttons.accepted.connect(dlgPromptTitle.accept)
+        buttons.rejected.connect(dlgPromptTitle.reject)
+
+        if dlgPromptTitle.exec() != QDialog.DialogCode.Accepted:
+            return
+        
+        title = txtTitle.text().strip()
+        if not title:
+            QMessageBox.warning(self, "Invalid Title", "Title cannot be empty.")
+            return
+        if title in self.risks:
+            QMessageBox.warning(self, "Duplicate Title", f"A Risk Assessment with the title '{title}' already exists.")
+            return
+        
         newRiskAssessment = RiskAssessment()
-        dialog = DialogRiskAssessment(self, True, newRiskAssessment, "New Risk Assessment")
+        newRiskAssessment.title = title
+        dialog = RiskAssessmentPreview(self, newRiskAssessment, readonly=False, popup=True)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.addRiskAssessment(newRiskAssessment)

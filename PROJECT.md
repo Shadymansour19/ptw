@@ -219,17 +219,30 @@ Each `RiskItem` documents:
 
 Only users with the **Safety** role can create/update/delete *generic* assessments (`ptw_id IS NULL`). Any user can create/update/delete the *PTW-specific* row set for a PTW (`ptw_id` set) — enforced server-side in `POST`/`PUT`/`DELETE /risks` by checking `ptw_id is not None`, not by trusting a client-declared role. Deleting a generic assessment is applicable but NOT allowed to keep already-done PTWs valid — a PTW's materialized rows (below) are independent copies, unaffected by later edits or deletion of the generic assessment they were derived from.
 
-### PTW-specific risk assessment (Preview flow)
+### PTW-specific risk assessment (`RiskPreview.py`)
 
-When requesting a PTW, the user still selects generic risk assessments via checkboxes — unchanged, and this still drives `ptw.risks` (the list of titles used by `PTWData.validate()`/`updateRequirements()` for required-risk-assessment rules per selected tool/hazard/control).
+The PTW request/edit/view dialog's Risks tab (`WidgetPTW.DialogPTW`) shows a single flat table — `RiskPreview.RiskItemsTable` — in **all three modes** (new, edit, view). There's no separate checkbox-based generic-selection step embedded in the PTW dialog anymore; the table itself, and the buttons above it, are the entire UI:
 
-Clicking **Preview Risk Assessment** (`WidgetPTW.DialogPTW.openRiskPreviewDialog`, backed by `RiskPreviewTable.py`) materializes every `RiskItem` from the currently-checked generic assessments into one flat, deduplicated table, where the user can edit any cell directly, delete individual rows, or add new rows from scratch. **This materialized table — not the raw checkbox selection — is what actually gets persisted**, as a single `RiskAssessment` with `title = str(ptw_id)` and `ptw_id = <the PTW's id>`, on submit (`MainWindow._savePTWRiskAssessment`, upsert via `PUT /risks`).
+- **Add Items** → a chooser with three ways to populate rows:
+  - *Add Manually* — `DialogRiskItem`, a single-item form (Hazard/Effect/Free Analysis/Control/Controlled Analysis/Evaluation), reused for both creating a new row and (via double-click on an existing row) editing one in place.
+  - *Use Generic Risks* — `DialogSelectGenericRisks`, a modal that embeds `TableRisks` (the same checkbox-list widget the old embedded selector used, just in a dialog instead of inline) over the generic library (`globalData.allRiskAssessments`); every `RiskItem` from the checked assessments is deep-copied in.
+  - *Import from Excel* — `RiskItemsTable._parseRiskItemsFile()`, built on the shared `utils.parseTabularFile()` reader (see below); invalid rows are skipped and reported, not fatal.
+- **Delete Selected Items** — removes checked rows after confirmation.
+- **Print Preview** — calls `ReportGenerator.riskAssessmentReport(riskAssessment=...)` directly on the in-progress table.
 
-It's an **accumulate** model: (re-)checking a generic merges its items in, deduped against what's already there; *unchecking* a generic never retroactively strips its already-materialized rows — only an explicit row delete in Preview does. If the user never opens Preview at all, the same merge runs silently at submit time so nothing checked is ever lost.
+Every addition path (manual, generic-picker, Excel import) and every in-place edit runs through the same dedup check — `riskItemKey()` (exact match, case/whitespace-insensitive, across all 6 fields): a new item identical to one already present is silently rejected (with a message), and an edit that would make a row identical to a *different* existing row is discarded and reverted rather than applied.
 
-Viewing an already-submitted PTW shows this materialized table directly, read-only (`RiskItemsTable(readonly=True)`) — not the old per-generic-title list. PTWs submitted before this table existed (no `ptw_id` row) simply show an empty table; there is no backfill migration.
+**Persistence**: there is no intermediate "preview" state distinct from what's saved — the table *is* the data. On submit, `MainWindow._savePTWRiskAssessment` reads `dlg.riskAssessmentPreviewTable.getRiskItems()` straight from the table and upserts it as a single `RiskAssessment` with `title = str(ptw_id)` and `ptw_id = <the PTW's id>` (`PUT /risks`). Viewing an already-submitted PTW fetches and shows that same row set read-only. PTWs from before this table existed (no `ptw_id` row) just show an empty table — no backfill migration.
 
 On **re-request**, the server additively copies the original PTW's `ptw_id` row set onto the new PTW's `ptw_id` (`risksDb.copyRiskAssessmentForPTW`, run from `POST /ptws/attachments/copy` right after the attachment file copy), so custom rows from the original carry over even if the user doesn't reselect or retype them in the new request.
+
+**Status of `ptw.risks`**: `PTWData` still has a `risks: list[str]` field (generic-title list) and `addRisk()`/`updateRequirements()` still populate it from tool/hazard/control `RISK`-type requirements, but the `validate()` check that used to enforce "selecting X requires risk assessment Y" is commented out — the field is inert and slated for removal along with the `RISK` requirement type, now that risk content is authored directly rather than derived from required generic titles.
+
+### Shared tabular file parsing
+
+`utils.parseTabularFile(filepath, headers)` reads a `.xlsx` or `.csv` file and returns its data rows re-ordered to match a given list of column headers — matching is order-independent and case/whitespace/newline-insensitive, so the caller's headers and the file's actual column order never need to line up. It raises `ValueError` listing any header it couldn't find. It does not skip blank rows itself, so callers that number rows against the source file can still do so accurately.
+
+Two importers share it: `RiskItemsTable._parseRiskItemsFile()` (risk items, with per-row required-field and analysis-format validation) and `ImportUsersExcel.parseFile()` (bulk user import, with username/role/department validation).
 
 ---
 
@@ -570,14 +583,14 @@ The desktop client is structured around role-based main windows. After login, `M
 | `SSEListener.py`            | QThread that connects to `/events` and emits real-time PTW events|
 | `PTWData.py`                | Mirrored data model classes (client-side copy)                   |
 | `Isolation.py`              | Client-side isolation model (tags `StrEnum` + `Isolation` class) |
-| `utils.py`                  | Shared helpers: `resource_path`, `objToDict`, `dictToObj`        |
+| `utils.py`                  | Shared helpers: `resource_path`, `objToDict`, `dictToObj`, `parseTabularFile` |
 | `User.py`                   | User model                                                       |
 | `WidgetPTW.py`              | Full PTW form (create/view/edit)                                 |
 | `TablePTWs.py`              | Table listing all PTWs with filters; supports Excel export       |
 | `TableUsers.py`             | Admin user management table; supports bulk user import from Excel|
 | `ImportUsersExcel.py`       | Parses bulk-user Excel/CSV imports + DialogUsersPreview dialog   |
-| `TableRisks.py`             | Generic risk assessment list and editor (checkbox selector when requesting a PTW; CRUD table in the Safety admin tab) |
-| `RiskPreviewTable.py`       | Flat editable/read-only risk-item table + Preview dialog — materializes a PTW's own risk assessment from selected generics |
+| `TableRisks.py`             | Generic risk assessment CRUD list (Safety admin tab); also embedded read-only+checkboxes inside `DialogSelectGenericRisks` |
+| `RiskPreview.py`            | `DialogRiskItem` (single-item editor), `RiskItemsTable` (the flat table used for a PTW's risk assessment in all modes — add/delete/import/generic-pick, with dedup), `DialogSelectGenericRisks`, `RiskAssessmentPreview()` popup/embedded factory |
 | `TableIsolations.py`        | All available isolation points table                             |
 | `TableAttachments.py`       | PTW attachment management                                        |
 | `TabServerLogs.py`          | Admin-only log viewer: collapsible file panels, lazy load, level filter, color-coded lines |
@@ -585,7 +598,6 @@ The desktop client is structured around role-based main windows. After login, `M
 | `SearchableComboBox.py`     | Reusable editable combo box with fuzzy-match autocomplete; accepts free text not in its list |
 | `DialogUser.py`             | Create/edit user dialog                                          |
 | `DialogIsolation.py`        | Create/edit isolation dialog                                     |
-| `DialogRisk.py`             | Risk item creation dialog                                        |
 | `DialogSelectIsolations.py` | Dialog to choose isolations when requesting hold                 |
 | `DialogSettings.py`         | App settings (server URL, etc.)                                  |
 | `ReportGenerator.py`        | Generates printable PDF permit reports and Excel exports         |
