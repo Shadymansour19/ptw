@@ -390,7 +390,7 @@ class DialogPTW(QDialog):
             if err:
                 QMessageBox.warning(self, t("Warning"), t("Failed to load PTW-specific risk assessment") + f"\n{err}")
             elif ptwSpecificRisk:
-                self.riskAssessment.risks = ptwSpecificRisk.risks
+                self.riskAssessment = ptwSpecificRisk
 
         self.riskAssessmentPreviewTable = RiskAssessmentPreview(self.tabRisks, self.riskAssessment, readonly=readOnly)
         lytRisks.addWidget(self.riskAssessmentPreviewTable, stretch=1)

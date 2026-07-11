@@ -162,14 +162,10 @@ class ReportGenerator:
         if err:
             ptwSpecificRisk = None
 
-        n = len(ptwSpecificRisk.risks) if ptwSpecificRisk else 0
-        risks_bullets = [f'Risk Assessment ({n} item{"s" if n != 1 else ""})'] if n else []
-
         tableAdditionalInfoData = [
             [Paragraph('Tools', styles['Heading3']), listToBullets(ptw.tools, styles['Normal'])],
             [Paragraph('Hazards', styles['Heading3']), listToBullets(ptw.hazards, styles['Normal'])],
             [Paragraph('Controls', styles['Heading3']), listToBullets(ptw.controls, styles['Normal'])],
-            [Paragraph('Risks', styles['Heading3']), listToBullets(risks_bullets, styles['Normal'])],
         ]
         if ptw.miwi:
             tableAdditionalInfoData.append([Paragraph('MIWI', styles['Heading3']), listToBullets([ptw.miwi], styles['Normal'])])
@@ -399,7 +395,7 @@ class ReportGenerator:
                 return err
             else:
                 ReportGenerator.openPDF(filepath)
-        ReportGenerator.riskAssessmentReport(ptw.id, ptw.description, ptwSpecificRisk)
+        ReportGenerator.riskAssessmentReport(ptwSpecificRisk)
 
         err, attachs = ClientRequests.getPtwAttachmentNames(loggedUser, ptw.id)
         if err:
@@ -704,7 +700,7 @@ class ReportGenerator:
             ReportGenerator.openPDF(mosPdfFile.name)
         
 
-    def riskAssessmentReport(ptwId: str = '', ptwTitle: str = '', riskAssessment: RiskAssessment = None):
+    def riskAssessmentReport(riskAssessment: RiskAssessment = None):
         LOGO_IMG_WIDTH = 35*mm
         # Cols: No | Hazard | Effect | S | L | Risk(free) | Control | S | L | Risk(ctrl) | Evaluation
         TABLE_WIDTH_WEIGHTS = [7, 30, 33, 4, 4, 9, 52, 5, 5, 10, 20]
@@ -714,6 +710,9 @@ class ReportGenerator:
         if not riskAssessment or not riskAssessment.risks:
             return
 
+        ptwId = riskAssessment.ptw_id
+        title = riskAssessment.title
+        
         buffer = io.BytesIO()
         timestamp = datetime.now().strftime('%d-%m-%Y - %H:%M:%S')
         doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=2*MARGIN, rightMargin=2*MARGIN, topMargin=1.5*MARGIN+LOGO_IMG_WIDTH, bottomMargin=MARGIN)
@@ -827,7 +826,7 @@ class ReportGenerator:
         ]))
         
         elements = [table]
-
+            
         def pageHeaderAndWatermark(canvas: canvas.Canvas, doc):
             canvas.saveState()
 
@@ -836,7 +835,12 @@ class ReportGenerator:
 
             logo1 = Image(resource_path("assets/rashpetco-logo.png"), LOGO_IMG_WIDTH, LOGO_IMG_WIDTH)
             logo2 = Image(resource_path("assets/burullus-logo.png"),  LOGO_IMG_WIDTH, LOGO_IMG_WIDTH)
-            label = Paragraph(f'RA for PTW# {ptwId} <br/>' + _html.escape(ptwTitle), styles['Title'])
+            label = Paragraph(
+                (f'PTW#{ptwId} - Specific Risk Assessment <br/>' if ptwId else '') + _html.escape(title), 
+                styles['Title']
+            )
+            print(ptwId)
+            print(title)
 
             table = Table([[logo1, label, logo2]], colWidths=[1.2*LOGO_IMG_WIDTH, dataTableWidth - 2.4*LOGO_IMG_WIDTH, 1.2*LOGO_IMG_WIDTH])
             table.setStyle(TableStyle([

@@ -369,7 +369,7 @@ class _RiskPreviewDialog(QDialog):
         lyt = QVBoxLayout()
         self.setLayout(lyt)
 
-        label = riskAssessment.title or t("Risk Assessment Preview")
+        label = f'PTW#{riskAssessment.ptw_id} - Specific Risk Assessment' if riskAssessment.ptw_id else riskAssessment.title or t("Risk Assessment Preview")
         self.setWindowTitle(t("View mode" if readonly else "Edit mode") + " - " + t(label))
         lbl = QLabel(label)
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -418,7 +418,7 @@ class _RiskPreviewDialog(QDialog):
     
     def printPreview(self):
         from ReportGenerator import ReportGenerator
-        ReportGenerator.riskAssessmentReport(ptwId=self.riskAssessment.ptw_id or '', ptwTitle=self.riskAssessment.title or '', riskAssessment=self.riskAssessment)
+        ReportGenerator.riskAssessmentReport(riskAssessment=self.riskAssessment)
 
 
 class _RiskPreviewWidget(QWidget):
@@ -430,7 +430,7 @@ class _RiskPreviewWidget(QWidget):
         lyt = QVBoxLayout()
         self.setLayout(lyt)
 
-        label = riskAssessment.title or t("Risk Assessment Preview")
+        label = f'PTW#{riskAssessment.ptw_id} - Specific Risk Assessment' if riskAssessment.ptw_id else riskAssessment.title or t("Risk Assessment Preview")
         lbl = QLabel(t(label))
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -461,7 +461,7 @@ class _RiskPreviewWidget(QWidget):
 
     def printPreview(self):
         from ReportGenerator import ReportGenerator
-        ReportGenerator.riskAssessmentReport(ptwId=self.riskAssessment.ptw_id or '', ptwTitle=self.riskAssessment.title or '', riskAssessment=self.riskAssessment)
+        ReportGenerator.riskAssessmentReport(riskAssessment=self.riskAssessment)
 
 
 def RiskAssessmentPreview(parent, riskAssessment: RiskAssessment, readonly: bool = False, popup: bool = False):
