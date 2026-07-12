@@ -570,11 +570,8 @@ class MainWindow(QMainWindow):
         viewPTWDialog = DialogPTW(self, self.loggedUser, ptw, None, False, True, f'View Mode - PTW# {ptw.id}')
         viewPTWDialog.exec()
 
-    def _savePTWRiskAssessment(self, ptwId: int, riskItems: list, callback=None):
-        """Persist (or clear) the materialized, previewed risk table for a PTW. Update is a
-        delete-then-insert upsert server-side, so it's correct whether or not a row already exists."""
-        if riskItems:
-            risk = RiskAssessment(title=str(ptwId), date=datetime.now().strftime('%d %b %Y'), risks=riskItems, ptw_id=ptwId)
+    def _savePTWRiskAssessment(self, ptwId: int, risk: RiskAssessment, callback=None):
+        if risk:
             ClientRequests.updateRiskAssessment(self.loggedUser, risk, callback=callback)
         else:
             ClientRequests.deleteRiskAssessment(self.loggedUser, str(ptwId), ptwId, callback=callback)
@@ -591,7 +588,8 @@ class MainWindow(QMainWindow):
             def on_risk_saved(err, _):
                 if err:
                     QMessageBox.warning(self, "Warning", f"PTW saved but failed to save risk assessment: {err}")
-            self._savePTWRiskAssessment(ptw.id, editPTWDialog.riskAssessmentPreviewTable.getRiskItems(), callback=on_risk_saved)
+            risk = RiskAssessment(title=ptw.description, date=datetime.now().strftime('%d %b %Y'), risks=editPTWDialog.riskAssessmentPreviewTable.getRiskItems(), ptw_id=ptw.id)
+            self._savePTWRiskAssessment(ptw.id, risk, callback=on_risk_saved)
 
             self.stack.currentWidget().updatePTW(row, ptw)
 
@@ -626,7 +624,8 @@ class MainWindow(QMainWindow):
             def on_risk_saved(err, _):
                 if err:
                     QMessageBox.warning(self, "Warning", f"PTW saved but failed to save risk assessment: {err}")
-            self._savePTWRiskAssessment(ptwId, dlg.riskAssessmentPreviewTable.getRiskItems(), callback=on_risk_saved)
+            risk = RiskAssessment(title=ptw.description, date=datetime.now().strftime('%d %b %Y'), risks=dlg.riskAssessmentPreviewTable.getRiskItems(), ptw_id=ptwId)
+            self._savePTWRiskAssessment(ptwId, risk, callback=on_risk_saved)
             # On re-request, the server also copies the original PTW's own risk rows onto
             # this new ptw_id (server/app.py copyPtwAttachments), additively — so any custom
             # rows from the original that weren't re-selected/re-added here still carry over.

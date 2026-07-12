@@ -40,7 +40,7 @@ def on_login_success(user):
         return
 
     mainWindow.on_logout.connect(on_logout)
-    mainWindow.show()
+    mainWindow.showMaximized()
     loginWindow.hide()
 
 
