@@ -1,7 +1,7 @@
 import copy
-from PyQt6.QtCore import Qt, QPoint, QDir
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QTableWidget, QLabel, QAbstractItemView,
-                              QHeaderView, QTableWidgetItem, QMenu, QDialog, QMessageBox, QFileDialog)
+from PyQt6.QtCore import Qt, QPoint, QDir, QSize
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QLabel, QAbstractItemView,
+                              QHeaderView, QTableWidgetItem, QMenu, QDialog, QMessageBox, QFileDialog, QPushButton)
 from PyQt6.QtGui import QFont, QAction
 from typing import Iterable
 import qtawesome as qta
@@ -10,6 +10,7 @@ from DialogUser import DialogUser
 from clientRequests import ClientRequests
 from ImportUsersExcel import ImportUsersExcel, DialogUsersPreview
 from GlobalData import globalData
+from CheckableComboBox import CheckableComboBox
 
 class TableUsers(QWidget):
     def __init__(self, parent, loggedUser, label: str):
@@ -24,16 +25,50 @@ class TableUsers(QWidget):
         self.summeryLabels = ['Username', 'Name', 'Role', 'Department', 'Email', 'EXT', 'Status']
         self.summeryFields = ['username', 'name', 'role', 'department', 'email', 'ext', 'is_active']
 
+        lblLyt = QHBoxLayout()
+        lblLyt.setContentsMargins(10, 0, 10, 0)
         self.label = label
         lbl = QLabel(label)
         lbl.setFont(QFont("Helvetica", 16, QFont.Weight.Bold))
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lblLyt.addStretch()
+        lblLyt.addWidget(lbl)
+
+        self._filterBtn = QPushButton(qta.icon('fa6s.filter'), "")
+        self._filterBtn.setToolTip("Filter")
+        self._filterBtn.setIconSize(QSize(32, 32))
+        self._filterBtn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._filterBtn.setStyleSheet("""
+            QPushButton { background: transparent; border: none; padding: 6px; border-radius: 6px; }
+            QPushButton:hover { background: rgba(128, 128, 128, 0.15); }
+            QPushButton:pressed { background: rgba(128, 128, 128, 0.30); }
+            QPushButton:checked { background: palette(highlight); }
+            QPushButton:checked:hover { background: palette(link); }
+        """)
+        self._filterBtn.setObjectName("filterBtn")
+        self._filterBtn.setCheckable(True)
+        self._filterBtn.toggled.connect(self._toggleFilters)
+        lblLyt.addStretch()
+        lblLyt.addWidget(self._filterBtn)
+
+        self._filterBar = QWidget()
+        filterBarLayout = QHBoxLayout(self._filterBar)
+        filterBarLayout.setContentsMargins(0, 0, 0, 0)
+        filterBarLayout.setSpacing(0)
+        self._filterCombos = []
+        for _ in self.summeryLabels:
+            combo = CheckableComboBox()
+            combo.filterChanged.connect(self._applyFilters)
+            filterBarLayout.addWidget(combo)
+            self._filterCombos.append(combo)
+        self._filterBar.setVisible(False)
 
         self.setLayout(lyt)
         self.setAutoFillBackground(False)
-        lyt.addWidget(lbl)
+        lyt.addLayout(lblLyt)
+        lyt.addWidget(self._filterBar)
         lyt.addWidget(self.tbl)
-        
+
         self.tbl.setColumnCount(len(self.summeryLabels))
         self.tbl.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tbl.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -49,18 +84,77 @@ class TableUsers(QWidget):
         self.tbl.setStyleSheet("QTableWidget { background: transparent; }")
         self.tbl.viewport().setAutoFillBackground(False)
         self.tbl.verticalHeader().hide()
-        
+        self.tbl.horizontalHeader().sectionResized.connect(self._syncFilterWidths)
+        self.tbl.horizontalHeader().sortIndicatorChanged.connect(self._onSorted)
+
         for u in self.users:
             data = self.userToRecord(u)
             self.tbl.insertRow(self.tbl.rowCount())
             for i,d in enumerate(data):
                 cell = QTableWidgetItem(d)
                 self.tbl.setItem(self.tbl.rowCount()-1, i, cell)
-    
+
+    def _toggleFilters(self, checked):
+        self._filterBar.setVisible(checked)
+        if checked:
+            self._populateFilters()
+            self._syncFilterWidths()
+            self._applyFilters()
+        else:
+            self._showAllRows()
+
+    def _populateFilters(self):
+        col_values = [set() for _ in self.summeryLabels]
+        for row in range(self.tbl.rowCount()):
+            for col in range(len(self.summeryLabels)):
+                item = self.tbl.item(row, col)
+                if item:
+                    col_values[col].add(item.text())
+        for col, combo in enumerate(self._filterCombos):
+            combo.setItems(col_values[col], preserve_selection=True)
+
+    def _syncFilterWidths(self):
+        if not self._filterBar.isVisible():
+            return
+        header = self.tbl.horizontalHeader()
+        for i, combo in enumerate(self._filterCombos[:-1]):
+            combo.setFixedWidth(header.sectionSize(i))
+        self._filterCombos[-1].setMinimumWidth(header.sectionSize(len(self._filterCombos) - 1))
+
+    def _applyFilters(self):
+        active = [
+            (col, combo.checkedItems())
+            for col, combo in enumerate(self._filterCombos)
+            if combo.isFiltering()
+        ]
+        for row in range(self.tbl.rowCount()):
+            hide = any(
+                (item := self.tbl.item(row, col)) is not None and item.text() not in allowed
+                for col, allowed in active
+            )
+            self.tbl.setRowHidden(row, hide)
+
+    def _showAllRows(self):
+        for row in range(self.tbl.rowCount()):
+            self.tbl.setRowHidden(row, False)
+
+    def _onSorted(self):
+        self._syncUsersData()
+        if self._filterBar.isVisible():
+            self._applyFilters()
+
+    def _syncUsersData(self):
+        username_to_user = {u.username: u for u in self.users}
+        self.users = [username_to_user[self.tbl.item(r, 0).text()] for r in range(self.tbl.rowCount())]
+
     def clear(self):
         self.tbl.clearContents()
         self.users.clear()
         self.tbl.setRowCount(0)
+        for combo in self._filterCombos:
+            combo._model.clear()
+            combo._addSelectAllItem()
+            combo._updateText()
 
     def userToRecord(self, user):
         record = []
@@ -74,10 +168,17 @@ class TableUsers(QWidget):
     def addUserToGUI(self, newUser):
         self.users.append(newUser)
         data = self.userToRecord(newUser)
-        self.tbl.insertRow(self.tbl.rowCount())
+        self.tbl.setSortingEnabled(False)
+        row = self.tbl.rowCount()
+        self.tbl.insertRow(row)
         for i,d in enumerate(data):
             cell = QTableWidgetItem(d)
-            self.tbl.setItem(self.tbl.rowCount()-1, i, cell)
+            self.tbl.setItem(row, i, cell)
+        self.tbl.setSortingEnabled(True)
+        self._syncUsersData()
+        if self._filterBar.isVisible():
+            self._populateFilters()
+            self._applyFilters()
 
     def addUser(self, newUser):
         def on_done(err, _):
@@ -140,9 +241,15 @@ class TableUsers(QWidget):
                 return
             self.users[row] = user
             data = self.userToRecord(user)
+            self.tbl.setSortingEnabled(False)
             for i,d in enumerate(data):
                 cell = QTableWidgetItem(d)
                 self.tbl.setItem(row, i, cell)
+            self.tbl.setSortingEnabled(True)
+            self._syncUsersData()
+            if self._filterBar.isVisible():
+                self._populateFilters()
+                self._applyFilters()
         ClientRequests.updateUser(self.loggedUser, user, callback=on_done)
 
     def deleteUser(self, row: int):
@@ -157,6 +264,8 @@ class TableUsers(QWidget):
                 return
             self.users.pop(row)
             self.tbl.removeRow(row)
+            if self._filterBar.isVisible():
+                self._populateFilters()
 
         ClientRequests.deleteUser(self.loggedUser, self.users[row].getUsername(), callback=on_done)
     
@@ -177,9 +286,15 @@ class TableUsers(QWidget):
                 return
             user.setIsActive(activate)
             data = self.userToRecord(user)
+            self.tbl.setSortingEnabled(False)
             for i,d in enumerate(data):
                 cell = QTableWidgetItem(d)
                 self.tbl.setItem(row, i, cell)
+            self.tbl.setSortingEnabled(True)
+            self._syncUsersData()
+            if self._filterBar.isVisible():
+                self._populateFilters()
+                self._applyFilters()
         ClientRequests.setUserActive(self.loggedUser, user.getUsername(), activate, callback=on_done)
 
     def addNewUserDialog(self):
