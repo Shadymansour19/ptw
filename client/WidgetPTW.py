@@ -388,8 +388,8 @@ class DialogPTW(QDialog):
         if new and referencePTW:
             err, risk = ClientRequests.getPTWSpecificRiskAssessment(self.loggedUser, referencePTW.id)
             if err:
-                QMessageBox.warning(parent, t("Error"), t("Failed to fetch risk assessment for PTW") + f"# {ptw.id}. {err}")
-            else:
+                QMessageBox.warning(parent, t("Error"), t("Failed to fetch risk assessment for PTW") + f"# {referencePTW.id}. {err}")
+            elif risk:
                 self.riskAssessment = risk
         elif self.ptw.id:
             err, ptwSpecificRisk = ClientRequests.getPTWSpecificRiskAssessment(self.loggedUser, self.ptw.id)
