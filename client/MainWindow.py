@@ -653,6 +653,13 @@ class MainWindow(QMainWindow):
         ClientRequests.requestToRunPTW(self.loggedUser, ptw.id, pa, ts, callback=self._on_request_done_generic)
     
     def runAcceptTW(self, row: int, ptw: PTWData):
+        reply = QMessageBox.question(
+            self, f'Accept PTW#{ptw.id} Run', f"Are you sure you want to accept run request for PTW#{ptw.id}?", 
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
         ia = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         ClientRequests.runResponsePTW(self.loggedUser, ptw.id, ia, ts, True, callback=self._on_request_done_generic)
@@ -663,8 +670,10 @@ class MainWindow(QMainWindow):
         ClientRequests.runResponsePTW(self.loggedUser, ptw.id, ia, ts, False, callback=self._on_request_done_generic)
 
     def requestToClsPTW(self, row: int, ptw: PTWData):
-        # QMessageBox.aboutQt(self)
-        reply = QMessageBox.question(self, 'Close PTW', f"Are you sure you want to close PTW# '{ptw.id}'?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        reply = QMessageBox.question(
+            self, 'Close PTW', f"Are you sure you want to close PTW#{ptw.id}?", 
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
+        )
         if reply != QMessageBox.StandardButton.Yes:
             return
     
@@ -673,6 +682,13 @@ class MainWindow(QMainWindow):
         ClientRequests.requestToClsPTW(self.loggedUser, ptw.id, pa, ts, callback=self._on_request_done_generic)
     
     def clsAcceptPTW(self, row: int, ptw: PTWData):
+        reply = QMessageBox.question(
+            self, f'Accept PTW#{ptw.id} Close', f"Are you sure you want to accept close request for PTW#{ptw.id}? This is irreversible", 
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
         ia = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         ClientRequests.clsResponsePTW(self.loggedUser, ptw.id, ia, ts, True, callback=self._on_request_done_generic)
@@ -1198,6 +1214,13 @@ class MainWindow(QMainWindow):
         self.tabArchivedPTWs.sort()
 
     def acceptPTW(self, row: int, ptw: PTWData):
+        reply = QMessageBox.question(
+            self, f'Accept PTW#{ptw.id}', f"Are you sure you want to approve request for PTW#{ptw.id}? This is irreversible", 
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
         approval = PTWData.Approval(PTWData.ApprovalActions.APPROVED, self.loggedUser.getUsername(), datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
         ClientRequests.updateApprovalPTW(self.loggedUser, ptw.id, approval, callback=self._on_request_done_generic)
         
