@@ -1561,10 +1561,15 @@ class AdminMainWindow(MainWindow):
         self.btnFAB.setVisible(tab in [self.tabAllUsers])
     
     def refreshGUI(self, refreshArchivedPTWs: bool = False):
-        super().refreshWelcomePage()
-        self.tabAllUsers.clear()
-        for user in globalData.allUsers.values():
-            self.tabAllUsers.addUserToGUI(user)
+        def on_done(err, _):
+            self.tabAllUsers.clear()
+            for user in globalData.allUsers.values():
+                self.tabAllUsers.addUserToGUI(user)
+
+            QApplication.beep()
+            self.statusBar().showMessage("GUI refreshed successfully.", 2000)
+
+        globalData.refresh(self.loggedUser, None, refreshUsers=True, callback=on_done)
         self.tabServerLogs.refresh()
 
 
