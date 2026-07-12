@@ -254,9 +254,9 @@ class LoginWindow(QMainWindow):
         self.boxPassword.returnPressed.connect(self.login)
         self.btnForgotPassword.clicked.connect(self.forgotPassword)
 
-        self.btnCancel = QPushButton(qta.icon('fa5s.times'), "Cancel")
-        self.btnLogin = QPushButton(qta.icon('fa6s.arrow-right-to-bracket'), "Login")
-        self.btnGuest = QPushButton(qta.icon('fa5s.user'), "Login as a guest")
+        self.btnCancel = QPushButton(qta.icon('fa5s.times'), "&Cancel")
+        self.btnLogin = QPushButton(qta.icon('fa6s.arrow-right-to-bracket'), "&Login")
+        self.btnGuest = QPushButton(qta.icon('fa5s.user'), "Login as a &Guest")
 
         self.btnCancel.clicked.connect(self.close)
         self.btnLogin.clicked.connect(self.login)
