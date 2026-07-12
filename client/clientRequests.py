@@ -133,6 +133,19 @@ class ClientRequests:
             return data.get("error", "Failed to update theme")
 
     @async_request
+    def setUserActive(loggedUser: User, username: str, is_active: bool):
+        response = None
+        try:
+            response = requests.patch(f'{ClientRequests.SERVER_URL}/users/active', json={'username': username, 'is_active': is_active}, auth=(loggedUser.getUsername(), loggedUser.getPassword()))
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            err = response.json().get("error", response.text) if response is not None else str(e)
+            return f"Failed to update active status\n{err}"
+        if not data.get("success"):
+            return data.get("error", "Failed to update active status")
+
+    @async_request
     def deleteUser(loggedUser: User, username: str):
         response = None
         try:

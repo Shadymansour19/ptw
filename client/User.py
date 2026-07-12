@@ -32,14 +32,15 @@ class UserDepartments(enum.StrEnum):
 
 
 class SecuredUser:
-    def __init__(self, username: str='', name: str='', role: UserRoles=None, department: str='', email: str='', ext: str=''):
+    def __init__(self, username: str='', name: str='', role: UserRoles=None, department: str='', email: str='', ext: str='', is_active: bool=True):
         self.username = username
         self.name = name
         self.role = role
         self.department = department
         self.email = email
         self.ext = ext
-    
+        self.is_active = is_active
+
     def setAll(self, data: dict):
         for k,v in data.items():
             if hasattr(self, k):
@@ -73,6 +74,10 @@ class SecuredUser:
         self.ext = ext
         return self
 
+    def setIsActive(self, is_active: bool):
+        self.is_active = is_active
+        return self
+
     def getUsername(self):
         return self.username
     
@@ -90,6 +95,9 @@ class SecuredUser:
     
     def getExt(self):
         return self.ext
+
+    def getIsActive(self):
+        return self.is_active
 
 
 class User(SecuredUser):

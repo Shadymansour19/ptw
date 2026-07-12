@@ -21,8 +21,8 @@ class TableUsers(QWidget):
         self.loggedUser = loggedUser
         self.users = []
 
-        self.summeryLabels = ['Username', 'Name', 'Role', 'Department', 'Email', 'EXT']
-        self.summeryFields = ['username', 'name', 'role', 'department', 'email', 'ext']
+        self.summeryLabels = ['Username', 'Name', 'Role', 'Department', 'Email', 'EXT', 'Status']
+        self.summeryFields = ['username', 'name', 'role', 'department', 'email', 'ext', 'is_active']
 
         self.label = label
         lbl = QLabel(label)
@@ -65,7 +65,10 @@ class TableUsers(QWidget):
     def userToRecord(self, user):
         record = []
         for field in self.summeryFields:
-            record.append(str(getattr(user, field)))
+            value = getattr(user, field)
+            if field == 'is_active':
+                value = 'Active' if value else 'Inactive'
+            record.append(str(value))
         return record
     
     def addUserToGUI(self, newUser):
@@ -98,19 +101,26 @@ class TableUsers(QWidget):
             return
         
         row = row.row()
+        user = self.users[row]
         menu = QMenu(self.tbl)
-        
+
         actionView = QAction(qta.icon('fa6s.eye'), 'View', self.tbl)
         actionEdit = QAction(qta.icon('fa6s.pen'), 'Edit', self.tbl)
         # actionDelete = QAction(qta.icon('fa5s.trash'), 'Delete', self.tbl)
-        
+        if user.getIsActive():
+            actionToggleActive = QAction(qta.icon('fa6s.user-slash'), 'Inactivate', self.tbl)
+        else:
+            actionToggleActive = QAction(qta.icon('fa6s.user-check'), 'Activate', self.tbl)
+
         actionView.triggered.connect(lambda: self.viewUser(row))
         actionEdit.triggered.connect(lambda: self.updateUser(row))
         # actionDelete.triggered.connect(lambda: self.deleteUser(row))
+        actionToggleActive.triggered.connect(lambda: self.toggleActive(row))
 
         menu.addAction(actionView)
         menu.addAction(actionEdit)
         # menu.addAction(actionDelete)
+        menu.addAction(actionToggleActive)
 
         menu.exec(self.tbl.mapToGlobal(pos))
     
@@ -150,6 +160,28 @@ class TableUsers(QWidget):
 
         ClientRequests.deleteUser(self.loggedUser, self.users[row].getUsername(), callback=on_done)
     
+    def toggleActive(self, row: int):
+        user = self.users[row]
+        activate = not user.getIsActive()
+        action = "activate" if activate else "inactivate"
+        reply = QMessageBox.question(
+            self, f"{action.capitalize()} User", f"Are you sure you want to {action} user '{user.getUsername()}'?", 
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        def on_done(err, _):
+            if err:
+                QMessageBox.warning(self, "Fail", err)
+                return
+            user.setIsActive(activate)
+            data = self.userToRecord(user)
+            for i,d in enumerate(data):
+                cell = QTableWidgetItem(d)
+                self.tbl.setItem(row, i, cell)
+        ClientRequests.setUserActive(self.loggedUser, user.getUsername(), activate, callback=on_done)
+
     def addNewUserDialog(self):
         from User import User
         newUser = User()

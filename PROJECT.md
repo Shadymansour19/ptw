@@ -381,14 +381,15 @@ New-user invitation email (`POST /users`) and the password-reset verification em
 | POST   | `/reset-password`         | Reset password with code           |
 
 ### Users
-| Method | Endpoint    | Description                             | Auth Required    |
-|--------|-------------|-----------------------------------------|------------------|
-| GET    | `/users`    | Get all users (secured view)            | Any              |
-| GET    | `/user`     | Get a specific user                     | Any              |
-| GET    | `/usernames`| Get all usernames                       | Any              |
-| POST   | `/users`    | Create a new user                       | Admin only       |
-| PUT    | `/users`    | Update a user                           | Admin or self    |
-| DELETE | `/users`    | Delete a user                           | Admin only       |
+| Method | Endpoint        | Description                                               | Auth Required |
+|--------|-----------------|-----------------------------------------------------------|---------------|
+| GET    | `/users`        | Get all users (secured view)                              | Any           |
+| GET    | `/user`         | Get a specific user                                       | Any           |
+| GET    | `/usernames`    | Get all usernames                                         | Any           |
+| POST   | `/users`        | Create a new user                                         | Admin only    |
+| PUT    | `/users`        | Update a user                                             | Admin or self |
+| PATCH  | `/users/active` | Activate/inactivate a user (`{"username", "is_active"}`)  | Admin only    |
+| DELETE | `/users`        | Delete a user                                             | Admin only    |
 
 ### PTWs
 | Method | Endpoint                    | Description                                |
@@ -485,6 +486,7 @@ department  VARCHAR(100)
 email       VARCHAR(100)
 ext         VARCHAR(50)
 theme       VARCHAR(20)
+is_active   BOOLEAN      NOT NULL DEFAULT TRUE
 ```
 
 ### `ptws`

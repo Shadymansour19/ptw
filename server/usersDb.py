@@ -36,9 +36,11 @@ class UsersDb:
                             department VARCHAR(100),
                             email VARCHAR(100),
                             ext VARCHAR(50),
-                            theme VARCHAR(20)
+                            theme VARCHAR(20),
+                            is_active BOOLEAN NOT NULL DEFAULT TRUE
                         )
                     """)
+                    cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE")
                     cursor.execute("SELECT COUNT(*) FROM users")
                     if cursor.fetchone()['count'] == 0:
                         seed_password = secrets.token_urlsafe(12)
@@ -198,6 +200,17 @@ class UsersDb:
                 conn.commit()
         except Exception:
             raise Exception(f"Error updating theme for user {username}")
+
+    def setUserActive(self, username: str, is_active: bool):
+        if not self.isUsernameExists(username):
+            raise Exception(f"User {username} does not exist")
+        try:
+            with CommonDB.get_conn() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("UPDATE users SET is_active = %s WHERE username = %s", (is_active, username))
+                conn.commit()
+        except Exception:
+            raise Exception(f"Error updating active status for user {username}")
 
     def deleteUser(self, user: User):
         if not self.isUsernameExists(user.getUsername()):

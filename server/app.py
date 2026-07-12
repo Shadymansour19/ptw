@@ -201,7 +201,8 @@ def getVerifiedUser(auth) -> User:
 
     user = userDB.getVerifiedUser(username, password)
     if user is not None:
-        return user
+        # Deactivated accounts are rejected on every authenticated request, not just login.
+        return user if user.getIsActive() else None
 
     # Guests aren't registered accounts: any username that isn't a real,
     # password-protected account is allowed through unauthenticated as a GUEST.
@@ -254,6 +255,9 @@ def login():
         password = auth.password if auth else None
         user = userDB.getVerifiedUser(username, password)
         if user:
+            if not user.getIsActive():
+                log.warning("Login rejected: user='%s' account is not active (ip=%s)", username, request.remote_addr)
+                return jsonify({"success": False, "error": "Your account is not active. Please contact an administrator."}), 403
             log.info("Login successful: user='%s' role=%s", username, user.getRole())
             return jsonify({"success": True, "user": objToDict(user)})
         log.warning("Login failed: invalid credentials for username='%s' (ip=%s)", username, request.remote_addr)
@@ -605,6 +609,31 @@ def updateUserTheme():
         return jsonify({"success": True})
     except Exception as e:
         log.error("PATCH /users/theme failed for '%s': %s", username, e, exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+@app.route("/users/active", methods=["PATCH"])
+def setUserActiveRequest():
+    authUser = getVerifiedUser(request.authorization)
+    if authUser is None or authUser.getRole() != UserRoles.ADMIN:
+        log.warning("PATCH /users/active unauthorized: requester='%s' (ip=%s)", authUser.getUsername() if authUser else "unauthenticated", request.remote_addr)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    username = data.get('username')
+    is_active = data.get('is_active')
+    if not username or is_active is None:
+        return jsonify({"success": False, "error": "Missing username or is_active"}), 400
+    if username == authUser.getUsername() and not is_active:
+        log.warning("PATCH /users/active: admin '%s' attempted to deactivate their own account", authUser.getUsername())
+        return jsonify({"success": False, "error": "You cannot deactivate your own account"}), 400
+    try:
+        userDB.setUserActive(username, is_active)
+        with globalData.lock:
+            globalData.allUsers[username] = userDB.getSecuredUser(username)
+        log.info("User %s: username='%s' by admin='%s'", "activated" if is_active else "deactivated", username, authUser.getUsername())
+        return jsonify({"success": True})
+    except Exception as e:
+        log.error("PATCH /users/active failed for '%s': %s", username, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
 
 

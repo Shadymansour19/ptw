@@ -100,7 +100,7 @@ class DialogUser(QDialog):
             QMessageBox.critical(self, "Error", "Username can't by empty!")
         elif self.isNew and self.toEditUser.getUsername() in globalData.allUsers:
             QMessageBox.critical(self, "Error", "Username already exists!")
-        elif len(self.toEditUser.getPassword()) < 6:
+        elif self.isNew and len(self.toEditUser.getPassword()) < 6:
             QMessageBox.critical(self, "Error", "Password must be at least 6 characters!")
         elif not self.toEditUser.getName():
             QMessageBox.critical(self, "Error", "Name can't be empty!")
