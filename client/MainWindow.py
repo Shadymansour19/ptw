@@ -1171,6 +1171,7 @@ class MainWindow(QMainWindow):
                 tab.sort()
 
             self.tabIsolations.setIsolations(globalData.isolations)
+            self.tabRisks.setRiskAssessmentsInGUI(globalData.allRiskAssessments)
 
             if refreshArchivedPTWs:
                 self.refreshArchivedPTWs()
@@ -1468,7 +1469,6 @@ class SafetyMainWindow(MainWindow):
     
     def refreshGUI(self, refreshArchivedPTWs: bool = False):
         super().refreshPtwUserGUI()
-        self.tabRisks.setRiskAssessmentsInGUI(globalData.allRiskAssessments)
 
 
 
