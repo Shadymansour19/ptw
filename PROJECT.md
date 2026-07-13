@@ -94,7 +94,7 @@ Typical stages, in order:
 
 Each approval action is recorded with the approver's username, timestamp, action taken, and an optional comment. Any `RETURNED` action anywhere in the log immediately marks the whole PTW `RETURNED`, regardless of position — this matters once parallel approvers exist, since a later `APPROVED` from a sibling approver must not paper over an earlier return.
 
-**Caveat:** a required `Approver` with a department different from the PTW's own `department` may not be able to see the PTW at all — see [KNOWN_ISSUES.md § M12](KNOWN_ISSUES.md).
+A required `Approver` with a department different from the PTW's own `department` still sees it: `GET /ptws` filters the server's in-memory PTW cache so a department sees a PTW if it either owns it or currently has a pending required-approver slot on it (`server/app.py` — `_ptwVisibleToDepartment`, `PTWData.pendingApprovers()`). See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) (Fixed § M12) for the history.
 
 **Approval Statuses:**
 
@@ -349,11 +349,7 @@ Maintenance and Work Instructions (MIWI) are PDF documents describing the steps 
 
 **Uploads** always land in the uploading user's own department folder — `POST /miwi` takes the department from the client-supplied field (the uploader's own department), whitelisted against the `UserDepartments` enum, and creates the folder on demand.
 
-**Access control** is enforced server-side by role (`server/app.py` — `_RESTRICTED_MIWI_ROLES`), not just by what the client requests:
-
-- `User`, `Guest`, and `Isolator` can only list/download MIWIs from their own department. They cannot reach another department's folder or the legacy flat files even by omitting `department` from the request — the server always confines them.
-- All other roles (Coordinator, Issuing, Safety, PDH, PGM, SOD, DFGM, Admin) can view MIWIs across every department, and see the merged list (plus legacy flat files) when `department` is omitted from `GET /miwis`.
-- Downloading a specific MIWI already referenced by a PTW (`GET /miwi`) always resolves correctly for approver-type roles regardless of which department it belongs to, since a PTW may be reviewed by approvers outside its own department.
+**Reading is unrestricted by role** — any authenticated user can list (`GET /miwis`) or download (`GET /miwi`) a MIWI from any department, including the legacy flat files, since a PTW may need review by people outside its own department. `department` only narrows/prefers results when supplied (`server/app.py` — `_resolveMiwiPath`); it's never enforced against the caller's own department for these read endpoints. Only **uploading** (`POST /miwi`) is confined to the uploader's own department, per above.
 
 A handful of legacy files still sit directly under `server/miwi/` (uploaded before the per-department layout existed) and are only reachable by approver-type roles until sorted into department folders manually.
 
@@ -459,7 +455,7 @@ The server broadcasts role-filtered events over this stream. The client connects
 | Method | Endpoint     | Description                                                      | Auth Required |
 |--------|--------------|-------------------------------------------------------------------|---------------|
 | GET    | `/risks`     | Get all **generic** risk assessments (`ptw_id IS NULL`)          | Any           |
-| GET    | `/risks/ptw` | Get one PTW's specific risk assessment (body: `{"ptw_id": ...}`) | Any (department-scoped for non-approver roles) |
+| GET    | `/risks/ptw` | Get one PTW's specific risk assessment (body: `{"ptw_id": ...}`) | Any authenticated user, any department |
 | POST   | `/risks`     | Create a risk assessment                                          | Safety (generic) or any user for their own PTW's row (`ptw_id` set) |
 | PUT    | `/risks`     | Update a risk assessment                                          | same as POST  |
 | DELETE | `/risks`     | Delete a risk assessment                                          | same as POST  |
@@ -472,7 +468,7 @@ The server broadcasts role-filtered events over this stream. The client connects
 | GET    | `/miwis` | List MIWI filenames, optionally scoped by `department`         |
 | POST   | `/miwi`  | Upload a new MIWI PDF into the uploader's own department       |
 
-`department` is only advisory for approver-type roles (used to narrow results); for `User`/`Guest`/`Isolator` it's enforced server-side regardless of what's sent — see [MIWI Documents](#miwi-documents).
+`department` is advisory only for both read endpoints — it narrows/prefers results but is never enforced against the caller's department; any authenticated user can read any department's MIWIs. Only `POST /miwi` (upload) is confined to the uploader's own department — see [MIWI Documents](#miwi-documents).
 
 ### Logs
 Admin-only. The request body is JSON (`{"filename": "<name>"}`) to fetch a specific file; omit the body to list all files.

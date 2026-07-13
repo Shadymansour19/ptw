@@ -29,29 +29,18 @@ _MIWI_DIR = os.path.join(_BASE_DIR, 'miwi')
 _LOGS_DIR = os.path.join(_BASE_DIR, 'logs')
 os.makedirs(_MIWI_DIR, exist_ok=True)
 _MIWI_DEPARTMENTS = {d.value for d in UserDepartments}
-# Same roles MainWindow.py restricts to their own department for PTW listing;
-# everyone else (coordinators, issuing, safety, PDH/PGM/SOD/DFGM, admin, ...) is
-# an approver-type role that may view MIWIs across all departments.
-_RESTRICTED_MIWI_ROLES = {UserRoles.USER, UserRoles.GUEST, UserRoles.ISOLATOR}
+# PTW listing itself only restricts USER/GUEST (MainWindow.refreshPtwUserGUI passes
+# department=None for ISOLATOR — isolators need cross-department PTW visibility).
+# MIWI documents and PTW-specific risk assessments are reviewable by any authenticated
+# user regardless of department — only PTW listing itself is department-scoped.
+_RESTRICTED_PTW_ROLES = {UserRoles.USER, UserRoles.GUEST}
 
 
-def _resolveMiwiPath(filename: str, department: str = None, restrictToDepartment: bool = False) -> str:
-    """Find `filename` under the MIWI store.
-
-    When `restrictToDepartment` is True (non-approver roles), only that exact
-    department folder is ever consulted — no cross-department or legacy flat
-    fallback. Otherwise `department` is preferred but the legacy flat layout
-    and every other department folder are also searched, since an approver may
-    legitimately view a MIWI belonging to any department.
+def _resolveMiwiPath(filename: str, department: str = None) -> str:
+    """Find `filename` under the MIWI store. `department` is preferred but the
+    legacy flat layout and every other department folder are also searched —
+    any authenticated user may review a MIWI belonging to any department.
     """
-    if restrictToDepartment:
-        if department not in _MIWI_DEPARTMENTS:
-            return None
-        filepath = os.path.abspath(os.path.join(_MIWI_DIR, department, filename))
-        if filepath.startswith(os.path.abspath(_MIWI_DIR)) and os.path.isfile(filepath):
-            return filepath
-        return None
-
     candidateDirs = []
     if department in _MIWI_DEPARTMENTS:
         candidateDirs.append(os.path.join(_MIWI_DIR, department))
@@ -656,6 +645,18 @@ def deleteUserRequest():
         return jsonify({"success": False, "error": str(e)}), 400
 
 
+def _ptwVisibleToDepartment(ptw: PTWData, department: str) -> bool:
+    """department=None means unrestricted (approver-type roles). Otherwise a PTW is
+    visible if it belongs to that department, or if that department currently has
+    a pending required-approver slot on it (see KNOWN_ISSUES.md § M12)."""
+    if department is None:
+        return True
+    dep = department.casefold()
+    if (ptw.department or '').casefold() == dep:
+        return True
+    return any((a.department or '').casefold() == dep for a in ptw.pendingApprovers() if a.department)
+
+
 @app.route("/ptws", methods=["GET"])
 def getAllPTWs():
     user = getVerifiedUser(request.authorization)
@@ -664,11 +665,16 @@ def getAllPTWs():
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     try:
         data = request.get_json(silent=True) or {}
-        dep = data.get('department')
+        dep = user.getDepartment() if user.getRole() in _RESTRICTED_PTW_ROLES else data.get('department')
         req = data.get('requestor')
-        ptws = ptwDB.getAllPTWs(department=dep, requestor=req)
+        with globalData.lock:
+            snapshot = list(globalData.allPTWs.values())
+        ptws = [
+            ptw for ptw in snapshot
+            if _ptwVisibleToDepartment(ptw, dep) and (req is None or (ptw.requestor or '').casefold() == req.casefold())
+        ]
         log.debug("GET /ptws: %d PTWs returned to user='%s'", len(ptws), user.getUsername())
-        return jsonify({"success": True, "ptws": [objToDict(ptw) for ptw in ptws.values()]})
+        return jsonify({"success": True, "ptws": [objToDict(ptw) for ptw in ptws]})
     except Exception as e:
         log.error("GET /ptws failed: %s", e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
@@ -682,7 +688,7 @@ def getArchivedPTWs():
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     try:
         data = request.get_json(silent=True) or {}
-        dep = data.get('department')
+        dep = user.getDepartment() if user.getRole() in _RESTRICTED_PTW_ROLES else data.get('department')
         ptws = ptwDB.getArchivedPTWs(department=dep)
         log.debug("GET /ptws/archive: %d PTWs returned to user='%s'", len(ptws), user.getUsername())
         return jsonify({"success": True, "ptws": [objToDict(ptw) for ptw in ptws]})
@@ -1311,10 +1317,6 @@ def getPTWSpecificRiskAssessment():
     if ptw is None:
         log.warning("GET /risks/ptw: PTW #%s not found (user='%s')", ptw_id, user.getUsername())
         return jsonify({"success": False, "error": "PTW not found"}), 404
-    # Same department restriction as MIWI access: non-approver roles are confined to their own department
-    if user.getRole() in _RESTRICTED_MIWI_ROLES and ptw.department != user.getDepartment():
-        log.warning("GET /risks/ptw unauthorized: requester='%s' (dept='%s') tried to access PTW #%s risk (dept='%s')", user.getUsername(), user.getDepartment(), ptw_id, ptw.department)
-        return jsonify({"success": False, "error": "Unauthorized"}), 401
     try:
         risk = risksDB.getPTWSpecificRiskAssessment(ptw_id)
         log.debug("GET /risks/ptw: PTW #%s risk returned to user='%s'", ptw_id, user.getUsername())
@@ -1403,8 +1405,7 @@ def getMIWI():
         if not filename:
             log.warning("GET /miwi: filename not provided (user='%s')", user.getUsername())
             return jsonify({"success": False, "error": "Filename not provided"}), 400
-        restricted = user.getRole() in _RESTRICTED_MIWI_ROLES
-        filepath = _resolveMiwiPath(filename, department, restrictToDepartment=restricted)
+        filepath = _resolveMiwiPath(filename, department)
         if filepath is None:
             log.warning("GET /miwi: file not found '%s' department='%s' (user='%s')", filename, department, user.getUsername())
             return jsonify({"success": False, "error": "File not found"}), 404
@@ -1423,12 +1424,8 @@ def getAllMIWIs():
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
     department = payload.get('department')
-    restricted = user.getRole() in _RESTRICTED_MIWI_ROLES
     try:
-        if restricted and department not in _MIWI_DEPARTMENTS:
-            log.warning("GET /miwis: restricted role='%s' missing/invalid department='%s' (user='%s')", user.getRole(), department, user.getUsername())
-            filenames = []
-        elif department in _MIWI_DEPARTMENTS:
+        if department in _MIWI_DEPARTMENTS:
             deptDir = os.path.join(_MIWI_DIR, department)
             filenames = [f for f in os.listdir(deptDir) if os.path.isfile(os.path.join(deptDir, f))] if os.path.isdir(deptDir) else []
         else:
