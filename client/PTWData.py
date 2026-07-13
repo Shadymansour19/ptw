@@ -4,7 +4,7 @@ from PyQt6.QtGui import QFont, QColor
 from typing import Iterable
 from types import SimpleNamespace
 from GlobalData import globalData
-from User import UserRoles
+from User import UserRoles, UserDepartments
 
 
 class RiskItem:
@@ -1557,7 +1557,29 @@ class PTWData:
                 lyt.addWidget(comment_lbl)
 
             return widget
-    
+
+    class Approver:
+        def __init__(self, role: 'UserRoles', department: 'UserDepartments' = None):
+            self.role = role
+            self.department = department
+
+        def matchesRoleDept(self, role, department) -> bool:
+            return role == self.role and (self.department is None or self.department == department)
+
+        def matchesUser(self, user) -> bool:
+            return user is not None and self.matchesRoleDept(user.getRole(), user.getDepartment())
+
+        def __eq__(self, other):
+            return isinstance(other, PTWData.Approver) and self.role == other.role and self.department == other.department
+
+        def __hash__(self):
+            return hash((self.role, self.department))
+
+        def __str__(self):
+            if self.role == UserRoles.USER:
+                return str(self.department) if self.department else str(self.role)
+            return str(self.role)
+
 
     __backgroundColors = {
         Types.CW:   QColor( 30,  90, 160, 200),  # blue
@@ -1893,59 +1915,92 @@ class PTWData:
         self.prev_running_status = PTWData.RunningStatus.NOT_RUNNING
         return self
     
-    def requiredApprovers(self):
-        requiredApprovers = [UserRoles.COORDINATOR, UserRoles.ISSUING, UserRoles.SAFETY]
+    def requiredApprovers(self) -> list[list['PTWData.Approver']]:
+        requiredApprovers = [
+            [PTWData.Approver(UserRoles.COORDINATOR, UserDepartments.PROD)],
+        ]
+        if self.type == PTWData.Types.EX:
+            requiredApprovers.append([
+                PTWData.Approver(UserRoles.USER, UserDepartments.MECH),
+                PTWData.Approver(UserRoles.USER, UserDepartments.ELEC),
+                PTWData.Approver(UserRoles.USER, UserDepartments.INST),
+                PTWData.Approver(UserRoles.USER, UserDepartments.TELECOM),
+                PTWData.Approver(UserRoles.USER, UserDepartments.TURBO),
+                PTWData.Approver(UserRoles.USER, UserDepartments.PROJECT),
+                PTWData.Approver(UserRoles.USER, UserDepartments.CVL),
+                PTWData.Approver(UserRoles.USER, UserDepartments.CATHODIC_PROTECTION),
+            ])
+        requiredApprovers.append([
+            PTWData.Approver(UserRoles.ISSUING, UserDepartments.PROD),
+            PTWData.Approver(UserRoles.SAFETY, UserDepartments.SAFETY),
+        ])
         if any(isolation.type == Isolation.Types.PROTECTIVE for isolation in self.isolations) and self.mos:
-            requiredApprovers.extend([UserRoles.PDH, UserRoles.PGM, UserRoles.SOD, UserRoles.DFGM])
+            requiredApprovers.extend([
+                [PTWData.Approver(UserRoles.PDH, UserDepartments.PROD)],
+                [PTWData.Approver(UserRoles.PGM, UserDepartments.PROD)],
+                [PTWData.Approver(UserRoles.SOD)],
+                [PTWData.Approver(UserRoles.DFGM)],
+            ])
         elif self.type in [PTWData.Types.HT, PTWData.Types.CS]:
-            requiredApprovers.extend([UserRoles.PGM, UserRoles.DFGM])
+            requiredApprovers.extend([
+                [PTWData.Approver(UserRoles.PGM, UserDepartments.PROD)],
+                [PTWData.Approver(UserRoles.DFGM)],
+            ])
         return requiredApprovers
-        
+
+    def _stageSatisfied(self, stage: list['PTWData.Approver']) -> bool:
+        approvedBy = [globalData.allUsers.get(a.username) for a in self.approvals if a.action == PTWData.ApprovalActions.APPROVED]
+        return all(any(approver.matchesUser(user) for user in approvedBy) for approver in stage)
+
+    def _pendingStageIndex(self) -> int:
+        """Index of the first not-yet-satisfied stage, or len(stages) if fully approved."""
+        stages = self.requiredApprovers()
+        for i, stage in enumerate(stages):
+            if not self._stageSatisfied(stage):
+                return i
+        return len(stages)
+
+    def pendingApprovers(self) -> list['PTWData.Approver']:
+        """Flattened Approvers still needed, across the current and any later stage."""
+        approvedBy = [globalData.allUsers.get(a.username) for a in self.approvals if a.action == PTWData.ApprovalActions.APPROVED]
+        stages = self.requiredApprovers()
+        return [
+            approver
+            for stage in stages[self._pendingStageIndex():]
+            for approver in stage
+            if not any(approver.matchesUser(user) for user in approvedBy)
+        ]
+
     def __updateStatus(self):
         self.__updateApprovalStatus()
         self.__updateRunningStatus()
-    
+
     def __updateRunningStatus(self):
         if self.approval_status != PTWData.ApprovalStatus.APPROVED:
             self.running_status = PTWData.RunningStatus.NOT_RUNNING
             return
-        
+
     def __updateApprovalStatus(self):
         if len(self.approvals) == 0:
             self.approval_status = PTWData.ApprovalStatus.UNDER_REVIEW
-            return
-        # elif any(approval.action == PTWData.ApprovalActions.REJECTED for approval in self.approvals):
-        elif self.approvals[-1].action != PTWData.ApprovalActions.APPROVED:
-            self.approval_status = self.approvals[-1].action
-            return
-        
-        approvers = set([globalData.allUsers[approval.username].getRole() for approval in self.approvals if approval.username in globalData.allUsers])
-        
-        if approvers >= set(self.requiredApprovers()):
+        elif any(approval.action == PTWData.ApprovalActions.RETURNED for approval in self.approvals):
+            self.approval_status = PTWData.ApprovalStatus.RETURNED
+        elif self._pendingStageIndex() >= len(self.requiredApprovers()):
             self.approval_status = PTWData.ApprovalStatus.APPROVED
         else:
             self.approval_status = PTWData.ApprovalStatus.UNDER_REVIEW
 
-    def getApprovalStatus(self, role = None):
-        if role:
-            # Only these roles gate on the previous role's approval; USER/GUEST/ADMIN
-            # aren't sequential approvers, so they're never gated (prvRole stays None).
-            approvalChain = [UserRoles.COORDINATOR, UserRoles.ISSUING, UserRoles.SAFETY,
-                              UserRoles.PDH, UserRoles.PGM, UserRoles.SOD, UserRoles.DFGM, UserRoles.ISOLATOR]
-            prvRole = None
-            if role in approvalChain:
-                idx = approvalChain.index(role)
-                if idx > 0:
-                    prvRole = approvalChain[idx-1]
-            for approval in self.approvals[::-1]:
-                user = globalData.allUsers.get(approval.username)
-                if user is not None and user.getRole() == role:
-                    return approval.action
-            if prvRole == None:
-                return PTWData.ApprovalStatus.UNDER_REVIEW
-            for approval in self.approvals[::-1]:
-                user = globalData.allUsers.get(approval.username)
-                if user is not None and user.getRole() == prvRole:
-                    return PTWData.ApprovalStatus.UNDER_REVIEW if approval.action == PTWData.ApprovalStatus.APPROVED else approval.action
-            return None
-        return self.approval_status
+    def getApprovalStatus(self, role = None, department = None):
+        if role is None:
+            return self.approval_status
+
+        for approval in self.approvals[::-1]:
+            user = globalData.allUsers.get(approval.username)
+            if user is not None and user.getRole() == role and user.getDepartment() == department:
+                return approval.action
+
+        stages = self.requiredApprovers()
+        pending = self._pendingStageIndex()
+        if pending < len(stages) and any(approver.matchesRoleDept(role, department) for approver in stages[pending]):
+            return PTWData.ApprovalStatus.UNDER_REVIEW
+        return None

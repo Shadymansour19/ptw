@@ -43,7 +43,7 @@ Each PTW is classified by the nature of the work. The type drives visual theming
 
 **Locations:** Phase VII, Phase V, Scarab, Simian
 
-**Departments:** Turbo, Mech (Mechanical), Elec (Electrical), IT, Prod (Production), Safety
+**Departments:** Turbo, Mech (Mechanical), Elec (Electrical), IT, Prod (Production), Safety, Instrumentation, HVAC, Civil, Telecom, Project, Cathodic Protection, Petrojet, Petromaint, Egypt Gas, Contractor
 
 ---
 
@@ -73,15 +73,28 @@ A PTW passes through two major cycles: the **Approval Cycle** and the **Running 
 
 ### 1. Approval Cycle
 
-After a PTW is created, it enters an approval chain. Multiple approvers must review and vote. The chain typically goes:
+After a PTW is created, it enters an approval cycle defined by `PTWData.requiredApprovers()`, which returns a **list of sequential stages**, each stage being a **list of parallel `Approver` requirements** (`PTWData.Approver(role, department=None)`):
+
+- Stages must be satisfied **in order** — stage *N+1* can't start until every `Approver` in stage *N* has approved.
+- Within a stage, every `Approver` must approve before that stage counts as satisfied — they can approve in **any order/in parallel**.
+- An `Approver` with `department=None` matches that role regardless of department (e.g. `SOD`, `DFGM`); one with a department set only matches a user with both that role *and* that department.
+
+Typical stages, in order:
 
 ```
-Coordinator → Issuing → Safety → [PDH → PGM → SOD → DFGM]
+[Coordinator (Prod)]
+    → [User (Turbo) ∥ User (Mech) ∥ User (Instrumentation) ∥ User (Telecom)
+       ∥ User (Project) ∥ User (Civil) ∥ User (Cathodic Protection)]   — EX-type only
+    → [Issuing (Prod) ∥ Safety (Safety)]
+    → [PDH (Prod)] → [PGM (Prod)] → [SOD] → [DFGM]                     — protective isolation + MOS
+      (or just [PGM (Prod)] → [DFGM] for HT/CS types)
 ```
 
-Higher-level management approval (PDH through DFGM) may be required depending on the nature and risk of the work.
+`PTWData.pendingApprovers()` returns the flattened list of `Approver`s still outstanding (from the first unsatisfied stage onward) — used by `MainWindow.viewApprovals` to show a "Pending Approvers" list alongside the approval history, and by `getApprovalStatus(role, department)` to decide whether it's a given user's turn to act.
 
-Each approval action is recorded with the approver's username, timestamp, action taken, and an optional comment.
+Each approval action is recorded with the approver's username, timestamp, action taken, and an optional comment. Any `RETURNED` action anywhere in the log immediately marks the whole PTW `RETURNED`, regardless of position — this matters once parallel approvers exist, since a later `APPROVED` from a sibling approver must not paper over an earlier return.
+
+**Caveat:** a required `Approver` with a department different from the PTW's own `department` may not be able to see the PTW at all — see [KNOWN_ISSUES.md § M12](KNOWN_ISSUES.md).
 
 **Approval Statuses:**
 
@@ -610,11 +623,11 @@ All role-specific views are implemented as classes within `MainWindow.py`. After
 
 - `AdminMainWindow` — full access
 - `GuestMainWindow` — unauthenticated visitor; creates/views PTWs
-- `UserMainWindow` — create PTWs, manage own permits
+- `UserMainWindow` — create PTWs, manage own permits. Has both a **Requested PTWs** tab (tracking-only — any PTW still `UNDER_REVIEW` that isn't currently this user's turn to act on) and an **Under Review** tab (actionable — this user's role+department is in the currently pending approval stage, e.g. a department rep on an `EX`-type permit)
 - `CoordinatorMainWindow` — PTW approval coordination
 - `IssuingMainWindow` — run/hold/close confirmation
 - `SafetyMainWindow` — risk assessments, safety approvals
-- `PDHMainWindow`, `PGMMainWindow`, `SODMainWindow`, `DFGMMainWindow` — management approvals
+- `ManagerMainWindow(loggedUser, role)` — one shared class for `PDH`/`PGM`/`SOD`/`DFGM`; `main.py` passes the role label in, it's not four separate classes
 
 ---
 

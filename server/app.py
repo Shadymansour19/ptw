@@ -797,6 +797,13 @@ def updatePTWApprovals():
     if ptwId is None or not approvalData:
         log.warning("POST /ptws/approvals: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
+    ptw = globalData.allPTWs.get(ptwId)
+    if ptw is None:
+        log.warning("POST /ptws/approvals: PTW #%s not found (user='%s')", ptwId, user.getUsername())
+        return jsonify({"success": False, "error": "PTW not found"}), 404
+    if ptw.getApprovalStatus(role=user.getRole(), department=user.getDepartment()) != PTWData.ApprovalStatus.UNDER_REVIEW:
+        log.warning("POST /ptws/approvals: forbidden — user '%s' (role=%s, dept=%s) not an eligible approver for PTW #%s at its current stage", user.getUsername(), user.getRole(), user.getDepartment(), ptwId)
+        return jsonify({"success": False, "error": "You are not an eligible approver for this PTW at its current stage"}), 403
     approval = PTWData.Approval(**approvalData)
     try:
         result = ptwDB.updatePTWApprovals(ptwId, approval)

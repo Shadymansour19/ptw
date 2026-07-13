@@ -2,11 +2,11 @@ from datetime import datetime
 import copy
 import re
 from PyQt6.QtCore import Qt, QSize, QEvent, QPropertyAnimation, QEasingCurve, QTimer, pyqtSignal
-from PyQt6.QtWidgets import (QMainWindow, QWidget, QStackedWidget, QVBoxLayout, QGridLayout,
+from PyQt6.QtWidgets import (QMainWindow, QWidget, QStackedWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                               QFormLayout, QLabel, QPushButton, QToolButton,
                               QToolBar, QDialog, QDialogButtonBox, QTextEdit, QListWidget,
                               QListWidgetItem, QMenu, QSizePolicy, QSystemTrayIcon,
-                              QMessageBox, QApplication, QGraphicsOpacityEffect)
+                              QMessageBox, QApplication, QGraphicsOpacityEffect, QStyle)
 from PyQt6.QtGui import QFont, QIcon, QPalette, QKeySequence, QPainter, QPixmap, QAction, QActionGroup, QShortcut
 
 from PTWData import PTWData, RiskAssessment
@@ -77,6 +77,7 @@ class MainWindow(QMainWindow):
         self.tabWelcome = QWidget()
         self.tabWelcome.setAutoFillBackground(False)
         self.tabRegisteredPTWs = TablePTWs(self.stack, self.loggedUser, "Template PTWs")
+        self.tabRequestedPTWs = TablePTWs(self.stack, self.loggedUser, "Requested PTWs")
         self.tabUnderReviewPTWs = TablePTWs(self.stack, self.loggedUser, "Under Review PTWs")
         self.tabReturnedPTWs = TablePTWs(self.stack, self.loggedUser, "Returned PTWs")
         self.tabApprovedPTWs = TablePTWs(self.stack, self.loggedUser, "Approved PTWs")
@@ -120,6 +121,7 @@ class MainWindow(QMainWindow):
         
         self.stack.addWidget(self.tabWelcome)
         self.stack.addWidget(self.tabRegisteredPTWs)
+        self.stack.addWidget(self.tabRequestedPTWs)
         self.stack.addWidget(self.tabUnderReviewPTWs)
         self.stack.addWidget(self.tabReturnedPTWs)
         self.stack.addWidget(self.tabApprovedPTWs)
@@ -156,6 +158,7 @@ class MainWindow(QMainWindow):
         # self.btnLanguage = QPushButton("ع")
 
         self.btnWelcome = QPushButton(qta.icon('fa5s.home'), "")
+        self.btnRequestedPTWs = QPushButton(qta.icon('fa6s.paper-plane'), "")
         self.btnUnderReviewPTWs = QPushButton(qta.icon('fa6s.magnifying-glass-chart'), "")
         self.btnReturnedPTWs = QPushButton(qta.icon('fa5s.undo'), "")
         self.btnApprovedPTWs = QPushButton(qta.icon('fa6s.check'), "")
@@ -178,6 +181,7 @@ class MainWindow(QMainWindow):
         self.btnServerLogs = QPushButton(qta.icon('fa6s.file-lines'), "")
 
         self.btnWelcome.setToolTip("Home [Ctrl+H]")
+        self.btnRequestedPTWs.setToolTip("Requested PTWs")
         self.btnUnderReviewPTWs.setToolTip("Under Review PTWs")
         self.btnReturnedPTWs.setToolTip("Returned PTWs")
         self.btnApprovedPTWs.setToolTip("Approved PTWs")
@@ -200,6 +204,7 @@ class MainWindow(QMainWindow):
 
         self._sideBarBtnMap = {
             self.btnWelcome:                    self.tabWelcome,
+            self.btnRequestedPTWs:              self.tabRequestedPTWs,
             self.btnUnderReviewPTWs:            self.tabUnderReviewPTWs,
             self.btnReturnedPTWs:               self.tabReturnedPTWs,
             self.btnApprovedPTWs:               self.tabApprovedPTWs,
@@ -624,7 +629,7 @@ class MainWindow(QMainWindow):
             def on_risk_saved(err, _):
                 if err:
                     QMessageBox.warning(self, "Warning", f"PTW saved but failed to save risk assessment: {err}")
-            risk = RiskAssessment(title=ptw.description, date=datetime.now().strftime('%d %b %Y'), risks=dlg.riskAssessmentPreviewTable.getRiskItems(), ptw_id=ptwId)
+            risk = RiskAssessment(title=newPTW.description, date=datetime.now().strftime('%d %b %Y'), risks=dlg.riskAssessmentPreviewTable.getRiskItems(), ptw_id=ptwId)
             self._savePTWRiskAssessment(ptwId, risk, callback=on_risk_saved)
             # On re-request, the server also copies the original PTW's own risk rows onto
             # this new ptw_id (server/app.py copyPtwAttachments), additively — so any custom
@@ -773,16 +778,44 @@ class MainWindow(QMainWindow):
         dlg.setMaximumHeight(int(0.9 * self.screen().availableGeometry().height()))
 
         lyt = QVBoxLayout()
-        lst = QListWidget()
-        if len(ptw.approvals) == 0:
-            item = QListWidgetItem()
-            widget = QLabel(
-                text="There's no approval history at the moment",
-                font=QFont("Helvetica", 12), 
+        dlg.setLayout(lyt)
+
+        def addSection(title: str, lst: QListWidget):
+            headerLyt = QHBoxLayout()
+            expandBtn = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ArrowUp), '')
+            expandBtn.setStyleSheet('QPushButton { border: none; }')
+
+            def toggle():
+                if lst.isVisible():
+                    lst.hide()
+                    expandBtn.setIcon(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ArrowDown))
+                else:
+                    lst.show()
+                    expandBtn.setIcon(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ArrowUp))
+
+            expandBtn.clicked.connect(toggle)
+            lbl = QLabel(
+                title, 
+                font=QFont("Helvetica", 16, QFont.Weight.Bold), 
+                alignment=Qt.AlignmentFlag.AlignCenter
             )
+            headerLyt.addStretch()
+            headerLyt.addWidget(lbl)
+            headerLyt.addStretch()
+            headerLyt.addWidget(expandBtn)
+            lyt.addLayout(headerLyt)
+            lyt.addWidget(lst)
+
+        def addEmptyItem(lst: QListWidget, text: str):
+            item = QListWidgetItem()
+            widget = QLabel(text=text, font=QFont("Helvetica", 12))
             item.setSizeHint(widget.sizeHint())
             lst.addItem(item)
             lst.setItemWidget(item, widget)
+
+        approvedLst = QListWidget()
+        if len(ptw.approvals) == 0:
+            addEmptyItem(approvedLst, "There's no approval history at the moment")
         else:
             for approval in ptw.approvals:
                 item = QListWidgetItem()
@@ -790,15 +823,28 @@ class MainWindow(QMainWindow):
                 sizeHint = approvalWidget.sizeHint()
                 sizeHint = QSize(int(sizeHint.width() * 1.2), int(sizeHint.height() * 1.2))
                 item.setSizeHint(sizeHint)
-                lst.addItem(item)
-                lst.setItemWidget(item, approvalWidget)
-            
-            lst.setStyleSheet("QListWidget::item { border-bottom: 2px solid palette(mid); }")
+                approvedLst.addItem(item)
+                approvedLst.setItemWidget(item, approvalWidget)
+            approvedLst.setStyleSheet("QListWidget::item { border-bottom: 2px solid palette(mid); }")
+        addSection('Approved By', approvedLst)
 
-        dlg.setLayout(lyt)
+        pendingLst = QListWidget()
+        pendingApprovers = ptw.pendingApprovers()
+        if len(pendingApprovers) == 0:
+            addEmptyItem(pendingLst, "There are no pending approvers")
+        else:
+            for approver in pendingApprovers:
+                item = QListWidgetItem()
+                widget = QLabel(text=str(approver), font=QFont("Helvetica", 14))
+                item.setSizeHint(widget.sizeHint())
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+                pendingLst.addItem(item)
+                pendingLst.setItemWidget(item, widget)
+            pendingLst.setStyleSheet("QListWidget::item { border-bottom: 2px solid palette(mid); }")
+        addSection('Pending Approvers', pendingLst)
+
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
         btns.accepted.connect(dlg.close)
-        lyt.addWidget(lst)
         lyt.addWidget(btns)
 
         dlg.exec()
@@ -1145,6 +1191,7 @@ class MainWindow(QMainWindow):
     def refreshPtwUserGUI(self, refreshArchivedPTWs: bool = False):
         def on_done(err, _):
             tabs: list[TablePTWs] = [
+                self.tabRequestedPTWs,
                 self.tabUnderReviewPTWs,
                 self.tabApprovedPTWs,
                 self.tabReturnedPTWs,
@@ -1160,7 +1207,7 @@ class MainWindow(QMainWindow):
                 tab.clear()
 
             for ptw in globalData.allPTWs:
-                mySt = ptw.getApprovalStatus(role=self.loggedUser.getRole())
+                mySt = ptw.getApprovalStatus(role=self.loggedUser.getRole(), department=self.loggedUser.getDepartment())
                 st = ptw.getApprovalStatus()
                 runSt = ptw.running_status
                 if runSt == PTWData.RunningStatus.WAITING_RUN_CONFIRM:
@@ -1179,8 +1226,11 @@ class MainWindow(QMainWindow):
                     self.tabApprovedPTWs.addPTWToGUI(ptw)
                 elif st == PTWData.ApprovalStatus.RETURNED:
                     self.tabReturnedPTWs.addPTWToGUI(ptw)
-                elif st == PTWData.ApprovalStatus.UNDER_REVIEW and mySt == PTWData.ApprovalStatus.UNDER_REVIEW:
-                    self.tabUnderReviewPTWs.addPTWToGUI(ptw)
+                elif st == PTWData.ApprovalStatus.UNDER_REVIEW:
+                    if mySt == PTWData.ApprovalStatus.UNDER_REVIEW:
+                        self.tabUnderReviewPTWs.addPTWToGUI(ptw)
+                    else:
+                        self.tabRequestedPTWs.addPTWToGUI(ptw)
 
             for tab in tabs:
                 tab.sort()
@@ -1288,16 +1338,16 @@ class GuestMainWindow(MainWindow):
         super().__init__(loggedUser)
         self.setWindowTitle("PTW (Permit To Work) - Guest Window")
 
-        self.tabUnderReviewPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.printOption, self.exportOption])
+        self.tabRequestedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.printOption, self.exportOption])
         self.tabReturnedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.printOption, self.exportOption])
         self.tabApprovedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.printOption, self.exportOption])
 
         self.setAvailableTabs([
             [self.btnWelcome],
-            [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
+            [self.btnRequestedPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
         ])
 
-        self.btnFAB.setToolTip("New PTW [Ctrl+N]")
+        self.btnFAB.setToolTip("Request New PTW [Ctrl+N]")
         self.btnFAB.setIcon(qta.icon('fa6s.plus', color='white'))
 
         shortcut = QShortcut(QKeySequence("Ctrl+N"), self)
@@ -1306,7 +1356,7 @@ class GuestMainWindow(MainWindow):
     def stackTabChanged(self):
         super().stackTabChanged()
         tab = self.stack.currentWidget()
-        self.btnFAB.setVisible(tab in [self.tabUnderReviewPTWs])
+        self.btnFAB.setVisible(tab in [self.tabRequestedPTWs, self.tabWelcome])
 
     def btnFABHandler(self):
         if self.btnFAB.isVisible():
@@ -1323,7 +1373,8 @@ class UserMainWindow(MainWindow):
         self.setWindowTitle("PTW (Permit To Work) - User Window")
 
         self.tabRegisteredPTWs.addOptions([self.viewOption, self.editOption, self.requestPTWOption, self.viewRequestorOption, self.dltOption, self.exportOption])
-        self.tabUnderReviewPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.printOption, self.exportOption])
+        self.tabRequestedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.printOption, self.exportOption])
+        self.tabUnderReviewPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.acceptOption, self.printOption, self.exportOption])
         self.tabReturnedPTWs.addOptions([self.viewOption, self.editOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.dltOption, self.printOption, self.exportOption])
         self.tabApprovedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.runRequestOption, self.printOption, self.exportOption])
         self.tabWaitingRunConfirmationPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewPerformingOption, self.viewApprovalsOption, self.requestPTWOption, self.printOption, self.exportOption])
@@ -1337,12 +1388,12 @@ class UserMainWindow(MainWindow):
 
         self.setAvailableTabs([
             [self.btnWelcome],
-            [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
+            [self.btnRequestedPTWs, self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
             [self.btnWaitingRunConfirmationPTWs, self.btnRunningPTWs, self.btnWaitingHldConfirmationPTWs, self.btnHeldPTWs, self.btnWaitingClsConfirmationPTWs, self.btnClosedPTWs, self.btnArchivedPTWs],
             [self.btnIsolations],
         ])
 
-        self.btnFAB.setToolTip("New PTW [Ctrl+N]")
+        self.btnFAB.setToolTip("Request New PTW [Ctrl+N]")
         self.btnFAB.setIcon(qta.icon('fa6s.plus', color='white'))
 
         shortcut = QShortcut(QKeySequence("Ctrl+N"), self)
@@ -1351,7 +1402,7 @@ class UserMainWindow(MainWindow):
     def stackTabChanged(self):
         super().stackTabChanged()
         tab = self.stack.currentWidget()
-        self.btnFAB.setVisible(tab in [self.tabUnderReviewPTWs, self.tabRegisteredPTWs])
+        self.btnFAB.setVisible(tab in [self.tabRequestedPTWs, self.tabWelcome])
         if tab == self.tabArchivedPTWs and not globalData.archivedPTWs:
             self.refreshArchivedPTWs()
 

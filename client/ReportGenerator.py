@@ -215,9 +215,9 @@ class ReportGenerator:
         except Exception:
             sig_font = 'Helvetica-Oblique'
 
-        label_style = ParagraphStyle('SigLabel', parent=styles['Heading3'], fontSize=16, leading=18, alignment=TA_CENTER)
-        sig_style   = ParagraphStyle('Signature', parent=styles['Normal'],  fontSize=16, leading=18, alignment=TA_CENTER, fontName=sig_font)
-        date_style  = ParagraphStyle('SigDate',   parent=styles['Normal'],  fontSize=14, leading=16, alignment=TA_CENTER)
+        label_style = ParagraphStyle('SigLabel', parent=styles['Heading3'], fontSize=13, leading=14, alignment=TA_CENTER)
+        sig_style   = ParagraphStyle('Signature', parent=styles['Normal'],  fontSize=16, leading=17, alignment=TA_CENTER, fontName=sig_font)
+        date_style  = ParagraphStyle('SigDate',   parent=styles['Normal'],  fontSize=12,  leading=14, alignment=TA_CENTER)
 
         def sigTables(columns: list, chunk_size=3):
             """columns: list of (label, sig, ts) or None for empty padding slots."""
@@ -229,8 +229,8 @@ class ReportGenerator:
                 style_cmds = [
                     ('ALIGN',         (0, 0), (-1, -1), 'CENTER'),
                     ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
-                    ('TOPPADDING',    (0, 0), (-1, -1), 6),
-                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                    ('TOPPADDING',    (0, 0), (-1, -1), 4),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
                 ]
                 for i, col in enumerate(chunk):
                     if col is not None:
@@ -248,24 +248,27 @@ class ReportGenerator:
                 )
                 table.setStyle(TableStyle(style_cmds))
                 result.append(table)
-                result.append(Spacer(1, 0.2 * inch))
+                result.append(Spacer(1, 0.09 * inch))
             return result
 
         def approvalColumns():
-            role_approval: dict = {}
-            for approval in ptw.approvals:
-                if approval.username in globalData.allUsers:
-                    role = globalData.allUsers[approval.username].getRole()
-                    role_approval[role] = approval
+            def lastApprovalFor(approver):
+                match = None
+                for approval in ptw.approvals:
+                    if approver.matchesUser(globalData.allUsers.get(approval.username)):
+                        match = approval
+                return match
+
             cols = []
-            for role in ptw.requiredApprovers():
-                approval = role_approval.get(role)
-                if approval and approval.action == PTWData.ApprovalActions.APPROVED:
-                    name = globalData.allUsers[approval.username].getName()
-                    ts   = approval.timestamp or ''
-                else:
-                    name, ts = '', ''
-                cols.append((str(role), name, ts))
+            for stage in ptw.requiredApprovers():
+                for approver in stage:
+                    approval = lastApprovalFor(approver)
+                    if approval and approval.action == PTWData.ApprovalActions.APPROVED:
+                        name = globalData.allUsers[approval.username].getName()
+                        ts   = approval.timestamp or ''
+                    else:
+                        name, ts = '', ''
+                    cols.append((str(approver), name, ts))
             while len(cols) < 7:
                 cols.append(None)
             return cols

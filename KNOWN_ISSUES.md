@@ -35,6 +35,15 @@ The server binds to plain HTTP on port 5000. Every request sends the username an
 
 ---
 
+### M12 — Department-scoped required approvers can't see the PTW they're required to approve
+**Files:** `client/PTWData.py` (`requiredApprovers`), `client/MainWindow.py` (`refreshWelcomePage`/`refreshPtwUserGUI`), `server/app.py` (`getAllPTWs`), `server/ptwDb.py` (`getAllPTWs`)
+
+`requiredApprovers()` can require a `USER`-role approver from a specific department to sign off (e.g. `EX`-type permits require one `USER` approver from each of Turbo, Mech, Instrumentation, Telecom, Project, Civil, and Cathodic Protection, in parallel). But PTW *visibility* for `USER`/`GUEST`/`ISOLATOR` roles is scoped to the logged-in user's own department — `MainWindow` only ever requests PTWs for `loggedUser.getDepartment()` for these roles, and the server (`ptwDb.getAllPTWs`) filters by that department with no exception for "PTW where I'm a named required approver." If a PTW is requested by department A but needs a `USER` approver from department B, that approver's client never fetches the PTW at all — it isn't in `globalData.allPTWs` for them, so it never appears in "Requested PTWs" or "Under Review," and there is no way for them to act on it. The PTW is then permanently stuck `UNDER_REVIEW`, since that stage can never be satisfied.
+
+**Fix:** Either (a) have the department-scoped fetch also pull in PTWs where the logged-in user's role+department appears anywhere in `requiredApprovers()` and the PTW hasn't fully cleared that stage yet, merging them with the user's own-department results, or (b) drop the department-scoping restriction entirely for any PTW where the user is a named required approver, regardless of the PTW's own `department` field.
+
+---
+
 
 ## Fixed
 
