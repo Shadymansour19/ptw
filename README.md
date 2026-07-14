@@ -28,6 +28,7 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 
 ## Features
 
+- **Home dashboard** — live donut charts summarizing PTWs in the approval cycle and Running PTWs by location (Users by Department for Admins); click a segment to jump straight to that tab, filtered where relevant
 - **Multi-stage approval workflow** — Coordinator → Issuing → Safety → Management chain (PDH → PGM → SOD → DFGM)
 - **Full running lifecycle** — Run / Hold / Close with two-party confirmation (Performing Authority + Issuing Authority)
 - **Equipment isolation management** — Tracks shared isolation points across multiple concurrent PTWs; enforces primary/latest ownership rules
@@ -206,6 +207,7 @@ ptw/
 │   ├── TabServerLogs.py         # Admin log viewer tab (collapsible, color-coded, filterable)
 │   ├── CheckableComboBox.py     # Reusable multi-select checkbox combo box
 │   ├── SearchableComboBox.py    # Reusable fuzzy-autocomplete combo box that accepts free text
+│   ├── DonutChart.py            # Reusable donut-chart widget powering the home-page dashboard
 │   ├── ReportGenerator.py       # PDF and Excel report generation
 │   ├── assets/                  # Bundled images and icons
 │   ├── fonts/                   # Bundled fonts

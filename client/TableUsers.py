@@ -138,6 +138,17 @@ class TableUsers(QWidget):
         for row in range(self.tbl.rowCount()):
             self.tbl.setRowHidden(row, False)
 
+    def filterColumn(self, label: str, values: set):
+        if label not in self.summeryLabels:
+            return
+        col = self.summeryLabels.index(label)
+        if not self._filterBtn.isChecked():
+            self._filterBtn.setChecked(True)   # -> _toggleFilters(True): populates + applies
+        else:
+            self._populateFilters()
+            self._syncFilterWidths()
+        self._filterCombos[col].setCheckedOnly(values)
+
     def _onSorted(self):
         self._syncUsersData()
         if self._filterBar.isVisible():

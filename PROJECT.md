@@ -363,7 +363,7 @@ A handful of legacy files still sit directly under `server/miwi/` (uploaded befo
 - **New user creation:** the initial password is auto-generated (`secrets.token_urlsafe(12)`), shown read-only in the admin's "Add User" dialog, and emailed to the new user's registered email address (see **Guest Access** below for the email itself — it uses the same template family as password reset).
 - **Password Reset** flow: user requests a reset → server sends a 6-digit verification code to the user's registered email via Gmail SMTP → code expires after 15 minutes → user submits new password with code.
 - Role-based access control is enforced at the API layer for sensitive operations (user management, risk assessment management, PTW lifecycle: only `ISSUING` can accept/reject run, hold, and close requests).
-- `DELETE /ptws` and `POST /ptws/archive` are open to all authenticated users but are state-gated: deletion requires `REJECTED` or `ARCHIVED` status; archiving requires `REJECTED` or `CLOSED` status.
+- `DELETE /ptws` and `POST /ptws/archive` are open to all authenticated users but are state-gated: deletion requires `REJECTED` or `ARCHIVED` status; archiving requires `running_status == CLOSED` (a `REJECTED` approval status alone no longer qualifies).
 
 ### Guest Access
 
@@ -597,8 +597,9 @@ The desktop client is structured around role-based main windows. After login, `M
 | `utils.py`                  | Shared helpers: `resource_path`, `objToDict`, `dictToObj`, `parseTabularFile` |
 | `User.py`                   | User model                                                       |
 | `WidgetPTW.py`              | Full PTW form (create/view/edit)                                 |
-| `TablePTWs.py`              | Table listing all PTWs with filters; supports Excel export       |
-| `TableUsers.py`             | Admin user management table; supports bulk user import from Excel|
+| `TablePTWs.py`              | Table listing all PTWs with filters; supports Excel export; `filterColumn(label, values)` sets a specific column filter programmatically (used by the home dashboard's location segments) |
+| `TableUsers.py`             | Admin user management table; supports bulk user import from Excel; also has `filterColumn(label, values)` (used by the Admin dashboard's department segments) |
+| `DonutChart.py`             | Reusable donut-chart widget (`DonutChart`/`DonutSegment`) for the home-page dashboard — clickable/hoverable ring + legend, fixed categorical palette |
 | `ImportUsersExcel.py`       | Parses bulk-user Excel/CSV imports + DialogUsersPreview dialog   |
 | `TableRisks.py`             | Generic risk assessment CRUD list (Safety admin tab); also embedded read-only+checkboxes inside `DialogSelectGenericRisks` |
 | `RiskPreview.py`            | `DialogRiskItem` (single-item editor), `RiskItemsTable` (the flat table used for a PTW's risk assessment in all modes — add/delete/import/generic-pick, with dedup), `DialogSelectGenericRisks`, `RiskAssessmentPreview()` popup/embedded factory |
@@ -624,6 +625,14 @@ All role-specific views are implemented as classes within `MainWindow.py`. After
 - `IssuingMainWindow` — run/hold/close confirmation
 - `SafetyMainWindow` — risk assessments, safety approvals
 - `ManagerMainWindow(loggedUser, role)` — one shared class for `PDH`/`PGM`/`SOD`/`DFGM`; `main.py` passes the role label in, it's not four separate classes
+
+### Sidebar, Topbar & Home Page
+
+Each role-specific window's `__init__` calls `MainWindow.setAvailableTabs(sidebarGroups, topbarGroups)` once, which drives three things:
+
+- **Sidebar** (`setSidebarButtons`) — a curated, positional list of button groups (`list[list[QPushButton]]`, separators between groups). Kept to a handful of the most-used buttons per role (≤8 nav buttons is the target); everything is still reachable via the topbar regardless of sidebar curation. Only `UserMainWindow` and `IssuingMainWindow` actually trim (12→8 and 11→8 nav buttons); the other five roles have ≤8 already, so their sidebar and topbar cover the same buttons.
+- **Topbar** (`setTopbarButtons`) — always the *complete* button set for the role, declared explicitly as a `dict[str, list[QPushButton | None]]` mapping a menu label (e.g. `'&PTWs'`) to the buttons shown in that dropdown, in order; a `None` entry inserts a separator within the menu. `'&View'` and `'&Help'` always exist regardless of what a subclass supplies — `'&View'` gets the sidebar-visibility toggle and Left/Right/Bottom dock actions prepended, `'&Help'` gets "About PTW"/"About Qt" appended.
+- **Home page** (`buildHomePage()` / `updateHomeDashboard()`) — a template-method pair (same override pattern as `refreshGUI()`), invoked once `setAvailableTabs` knows the role's full button set. The base `MainWindow.buildHomePage()` builds a live [`DonutChart`](client/DonutChart.py) dashboard: a donut of PTWs in the approval cycle (Requested/Under Review/Returned/Approved) and one of Running PTWs split by location — each only appears if at least one of its underlying tabs is reachable by the role at all (sidebar *or* topbar). Clicking a segment (or its legend row) calls the corresponding sidebar button's `.click()`; location segments additionally call `TablePTWs.filterColumn('Location', {location})` to pre-filter the target tab. `updateHomeDashboard()` is re-run after every data refresh (`refreshPtwUserGUI`) to keep segment counts current. `AdminMainWindow` (no PTW tabs) overrides both hooks with a Users-by-Department donut instead, using `TableUsers.filterColumn('Department', {dept})` the same way.
 
 ---
 

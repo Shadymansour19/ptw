@@ -132,6 +132,14 @@ class CheckableComboBox(QComboBox):
                 result.add(item.text())
         return result
 
+    def setCheckedOnly(self, values: set):
+        for i in range(1, self._model.rowCount()):
+            item = self._model.item(i)
+            item.setCheckState(Qt.CheckState.Checked if item.text() in values else Qt.CheckState.Unchecked)
+        self._syncSelectAll()
+        self._updateText()
+        self.filterChanged.emit()
+
     def isFiltering(self):
         total = self._model.rowCount() - 1
         return len(self.checkedItems()) < total

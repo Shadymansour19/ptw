@@ -1525,6 +1525,8 @@ class PTWData:
             user = globalData.allUsers.get(self.username)
             if user is None:
                 return f"{self.action} by [deleted user: {self.username}] at {self.timestamp}"
+            if user.getRole() == UserRoles.USER:
+                return f"{self.action} by {user.getRole()} {user.getName()} ({user.getDepartment()}) at {self.timestamp}"
             return f"{self.action} by {user.getRole()} {user.getName()} at {self.timestamp}"
         
         def toWidget(self):

@@ -841,9 +841,9 @@ def archivePTWs():
         if ptw is None:
             log.warning("POST /ptws/archive: PTW #%s not found (user='%s')", pid, user.getUsername())
             return jsonify({"success": False, "error": f"PTW# {pid} not found"}), 404
-        if ptw.approval_status != PTWData.ApprovalStatus.REJECTED and ptw.running_status != PTWData.RunningStatus.CLOSED:
+        if ptw.running_status not in [PTWData.RunningStatus.CLOSED]:
             log.warning("POST /ptws/archive: forbidden — PTW #%s approval='%s' running='%s' user='%s'", pid, ptw.approval_status, ptw.running_status, user.getUsername())
-            return jsonify({"success": False, "error": f"PTW# {pid} cannot be archived (must be REJECTED or CLOSED)"}), 403
+            return jsonify({"success": False, "error": f"PTW# {pid} cannot be archived (must be CLOSED)"}), 403
     try:
         result = ptwDB.archivePTWs(ptwIds)
         with globalData.lock:

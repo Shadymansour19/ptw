@@ -1,8 +1,9 @@
 from datetime import datetime
+from collections import Counter
 import copy
 import re
 from PyQt6.QtCore import Qt, QSize, QEvent, QPropertyAnimation, QEasingCurve, QTimer, pyqtSignal
-from PyQt6.QtWidgets import (QMainWindow, QWidget, QStackedWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
+from PyQt6.QtWidgets import (QMainWindow, QWidget, QStackedWidget, QVBoxLayout, QHBoxLayout,
                               QFormLayout, QLabel, QPushButton, QToolButton,
                               QToolBar, QDialog, QDialogButtonBox, QTextEdit, QListWidget,
                               QListWidgetItem, QMenu, QSizePolicy, QSystemTrayIcon,
@@ -24,6 +25,7 @@ from GlobalData import globalData
 from ReportGenerator import ReportGenerator
 from SSEListener import SSEListener
 from User import User, UserRoles
+from DonutChart import DonutChart, DonutSegment, APPROVAL_CYCLE_COLORS, LOCATION_COLORS, DEPARTMENT_COLOR_CYCLE
 from functools import partial
 import qtawesome as qta
 from utils import resource_path
@@ -47,7 +49,7 @@ class MainWindow(QMainWindow):
 
         self.editOption = TablePTWs.MenuOption('Edit', self.editPTW, qta.icon('fa6s.pen'))
         self.viewOption = TablePTWs.MenuOption('View', self.viewPTW, qta.icon('fa6.eye'))
-        self.requestPTWOption = TablePTWs.MenuOption('Re-Request PTW', self.addPTWDialog, qta.icon('fa6s.question'))
+        self.requestPTWOption = TablePTWs.MenuOption('Re-Request PTW', self.addPTWDialog, qta.icon('fa6s.paper-plane'))
         self.dltOption  = TablePTWs.MenuOption('Delete', self.deletePTW, qta.icon('fa6s.trash-can'))
         self.archiveOption  = TablePTWs.MenuOption('Archive', self.archivePTWs, qta.icon('fa6s.box-archive'), allAtOnce=True)
         self.runRequestOption  = TablePTWs.MenuOption('Run', self.requestToRunPTW, qta.icon('fa6s.play'))
@@ -93,30 +95,35 @@ class MainWindow(QMainWindow):
         self.tabIsolations = TableIsolationsBrowser(self.stack, self.loggedUser, "Isolations")
         self.tabServerLogs = TabServerLogs(self.stack, self.loggedUser, "Server Logs")
 
+        self._homeApprovalChart: DonutChart | None = None
+        self._homeRunningChart: DonutChart | None = None
+        self._availableNavButtons: set = set()
+        self._availableTabs: set = set()
+
         lytWelcome = QVBoxLayout()
-        self.lytWelcomeBtns = QGridLayout()
+        self._homeContentLayout = QVBoxLayout()
         self.tabWelcome.setLayout(lytWelcome)
-        lytWelcome.addStretch()
-        lytWelcome.addWidget(QLabel(
-            "Welcome...", 
-            font=QFont("Helvetica", 60, QFont.Weight.Bold, italic=True), 
-            alignment=Qt.AlignmentFlag.AlignCenter, 
-        ))
+
+        welcomeHeaderLyt = QHBoxLayout()
+        welcomeHeaderLyt.addStretch()
+        lblWelcome = QLabel("Welcome,")
+        lblWelcome.setFont(QFont("Helvetica", 30))
+        welcomeHeaderLyt.addWidget(lblWelcome)
         self.btnWelcomeName = QPushButton(self.loggedUser.getRole() + ' ' + self.loggedUser.getName().upper() + '!')
         self.btnWelcomeName.setStyleSheet('''
             QPushButton { border: none; background: transparent; color: palette(link); }
             QPushButton:hover { text-decoration: underline;}
             QPushButton:pressed { color: palette(highlight); }
         ''')
-        self.btnWelcomeName.setFont(QFont("Helvetica", 40, QFont.Weight.Bold, italic=True))
+        self.btnWelcomeName.setFont(QFont("Helvetica", 30, QFont.Weight.Bold, italic=True))
         self.btnWelcomeName.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btnWelcomeName.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
-        self.lytWelcomeBtns.setSpacing(10)
-        lytWelcome.addWidget(self.btnWelcomeName)
-        lytWelcome.setAlignment(self.btnWelcomeName, Qt.AlignmentFlag.AlignCenter)
-        lytWelcome.addStretch()
-        lytWelcome.addLayout(self.lytWelcomeBtns)
-        lytWelcome.addStretch()
+        welcomeHeaderLyt.addWidget(self.btnWelcomeName)
+        welcomeHeaderLyt.addStretch()
+
+        lytWelcome.addSpacing(10)
+        lytWelcome.addLayout(welcomeHeaderLyt)
+        lytWelcome.addLayout(self._homeContentLayout, 1)
         self.btnWelcomeName.clicked.connect(self.dlgSettings)
         
         self.stack.addWidget(self.tabWelcome)
@@ -885,11 +892,28 @@ class MainWindow(QMainWindow):
         y = self.height() - self.btnFAB.height() - margin - self.statusBar().height()
         self.btnFAB.move(x, y)
     
-    def setAvailableTabs(self, groups: list[list[QPushButton]]):
-        FOOTER_BTNS: list[QPushButton] = []
+    def _footerButtons(self) -> list[QPushButton]:
+        footer: list[QPushButton] = []
         if self.loggedUser.getRole() != UserRoles.GUEST:
-            FOOTER_BTNS.extend([self.btnTheme, self.btnSettings])
-        FOOTER_BTNS.extend([self.btnRefresh, self.btnLogout])
+            footer.extend([self.btnTheme, self.btnSettings])
+        footer.extend([self.btnRefresh, self.btnLogout])
+        return footer
+
+    def setAvailableTabs(self, sidebarGroups: list[list[QPushButton]], topbarGroups: dict[str, list[QPushButton | None]]):
+        self._availableNavButtons = (
+            {btn for group in sidebarGroups for btn in group} |
+            {btn for group in topbarGroups.values() for btn in group if btn is not None}
+        )
+        self._availableTabs = {
+            self._sideBarBtnMap[btn] for btn in self._availableNavButtons
+            if self._sideBarBtnMap.get(btn) is not None
+        }
+        self.setSidebarButtons(sidebarGroups)
+        self.setTopbarButtons(topbarGroups)
+        self.buildHomePage()
+
+    def setSidebarButtons(self, groups: list[list[QPushButton]]):
+        FOOTER_BTNS = self._footerButtons()
 
         # --- Sidebar ---
         self.sideBarLayout.clear()
@@ -902,60 +926,17 @@ class MainWindow(QMainWindow):
         for btn in FOOTER_BTNS:
             self.sideBarLayout.addWidget(btn)
 
-        # --- Collect nav buttons ---
+        # --- Quick-nav shortcuts (Alt+1..Alt+10) ---
         nav_btns = [btn for group in groups for btn in group]
-
-        # --- Welcome grid ---
-        col_count = 3
-        for i in range(col_count):
-            self.lytWelcomeBtns.setColumnStretch(i, 1)
-        while self.lytWelcomeBtns.count():
-            item = self.lytWelcomeBtns.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-
-        tiles = []
-        for btn in nav_btns:
-            tile = QToolButton()
-            tile.setIcon(btn.icon())
-            tile.setText(btn.toolTip())
-            tile.setIconSize(QSize(48, 48))
-            tile.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-            tile.setCursor(Qt.CursorShape.PointingHandCursor)
-            tile.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-            tile.clicked.connect(btn.click)
-            tile.setStyleSheet("""
-                QToolButton {
-                    background: rgba(128, 128, 128, 0.15);
-                    border: 1px solid rgba(128, 128, 128, 0.30);
-                    border-radius: 10px;
-                    padding: 10px 6px;
-                    color: palette(window-text);
-                }
-                QToolButton:hover {
-                    background: rgba(128, 128, 128, 0.25);
-                    border: 1px solid rgba(128, 128, 128, 0.50);
-                }
-                QToolButton:pressed {
-                    background: rgba(128, 128, 128, 0.38);
-                }
-            """)
-            tiles.append(tile)
-
-        total = len(tiles)
-        last_row_count = total % col_count or col_count
-        last_row_start = total - last_row_count
-        for i, tile in enumerate(tiles):
-            row = i // col_count
-            if i >= last_row_start:
-                pos = i - last_row_start
-                col = pos * col_count // last_row_count
-                colspan = (pos + 1) * col_count // last_row_count - col
-                self.lytWelcomeBtns.addWidget(tile, row, col, 1, colspan)
-            else:
-                self.lytWelcomeBtns.addWidget(tile, row, i % col_count)
+        for i, btn in enumerate(nav_btns):
             if i < 10:
-                QShortcut('Alt+' + str(i + 1), self).activated.connect(tile.click)
+                QShortcut('Alt+' + str(i + 1), self).activated.connect(btn.click)
+
+    def setTopbarButtons(self, groups: dict[str, list[QPushButton | None]]):
+        """groups maps a topbar menu label (e.g. '&PTWs') to the buttons/actions shown in
+        that menu, in order; a None entry inserts a separator within the menu. '&View' and
+        '&Help' always exist and get the sidebar-visibility/about controls appended regardless
+        of whether the caller supplies its own entries for them."""
 
         # --- Top toolbar (grouped) ---
         TOOLBAR_BTN_STYLE = """
@@ -1000,48 +981,7 @@ class MainWindow(QMainWindow):
             a.triggered.connect(w.click)
             return a
 
-        # TOOLBAR_GROUPS = [
-        #     ("&PTWs",        lambda tip: "PTW" in tip),
-        #     ("&Risks",       lambda tip: "Risks" in tip),
-        #     ("&Isolations",  lambda tip: "Isolation" in tip),
-        #     ("&Users",       lambda tip: "User" in tip),
-        # ]
-        
-        TOOLBAR_GROUPS = ["&PTWs", "&Risks", "&Isolations", "&Users", "&View", "&Help"]
-
-        def getToolbarGroup(tip):
-            if "Home" in tip or "Refresh" in tip or "Light/Dark" in tip:
-                return "&View"
-            for group in TOOLBAR_GROUPS:
-                if group[1:] in tip:
-                    return group
-            return "&Help"
-
-        
-        # group_widgets: dict[str, list] = {name: [] for name, _ in TOOLBAR_GROUPS}
-        # ungrouped: list = []
-        # for group in groups:
-        #     for g in group_widgets.values():
-        #         if g and g[-1]:
-        #             g.append(None)  # separator between groups
-        #     for btn in group:
-        #         tip = btn.toolTip()
-        #         for name, predicate in TOOLBAR_GROUPS:
-        #             if predicate(tip):
-        #                 group_widgets[name].append(btn)
-        #                 break
-        #         else:
-        #             ungrouped.append(btn)
-
-        group_widgets: dict[str, list] = {name: [] for name in TOOLBAR_GROUPS}
-        for group in groups + [FOOTER_BTNS]:
-            for g in group_widgets.values():
-                if g and g[-1]:
-                    g.append(None)  # separator between groups
-            for btn in group:
-                tip = btn.toolTip()
-                group_name = getToolbarGroup(tip)
-                group_widgets[group_name].append(btn)
+        group_widgets: dict[str, list] = {name: list(btns) for name, btns in groups.items()}
 
         sidebarToggle = QAction("Navigation Sidebar", self)
         sidebarToggle.setCheckable(True)
@@ -1066,21 +1006,72 @@ class MainWindow(QMainWindow):
             self._sidebarDockActions[area] = act
             sidebarDockActions.append(act)
 
-        group_widgets["&View"].insert(0, sidebarToggle)
-        group_widgets["&View"].insert(1, None)
-        for act in sidebarDockActions[::-1]:
-            group_widgets["&View"].insert(1, act)
+        viewItems = group_widgets.pop("&View", [])
+        group_widgets["&View"] = [sidebarToggle, *sidebarDockActions] + ([None] + viewItems if viewItems else [])
 
         aboutAction = QAction(qta.icon('fa6s.circle-info'), "About PTW", self)
         aboutAction.triggered.connect(self._showAboutPTW)
         aboutQtAction = QAction(qta.icon('fa6s.circle-question'), "About Qt", self)
         aboutQtAction.triggered.connect(lambda: QMessageBox.aboutQt(self, "About Qt"))
-        group_widgets["&Help"].extend([None, aboutAction, aboutQtAction])
+
+        helpItems = group_widgets.pop("&Help", [])
+        group_widgets["&Help"] = (helpItems + [None] if helpItems else []) + [aboutAction, aboutQtAction]
 
         self.toolbar.clear()
-        for name in TOOLBAR_GROUPS:
-            if btns := group_widgets[name]:
+        for name, btns in group_widgets.items():
+            if btns:
                 self.toolbar.addWidget(make_menu_btn(name, [nav_action(w) if isinstance(w, QPushButton) else w for w in btns]))
+
+    def _approvalCycleTabs(self):
+        return [
+            ('Requested',    self.btnRequestedPTWs,   self.tabRequestedPTWs,   APPROVAL_CYCLE_COLORS['Requested']),
+            ('Under Review', self.btnUnderReviewPTWs, self.tabUnderReviewPTWs, APPROVAL_CYCLE_COLORS['Under Review']),
+            ('Returned',     self.btnReturnedPTWs,    self.tabReturnedPTWs,    APPROVAL_CYCLE_COLORS['Returned']),
+            ('Approved',     self.btnApprovedPTWs,    self.tabApprovedPTWs,    APPROVAL_CYCLE_COLORS['Approved']),
+        ]
+
+    def buildHomePage(self):
+        """Default home page: the shared PTW approval-cycle / running-by-location dashboard.
+        Subclasses without PTW tabs (e.g. AdminMainWindow) override this instead."""
+        charts = []
+        if any(btn in self._availableNavButtons for _, btn, _, _ in self._approvalCycleTabs()):
+            self._homeApprovalChart = DonutChart("PTWs in Approval Cycle")
+            charts.append(self._homeApprovalChart)
+        if self.btnRunningPTWs in self._availableNavButtons:
+            self._homeRunningChart = DonutChart("Running PTWs")
+            charts.append(self._homeRunningChart)
+
+        if charts:
+            row = QHBoxLayout()
+            for i, chart in enumerate(charts):
+                if i > 0:
+                    row.addSpacing(40)
+                row.addWidget(chart, 1)
+            self._homeContentLayout.addLayout(row, 1)
+
+        self.updateHomeDashboard()
+
+    def updateHomeDashboard(self):
+        """Refresh the chart(s) built by buildHomePage() with current data."""
+        if self._homeApprovalChart:
+            self._homeApprovalChart.setSegments([
+                DonutSegment(label, len(tab.ptwsData), color, partial(btn.click))
+                for label, btn, tab, color in self._approvalCycleTabs()
+                if btn in self._availableNavButtons
+            ])
+        if self._homeRunningChart:
+            counts = Counter(ptw.location for ptw in self.tabRunningPTWs.ptwsData)
+            self._homeRunningChart.setSegments([
+                DonutSegment(
+                    loc.value, counts.get(loc.value, 0), LOCATION_COLORS[i % len(LOCATION_COLORS)],
+                    partial(self._openRunningFilteredByLocation, loc.value)
+                )
+                for i, loc in enumerate(PTWData.Locations)
+            ])
+
+    def _openRunningFilteredByLocation(self, location: str):
+        self.btnRunningPTWs.click()
+        self.tabRunningPTWs.filterColumn('Location', {location})
 
     def _showAboutPTW(self):
         role = self.loggedUser.getRole()
@@ -1241,6 +1232,8 @@ class MainWindow(QMainWindow):
             if refreshArchivedPTWs:
                 self.refreshArchivedPTWs()
 
+            self.updateHomeDashboard()
+
             QApplication.beep()
             self.statusBar().showMessage("GUI refreshed successfully.", 2000)
 
@@ -1342,10 +1335,16 @@ class GuestMainWindow(MainWindow):
         self.tabReturnedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.printOption, self.exportOption])
         self.tabApprovedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.printOption, self.exportOption])
 
-        self.setAvailableTabs([
-            [self.btnWelcome],
-            [self.btnRequestedPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
-        ])
+        self.setAvailableTabs(
+            [
+                [self.btnWelcome],
+                [self.btnRequestedPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
+            ],
+            {
+                '&PTWs': [self.btnRequestedPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
+                '&View': [self.btnWelcome, *self._footerButtons()],
+            },
+        )
 
         self.btnFAB.setToolTip("Request New PTW [Ctrl+N]")
         self.btnFAB.setIcon(qta.icon('fa6s.plus', color='white'))
@@ -1374,7 +1373,7 @@ class UserMainWindow(MainWindow):
 
         self.tabRegisteredPTWs.addOptions([self.viewOption, self.editOption, self.requestPTWOption, self.viewRequestorOption, self.dltOption, self.exportOption])
         self.tabRequestedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.printOption, self.exportOption])
-        self.tabUnderReviewPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.acceptOption, self.printOption, self.exportOption])
+        self.tabUnderReviewPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.acceptOption, self.printOption, self.exportOption])
         self.tabReturnedPTWs.addOptions([self.viewOption, self.editOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.dltOption, self.printOption, self.exportOption])
         self.tabApprovedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.runRequestOption, self.printOption, self.exportOption])
         self.tabWaitingRunConfirmationPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewPerformingOption, self.viewApprovalsOption, self.requestPTWOption, self.printOption, self.exportOption])
@@ -1386,12 +1385,24 @@ class UserMainWindow(MainWindow):
         self.tabArchivedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.printOption, self.exportOption])
 
 
-        self.setAvailableTabs([
-            [self.btnWelcome],
-            [self.btnRequestedPTWs, self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
-            [self.btnWaitingRunConfirmationPTWs, self.btnRunningPTWs, self.btnWaitingHldConfirmationPTWs, self.btnHeldPTWs, self.btnWaitingClsConfirmationPTWs, self.btnClosedPTWs, self.btnArchivedPTWs],
-            [self.btnIsolations],
-        ])
+        self.setAvailableTabs(
+            [   # sidebar: curated, most-used tabs for a requestor
+                [self.btnWelcome],
+                [self.btnRequestedPTWs, self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
+                [self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs],
+                [self.btnIsolations],
+            ],
+            {   # topbar: full set
+                '&PTWs': [
+                    self.btnRequestedPTWs, self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs,
+                    None,
+                    self.btnWaitingRunConfirmationPTWs, self.btnRunningPTWs, self.btnWaitingHldConfirmationPTWs,
+                    self.btnHeldPTWs, self.btnWaitingClsConfirmationPTWs, self.btnClosedPTWs, self.btnArchivedPTWs,
+                ],
+                '&Isolations': [self.btnIsolations],
+                '&View': [self.btnWelcome, *self._footerButtons()],
+            },
+        )
 
         self.btnFAB.setToolTip("Request New PTW [Ctrl+N]")
         self.btnFAB.setIcon(qta.icon('fa6s.plus', color='white'))
@@ -1409,7 +1420,7 @@ class UserMainWindow(MainWindow):
     def btnFABHandler(self):
         if self.btnFAB.isVisible():
             self.addPTWDialog()
-    
+
     def refreshGUI(self, refreshArchivedPTWs: bool = False):
         super().refreshPtwUserGUI(refreshArchivedPTWs=refreshArchivedPTWs)
 
@@ -1431,12 +1442,23 @@ class CoordinatorMainWindow(MainWindow):
         self.tabClosedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.printDeIsolationOption, self.printOption, self.archiveOption, self.exportOption])
         self.tabArchivedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.printOption, self.exportOption])
 
-        self.setAvailableTabs([
-            [self.btnWelcome],
-            [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
-            [self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs, self.btnArchivedPTWs],
-            [self.btnIsolations],
-        ])
+        self.setAvailableTabs(
+            [
+                [self.btnWelcome],
+                [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
+                [self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs, self.btnArchivedPTWs],
+                [self.btnIsolations],
+            ],
+            {
+                '&PTWs': [
+                    self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs,
+                    None,
+                    self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs, self.btnArchivedPTWs,
+                ],
+                '&Isolations': [self.btnIsolations],
+                '&View': [self.btnWelcome, *self._footerButtons()],
+            },
+        )
 
         # Create Floating Option Button
         self.btnFAB.setIcon(qta.icon('fa6s.print', color='white'))
@@ -1478,12 +1500,24 @@ class IssuingMainWindow(MainWindow):
         self.tabClosedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.printDeIsolationOption, self.printOption, self.archiveOption, self.exportOption])
         self.tabArchivedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.printOption, self.exportOption])
 
-        self.setAvailableTabs([
-            [self.btnWelcome],
-            [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
-            [self.btnWaitingRunConfirmationPTWs, self.btnRunningPTWs, self.btnWaitingHldConfirmationPTWs, self.btnHeldPTWs, self.btnWaitingClsConfirmationPTWs, self.btnClosedPTWs, self.btnArchivedPTWs],
-            [self.btnIsolations],
-        ])
+        self.setAvailableTabs(
+            [   # sidebar: curated, run/hold/close confirmation is Issuing's core job
+                [self.btnWelcome],
+                [self.btnUnderReviewPTWs],
+                [self.btnWaitingRunConfirmationPTWs, self.btnRunningPTWs, self.btnWaitingHldConfirmationPTWs, self.btnHeldPTWs, self.btnWaitingClsConfirmationPTWs, self.btnClosedPTWs],
+                [self.btnIsolations],
+            ],
+            {   # topbar: full set
+                '&PTWs': [
+                    self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs,
+                    None,
+                    self.btnWaitingRunConfirmationPTWs, self.btnRunningPTWs, self.btnWaitingHldConfirmationPTWs,
+                    self.btnHeldPTWs, self.btnWaitingClsConfirmationPTWs, self.btnClosedPTWs, self.btnArchivedPTWs,
+                ],
+                '&Isolations': [self.btnIsolations],
+                '&View': [self.btnWelcome, *self._footerButtons()],
+            },
+        )
 
         # Create Floating Option Button
         self.btnFAB.setIcon(qta.icon('fa6s.print', color='white'))
@@ -1513,12 +1547,20 @@ class SafetyMainWindow(MainWindow):
         self.tabUnderReviewPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestEditsOption, self.acceptOption])
         self.tabRunningPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewPerformingOption, self.viewApprovalsOption, self.printOption])
 
-        self.setAvailableTabs([
-            [self.btnWelcome],
-            [self.btnUnderReviewPTWs, self.btnRunningPTWs],
-            [self.btnIsolations],
-            [self.btnRisks],
-        ])
+        self.setAvailableTabs(
+            [
+                [self.btnWelcome],
+                [self.btnUnderReviewPTWs, self.btnRunningPTWs],
+                [self.btnIsolations],
+                [self.btnRisks],
+            ],
+            {
+                '&PTWs': [self.btnUnderReviewPTWs, self.btnRunningPTWs],
+                '&Isolations': [self.btnIsolations],
+                '&Risks': [self.btnRisks],
+                '&View': [self.btnWelcome, *self._footerButtons()],
+            },
+        )
 
         self.btnFAB.setIcon(qta.icon('fa6s.plus', color='white'))
         self.btnFAB.setToolTip("New Risk [Ctrl+N]")
@@ -1559,12 +1601,23 @@ class ManagerMainWindow(MainWindow):
         self.tabClosedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.printDeIsolationOption, self.printOption, self.archiveOption, self.exportOption])
         self.tabArchivedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.printOption, self.exportOption])
 
-        self.setAvailableTabs([
-            [self.btnWelcome],
-            [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
-            [self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs],
-            [self.btnIsolations],
-        ])
+        self.setAvailableTabs(
+            [
+                [self.btnWelcome],
+                [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
+                [self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs],
+                [self.btnIsolations],
+            ],
+            {
+                '&PTWs': [
+                    self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs,
+                    None,
+                    self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs,
+                ],
+                '&Isolations': [self.btnIsolations],
+                '&View': [self.btnWelcome, *self._footerButtons()],
+            },
+        )
 
         # Create Floating Option Button
         self.btnFAB.setIcon(qta.icon('fa6s.print', color='white'))
@@ -1591,10 +1644,16 @@ class AdminMainWindow(MainWindow):
         super().__init__(loggedUser)
         self.setWindowTitle("PTW (Permit To Work) - Admin Window")
 
-        self.setAvailableTabs([
-            [self.btnWelcome],
-            [self.btnUsers, self.btnServerLogs],
-        ])
+        self.setAvailableTabs(
+            [
+                [self.btnWelcome],
+                [self.btnUsers, self.btnServerLogs],
+            ],
+            {
+                '&Users': [self.btnUsers, self.btnServerLogs],
+                '&View': [self.btnWelcome, *self._footerButtons()],
+            },
+        )
 
         self.btnFAB.setIcon(qta.icon('fa6s.plus', color='white'))
         self.btnFAB.setToolTip("Add New User [Ctrl+N]")
@@ -1632,12 +1691,33 @@ class AdminMainWindow(MainWindow):
         super().stackTabChanged()
         tab = self.stack.currentWidget()
         self.btnFAB.setVisible(tab in [self.tabAllUsers])
-    
+
+    def buildHomePage(self):
+        self._homeUsersChart = DonutChart("Users")
+        row = QHBoxLayout()
+        row.addWidget(self._homeUsersChart, 1)
+        self._homeContentLayout.addLayout(row, 1)
+        self.updateHomeDashboard()
+
+    def updateHomeDashboard(self):
+        counts = Counter(u.getDepartment() for u in globalData.allUsers.values() if u.getDepartment())
+        self._homeUsersChart.setSegments([
+            DonutSegment(dept, counts[dept], DEPARTMENT_COLOR_CYCLE[i % len(DEPARTMENT_COLOR_CYCLE)],
+                         partial(self._openUsersFilteredByDept, dept))
+            for i, dept in enumerate(sorted(counts))
+        ])
+
+    def _openUsersFilteredByDept(self, dept: str):
+        self.btnUsers.click()
+        self.tabAllUsers.filterColumn('Department', {dept})
+
     def refreshGUI(self, refreshArchivedPTWs: bool = False):
         def on_done(err, _):
             self.tabAllUsers.clear()
             for user in globalData.allUsers.values():
                 self.tabAllUsers.addUserToGUI(user)
+
+            self.updateHomeDashboard()
 
             QApplication.beep()
             self.statusBar().showMessage("GUI refreshed successfully.", 2000)
