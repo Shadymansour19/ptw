@@ -10,6 +10,7 @@ import qtawesome as qta
 from clientRequests import ClientRequests
 from PTWData import PTWData
 from CheckableComboBox import CheckableComboBox
+from GlobalData import globalData
 
 
 class TablePTWs(QWidget):
@@ -166,8 +167,10 @@ class TablePTWs(QWidget):
             value = getattr(ptw, field)
             if field == 'fast_track':
                 value = 'Yes' if value else 'No'
-            elif field == 'requestor':
-                value = value
+            elif field == 'requestor' and value:
+                user = globalData.allUsers.get(value)
+                if user:
+                    value = user.getName()
             record.append(str(value))
         return record
 

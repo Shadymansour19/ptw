@@ -111,6 +111,12 @@ class DialogPTW(QDialog):
     def formatCheckBoxText(text: str):
         return text.replace('\n', ' ')
 
+    def displayNameForUsername(username: str):
+        if not username:
+            return ''
+        user = globalData.allUsers.get(username)
+        return user.getName() if user else username
+
     def __init__(self, parent, loggedUser, ptw: PTWData, referencePTW: PTWData, new: bool, readOnly: bool, lbl: str):
         super().__init__(parent)
 
@@ -264,8 +270,9 @@ class DialogPTW(QDialog):
         self.boxPTWType.setCurrentIndex(max(0, self.boxPTWType.findData(str(ptw.type))))
         self.boxDate.setText(datetime.now().strftime("%d/%m/%Y %H:%M:%S") if new else str(ptw.request_date))
         self.boxDepartment.setText(self.loggedUser.department if new else str(ptw.department) if self.loggedUser.department else '')
-        self.boxRequestor.setText(self.loggedUser.getUsername() if new else str(ptw.requestor) if ptw.requestor else '')
-        self.boxPerforming.setText(str(ptw.performing) if ptw.performing else '')
+        self._requestorUsername = self.loggedUser.getUsername() if new else ptw.requestor
+        self.boxRequestor.setText(DialogPTW.displayNameForUsername(self._requestorUsername))
+        self.boxPerforming.setText(DialogPTW.displayNameForUsername(ptw.performing))
         self.boxLocation.setCurrentIndex(max(0, self.boxLocation.findData(str(ptw.location) if ptw.location else '')))
         self.boxAreaClass.setCurrentIndex(max(0, self.boxAreaClass.findData(str(ptw.area_class) if ptw.area_class else '')))
         self.boxEquipment.setText(str(ptw.equipment) if ptw.equipment else '')
@@ -681,7 +688,7 @@ class DialogPTW(QDialog):
         self.ptw.setId(self.boxPTWId.text() if self.boxPTWId.text() else None)
         self.ptw.setType(self.boxPTWType.currentData())
         self.ptw.setDate(datetime.now().strftime("%d/%m/%Y %H:%M:%S") if self.new else self.boxDate.text())
-        self.ptw.setRequestor(self.boxRequestor.text())
+        self.ptw.setRequestor(self._requestorUsername)
         self.ptw.setDepartment(self.boxDepartment.text())
         self.ptw.setLocation(self.boxLocation.currentData())
         self.ptw.setAreaClass(self.boxAreaClass.currentData())
