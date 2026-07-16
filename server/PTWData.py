@@ -529,6 +529,7 @@ class PTWData:
         self.area_class : str = data.get('area_class')
         self.department : str = data.get('department')
         self.description : str = data.get('description')
+        self.fast_track : bool = data.get('fast_track', False)
         self.requestor : str = data.get('requestor')
         self.performing : str = data.get('performing')
         self.issuing : str = data.get('issuing')
@@ -623,7 +624,11 @@ class PTWData:
     def setMos(self, mos: str):
         self.mos = mos
         return self
-    
+
+    def setFastTrack(self, fast_track: bool):
+        self.fast_track = fast_track
+        return self
+
     def addIsolation(self, isolation: Isolation):
         if isolation not in self.isolations:
             self.isolations.append(isolation)

@@ -254,6 +254,7 @@ class DialogPTW(QDialog):
         for areaClass in PTWData.AreaClasses:
             self.boxAreaClass.addItem(t(areaClass), areaClass.value)
         self.boxEquipment = QLineEdit()
+        self.btnFastTrack = QCheckBox()
         self.boxDescription = QTextEdit()
         self.boxDescription.setFixedHeight(self.boxDescription.fontMetrics().lineSpacing() * 5 + 10)
         self.boxDescription.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
@@ -268,6 +269,7 @@ class DialogPTW(QDialog):
         self.boxLocation.setCurrentIndex(max(0, self.boxLocation.findData(str(ptw.location) if ptw.location else '')))
         self.boxAreaClass.setCurrentIndex(max(0, self.boxAreaClass.findData(str(ptw.area_class) if ptw.area_class else '')))
         self.boxEquipment.setText(str(ptw.equipment) if ptw.equipment else '')
+        self.btnFastTrack.setChecked(bool(ptw.fast_track))
         self.boxDescription.setText(str(ptw.description) if ptw.description else '')
 
         self.boxPTWId.setReadOnly(True)
@@ -279,6 +281,7 @@ class DialogPTW(QDialog):
         self.boxLocation.setEnabled(not readOnly)
         self.boxAreaClass.setEnabled(not readOnly)
         self.boxEquipment.setReadOnly(readOnly)
+        self.btnFastTrack.setEnabled(not readOnly)
         self.boxDescription.setReadOnly(readOnly)
         self.boxDescription.setTabChangesFocus(True)
 
@@ -291,6 +294,7 @@ class DialogPTW(QDialog):
         lytBasicInfo.addRow(t('Location:'), self.boxLocation)
         lytBasicInfo.addRow(t('Area Class:'), self.boxAreaClass)
         lytBasicInfo.addRow(t('Equipment:'), self.boxEquipment)
+        lytBasicInfo.addRow(t('Fast Track:'), self.btnFastTrack)
         lytBasicInfo.addRow(t('Description:'), self.boxDescription)
 
         self.btnsTools: dict[str, QCheckBox] = {}
@@ -682,6 +686,7 @@ class DialogPTW(QDialog):
         self.ptw.setLocation(self.boxLocation.currentData())
         self.ptw.setAreaClass(self.boxAreaClass.currentData())
         self.ptw.setEquipment(self.boxEquipment.text())
+        self.ptw.setFastTrack(self.btnFastTrack.isChecked())
         self.ptw.setDescription(self.boxDescription.toPlainText())
         if self.btnMiwi.isChecked():
             self.ptw.setMiwi(self.boxMiwi.currentText())

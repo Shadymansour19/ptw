@@ -273,6 +273,7 @@ area_class      — Hazard (HAZ) or Non-Hazard (NHZ)
 department      — Responsible department
 description     — Work description (max 300 chars)
 requestor       — Username of person requesting the permit
+fast_track      — Whether this permit is flagged for fast-track processing (bool, defaults to false)
 ```
 
 ### Work Authorization
@@ -508,6 +509,7 @@ equipment                   VARCHAR(100)
 area_class                  VARCHAR(100)
 department                  VARCHAR(100)
 description                 VARCHAR(300) NOT NULL
+fast_track                  BOOLEAN NOT NULL DEFAULT FALSE
 requestor                   VARCHAR(100)
 performing                  VARCHAR(100)
 issuing                     VARCHAR(100)

@@ -17,6 +17,7 @@ class PtwsDb:
                     'JSONB[]' if columns[i] in ['approvals', 'isolations'] else
                     'TEXT[]' if isinstance(getattr(ptwSample, columns[i]), list) else
                     'VARCHAR(300) NOT NULL' if columns[i] == 'description' else
+                    'BOOLEAN NOT NULL DEFAULT FALSE' if isinstance(getattr(ptwSample, columns[i]), bool) else
                     'VARCHAR(100)'
                     for i in range(len(columns))
                 ]

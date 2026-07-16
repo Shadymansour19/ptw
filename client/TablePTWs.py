@@ -30,8 +30,8 @@ class TablePTWs(QWidget):
         self.loggedUser = loggedUser
         self.options = []
 
-        self.summeryLabels = ['PTW#', 'Type', 'Request Time', 'Department', 'Requestor', 'Location', 'Equipment', 'Description']
-        self.summeryFields = ['id',   'type', 'request_date', 'department', 'requestor', 'location', 'equipment', 'description']
+        self.summeryLabels = ['PTW#', 'F.T.',       'Type', 'Request Time', 'Department', 'Requestor', 'Location', 'Equipment', 'Description']
+        self.summeryFields = ['id',   'fast_track', 'type', 'request_date', 'department', 'requestor', 'location', 'equipment', 'description']
 
         lblLyt = QHBoxLayout()
         lblLyt.setContentsMargins(10, 0, 10, 0)
@@ -163,7 +163,12 @@ class TablePTWs(QWidget):
     def ptwToRecord(self, ptw):
         record = []
         for field in self.summeryFields:
-            record.append(str(getattr(ptw, field)))
+            value = getattr(ptw, field)
+            if field == 'fast_track':
+                value = 'Yes' if value else 'No'
+            elif field == 'requestor':
+                value = value
+            record.append(str(value))
         return record
 
     def addPTWToGUI(self, ptw):
