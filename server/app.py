@@ -5,6 +5,7 @@ import queue
 import logging
 import threading
 from time import time, sleep
+from datetime import datetime, timedelta
 from logging.handlers import RotatingFileHandler
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify, Response, stream_with_context, send_file
@@ -101,6 +102,9 @@ _RESET_CODE_PRUNE_INTERVAL = 5 * 60
 
 _DB_PERIODIC_REFRESH_INTERVAL = 5 * 60
 
+_AUTO_ARCHIVE_AFTER_DAYS = 7
+_AUTO_ARCHIVE_CHECK_INTERVAL = 60 * 60
+
 _sse_clients: dict[UserRoles, list[queue.Queue]] = {}
 _sse_lock = threading.Lock()
 
@@ -177,6 +181,38 @@ def _prune_reset_codes():
             log.debug("Pruned %d expired reset code(s)", len(expired))
 
 threading.Thread(target=_prune_reset_codes, daemon=True, name="reset-codes-pruner").start()
+
+
+def _auto_archive_closed_ptws():
+    while True:
+        sleep(_AUTO_ARCHIVE_CHECK_INTERVAL)
+        try:
+            cutoff = datetime.now() - timedelta(days=_AUTO_ARCHIVE_AFTER_DAYS)
+            with globalData.lock:
+                closed = [ptw for ptw in globalData.allPTWs.values() if ptw.running_status == PTWData.RunningStatus.CLOSED]
+            staleIds = []
+            for ptw in closed:
+                if not ptw.close_issuing_timestamp:
+                    continue
+                try:
+                    closedAt = datetime.strptime(ptw.close_issuing_timestamp, "%d/%m/%Y %H:%M:%S")
+                except ValueError:
+                    log.warning("Auto-archive: PTW #%s has unparseable close_issuing_timestamp='%s'", ptw.id, ptw.close_issuing_timestamp)
+                    continue
+                if closedAt <= cutoff:
+                    staleIds.append(ptw.id)
+            if staleIds:
+                ptwDB.archivePTWs(staleIds)
+                with globalData.lock:
+                    for pid in staleIds:
+                        globalData.allPTWs.pop(pid, None)
+                _broadcast("ptw_archived", {"ptw_ids": staleIds, "by": "system"})
+                log.info("Auto-archived %d closed PTW(s) older than %d days: ids=%s", len(staleIds), _AUTO_ARCHIVE_AFTER_DAYS, staleIds)
+        except Exception as e:
+            log.error("Auto-archive sweep failed: %s", e, exc_info=True)
+
+threading.Thread(target=_auto_archive_closed_ptws, daemon=True, name="ptw-auto-archive").start()
+log.info("PTW auto-archive thread started (threshold: %d days, check interval: %ds)", _AUTO_ARCHIVE_AFTER_DAYS, _AUTO_ARCHIVE_CHECK_INTERVAL)
 
 
 def getVerifiedUser(auth) -> User:

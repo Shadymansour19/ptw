@@ -37,7 +37,7 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 - **PDF permit reports** — Printable PDF generation for each PTW
 - **Excel export** — Export the PTW list to a formatted, color-coded `.xlsx` spreadsheet
 - **Real-time notifications** — Server-Sent Events (SSE) push PTW changes to all connected clients instantly; no polling required
-- **Archived permits** — Closed PTWs can be archived; archived data is fetched on-demand only to reduce server overhead
+- **Archived permits** — Closed PTWs can be archived manually, or automatically 7 days after closing via a server-side background sweep; archived data is fetched on-demand only to reduce server overhead
 - **File attachments** — Per-permit document uploads (medical certificates, tool checklists, technical drawings)
 - **MIWI documents** — Per-department Maintenance & Work Instruction PDFs referenced across permits; approver roles can view across all departments, other roles are confined to their own
 - **Role-based UI** — Each of 11 roles gets a tailored interface showing only relevant actions and data
@@ -143,7 +143,7 @@ WAITING_RUN_CONFIRM
     │         ▼                                 ▼
     │       CLOSED                           RUNNING (returns)
     │         │
-    │         │ [Archive]
+    │         │ [Archive — manual, or automatic after 7 days]
     │         │
     │         ▼
     │      ARCHIVED

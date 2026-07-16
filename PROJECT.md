@@ -138,7 +138,7 @@ WAITING_RUN_CONFIRM
     │         ▼                                 ▼
     │       CLOSED                           RUNNING (returns)
     │         │
-    │         │ [Archive]
+    │         │ [Archive — manual, or automatic after 7 days]
     │         │
     │         ▼
     │      ARCHIVED
@@ -173,6 +173,8 @@ WAITING_RUN_CONFIRM
 | WAITING_HLD_CONFIRM  | Hold request sent to Issuing Authority; awaiting confirmation         |
 | HELD                 | Work paused; selected isolations maintained                           |
 | ARCHIVED             | Permit archived after closure (terminal state); stored separately     |
+
+**Archiving:** A `CLOSED` PTW can be archived manually (`POST /ptws/archive`, any authenticated non-guest user) or automatically. A daemon thread (`server/app.py` — `_auto_archive_closed_ptws`) sweeps `globalData.allPTWs` every `_AUTO_ARCHIVE_CHECK_INTERVAL` (1 hour) and archives any `CLOSED` PTW whose `close_issuing_timestamp` is `_AUTO_ARCHIVE_AFTER_DAYS` (7 days) or older. Both paths call the same `PtwsDb.archivePTWs()` and broadcast the same `ptw_archived` SSE event with `"by"` set to the acting user (manual) or `"system"` (automatic).
 
 ---
 
