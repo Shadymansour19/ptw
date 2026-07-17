@@ -208,16 +208,21 @@ class TablePTWs(QWidget):
                 font.setPixelSize(font.pixelSize() + 4)
             cell.setFont(font)
 
-    def _fastTrackIconWidget(self, fastTrack: bool) -> QLabel:
-        # setTextAlignment() only centers the item's text block, not its icon -
-        # a QLabel cell widget is used so the icon itself is genuinely centered
-        lbl = QLabel()
-        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl.setStyleSheet("background: transparent;")
+    def _fastTrackIconWidget(self, fastTrack: bool) -> QWidget:
+        container = QWidget()
+        container.setStyleSheet("background: transparent;")
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         if fastTrack:
-            lbl.setPixmap(qta.icon('fa6s.bolt', color='orange').pixmap(24, 24))
-        return lbl
-
+            badge = QLabel()
+            badge.setFixedSize(28, 28)
+            badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            badge.setStyleSheet("background: rgba(0, 0, 0, 140); border-radius: 14px;")
+            badge.setPixmap(qta.icon('fa6s.bolt', color='orange').pixmap(20, 20))
+            layout.addWidget(badge)
+        return container
+    
     def addPTWToGUI(self, ptw):
         self.ptwsData.append(ptw)
         data = self.ptwToRecord(ptw)
@@ -296,6 +301,7 @@ class TablePTWs(QWidget):
 
     def sort(self):
         self.tbl.sortItems(0, Qt.SortOrder.AscendingOrder)
+        self.tbl.sortItems(1, Qt.SortOrder.DescendingOrder)
         self._syncPtwsData()
 
     def _syncPtwsData(self):
