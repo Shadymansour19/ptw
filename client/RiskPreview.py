@@ -62,9 +62,12 @@ class DialogRiskItem(QDialog):
 
         for field in [self.txtHazard, self.txtEffect, self.txtControl]:
             field.setTabChangesFocus(True)
-            field.setMinimumHeight(field.fontMetrics().lineSpacing() * 3 + 10)
+            field.setMinimumHeight(field.fontMetrics().lineSpacing() * 4 + 10)
             field.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
             field.setAcceptRichText(False)
+
+        if parent:
+            self.resize(int(parent.width() * 0.9), int(parent.height() * 0.9))
         
     def collectData(self):
         hazard = self.txtHazard.toPlainText()
@@ -351,7 +354,7 @@ class DialogSelectGenericRisks(QDialog):
         lyt.addWidget(btns)
 
         if parent:
-            self.resize(int(parent.width() * 0.8), int(parent.height() * 0.7))
+            self.resize(int(parent.width() * 0.9), int(parent.height() * 0.9))
 
     def getSelectedRiskItems(self) -> list[RiskItem]:
         items = []
