@@ -13,6 +13,17 @@ from CheckableComboBox import CheckableComboBox
 from GlobalData import globalData
 
 
+class _FastTrackItem(QTableWidgetItem):
+    """F.T. column cell: display text is left empty (so no colored/highlighted
+    text can ever leak through, selected or not - the bolt icon is drawn by a
+    separate cell widget). Sorts by the real Yes/No value stashed in UserRole."""
+
+    def __lt__(self, other):
+        if isinstance(other, QTableWidgetItem):
+            return self.data(Qt.ItemDataRole.UserRole) < other.data(Qt.ItemDataRole.UserRole)
+        return super().__lt__(other)
+
+
 class TablePTWs(QWidget):
     class MenuOption:
         def __init__(self, lbl, fun, icn, allAtOnce : bool = False):
@@ -33,6 +44,7 @@ class TablePTWs(QWidget):
 
         self.summeryLabels = ['PTW#', 'F.T.',       'Type', 'Request Time', 'Department', 'Requestor', 'Location', 'Equipment', 'Description']
         self.summeryFields = ['id',   'fast_track', 'type', 'request_date', 'department', 'requestor', 'location', 'equipment', 'description']
+        self._ftCol = self.summeryFields.index('fast_track')
 
         lblLyt = QHBoxLayout()
         lblLyt.setContentsMargins(10, 0, 10, 0)
@@ -116,7 +128,7 @@ class TablePTWs(QWidget):
             for col in range(len(self.summeryLabels)):
                 item = self.tbl.item(row, col)
                 if item:
-                    col_values[col].add(item.text())
+                    col_values[col].add(self._cellFilterText(item))
         for col, combo in enumerate(self._filterCombos):
             combo.setItems(col_values[col], preserve_selection=True)
 
@@ -136,7 +148,7 @@ class TablePTWs(QWidget):
         ]
         for row in range(self.tbl.rowCount()):
             hide = any(
-                (item := self.tbl.item(row, col)) is not None and item.text() not in allowed
+                (item := self.tbl.item(row, col)) is not None and self._cellFilterText(item) not in allowed
                 for col, allowed in active
             )
             self.tbl.setRowHidden(row, hide)
@@ -174,6 +186,38 @@ class TablePTWs(QWidget):
             record.append(str(value))
         return record
 
+    def _makeCell(self, col: int, value: str) -> QTableWidgetItem:
+        if col == self._ftCol:
+            cell = _FastTrackItem("")
+            cell.setData(Qt.ItemDataRole.UserRole, value)
+            return cell
+        return QTableWidgetItem(value)
+
+    @staticmethod
+    def _cellFilterText(item: QTableWidgetItem) -> str:
+        userData = item.data(Qt.ItemDataRole.UserRole)
+        return userData if userData is not None else item.text()
+
+    def _applyFastTrackStyle(self, cell: QTableWidgetItem, fastTrack: bool):
+        if fastTrack:
+            font = cell.font()
+            font.setBold(True)
+            if font.pointSize() > 0:
+                font.setPointSize(font.pointSize() + 3)
+            else:
+                font.setPixelSize(font.pixelSize() + 4)
+            cell.setFont(font)
+
+    def _fastTrackIconWidget(self, fastTrack: bool) -> QLabel:
+        # setTextAlignment() only centers the item's text block, not its icon -
+        # a QLabel cell widget is used so the icon itself is genuinely centered
+        lbl = QLabel()
+        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl.setStyleSheet("background: transparent;")
+        if fastTrack:
+            lbl.setPixmap(qta.icon('fa6s.bolt', color='orange').pixmap(24, 24))
+        return lbl
+
     def addPTWToGUI(self, ptw):
         self.ptwsData.append(ptw)
         data = self.ptwToRecord(ptw)
@@ -181,10 +225,13 @@ class TablePTWs(QWidget):
         row = self.tbl.rowCount()
         self.tbl.insertRow(row)
         for i, d in enumerate(data):
-            cell = QTableWidgetItem(d)
+            cell = self._makeCell(i, d)
             cell.setBackground(QBrush(ptw.backgroundColor()))
             cell.setForeground(QBrush(ptw.foregroundColor()))
+            self._applyFastTrackStyle(cell, ptw.fast_track)
             self.tbl.setItem(row, i, cell)
+            if i == self._ftCol:
+                self.tbl.setCellWidget(row, i, self._fastTrackIconWidget(ptw.fast_track))
         self.tbl.setSortingEnabled(True)
         self._syncPtwsData()
         if self._filterBar.isVisible():
@@ -202,10 +249,13 @@ class TablePTWs(QWidget):
         data = self.ptwToRecord(ptw)
         self.tbl.setSortingEnabled(False)
         for i, d in enumerate(data):
-            cell = QTableWidgetItem(d)
+            cell = self._makeCell(i, d)
             cell.setBackground(QBrush(ptw.backgroundColor()))
             cell.setForeground(QBrush(ptw.foregroundColor()))
+            self._applyFastTrackStyle(cell, ptw.fast_track)
             self.tbl.setItem(row, i, cell)
+            if i == self._ftCol:
+                self.tbl.setCellWidget(row, i, self._fastTrackIconWidget(ptw.fast_track))
         self.tbl.setSortingEnabled(True)
         self._syncPtwsData()
         if self._filterBar.isVisible():
