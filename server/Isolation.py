@@ -1,7 +1,6 @@
 import enum
 from types import SimpleNamespace
 from datetime import datetime
-from PyQt6.QtGui import QColor
 
 
 class Isolation:
@@ -92,7 +91,7 @@ class IsolationCertificate:
         def setLockNum(self, lockNum):
             self.lock_num = lockNum
             return self
-        
+
         def setLockBoxNum(self, lockBoxNum):
             self.lock_box_num = lockBoxNum
             return self
@@ -142,7 +141,7 @@ class IsolationCertificate:
         self.isolate_issuing_action = data.get('isolate_issuing_action', '')
         self.isolate_isolator = data.get('isolate_isolator')
         self.isolate_isolator_timestamp = data.get('isolate_isolator_timestamp')
-        
+
         # ============== sanction for test usernames & timestamps =================
         self.sanction_requestor = data.get('sanction_requestor')
         self.sanction_requestor_timestamp = data.get('sanction_requestor_timestamp') or datetime.now().strftime("%d/%m/%Y %H:%M:%S")
@@ -150,7 +149,7 @@ class IsolationCertificate:
         self.sanction_issuing_timestamp = data.get('sanction_issuing_timestamp')
         self.sanction_isolator = data.get('sanction_isolator')
         self.sanction_isolator_timestamp = data.get('sanction_isolator_timestamp')
-        
+
         # ============== re-isolation usernames & timestamps =================
         self.reisolate_requestor = data.get('reisolate_requestor')
         self.reisolate_requestor_timestamp = data.get('reisolate_requestor_timestamp') or datetime.now().strftime("%d/%m/%Y %H:%M:%S")
@@ -158,7 +157,7 @@ class IsolationCertificate:
         self.reisolate_issuing_timestamp = data.get('reisolate_issuing_timestamp')
         self.reisolate_isolator = data.get('reisolate_isolator')
         self.reisolate_isolator_timestamp = data.get('reisolate_isolator_timestamp')
-        
+
         # ============== de-isolation usernames & timestamps =================
         self.deisolate_requestor = data.get('deisolate_requestor')
         self.deisolate_requestor_timestamp = data.get('deisolate_requestor_timestamp') or datetime.now().strftime("%d/%m/%Y %H:%M:%S")
@@ -166,7 +165,7 @@ class IsolationCertificate:
         self.deisolate_issuing_timestamp = data.get('deisolate_issuing_timestamp')
         self.deisolate_isolator = data.get('deisolate_isolator')
         self.deisolate_isolator_timestamp = data.get('deisolate_isolator_timestamp')
-        
+
         self.long_term: bool = data.get('long_term', False)
         self.long_term_reason: str = data.get('long_term_reason')
         self.linked_ptws: list = []
@@ -202,70 +201,3 @@ class IsolationCertificate:
         if self.isolate_issuing_action == 'Approved':
             return self.Status.PENDING
         return self.Status.REQUESTED
-
-    __backgroundColors = {
-        Types.MECHANICAL: QColor(120, 120, 120, 200),  # gray
-        Types.ELECTRICAL: QColor(200, 165,   0, 200),  # yellow
-        Types.SELF:       QColor( 30, 160, 100, 200),  # green
-        Types.PROTECTIVE: QColor(200,  30,  30, 200),  # red
-        Types.OTHER:      QColor(150, 150, 150, 150),  # neutral gray
-    }
-
-    __foregroundColors = {
-        Types.MECHANICAL: QColor('black'),
-        Types.ELECTRICAL: QColor('black'),
-        Types.SELF:       QColor('black'),
-        Types.PROTECTIVE: QColor('black'),
-        Types.OTHER:      QColor('black'),
-    }
-
-    @staticmethod
-    def backgroundColorForType(certType: Types):
-        return IsolationCertificate.__backgroundColors.get(certType) or IsolationCertificate.__backgroundColors.get(IsolationCertificate.Types.OTHER)
-
-    @staticmethod
-    def foregroundColorForType(certType: Types):
-        return IsolationCertificate.__foregroundColors.get(certType) or IsolationCertificate.__foregroundColors.get(IsolationCertificate.Types.OTHER)
-
-    def backgroundColor(self):
-        return IsolationCertificate.__backgroundColors.get(self.type) or IsolationCertificate.__backgroundColors.get(IsolationCertificate.Types.OTHER)
-
-    def foregroundColor(self):
-        return IsolationCertificate.__foregroundColors.get(self.type) or IsolationCertificate.__foregroundColors.get(IsolationCertificate.Types.OTHER)
-
-    # def linkPTW(self, ptwId):
-    #     ptwId = str(ptwId)
-    #     try:
-    #         self.held_by.remove(ptwId)
-    #     except ValueError:
-    #         pass
-    #     if not self.linked_ptws and not self.held_by:
-    #         self.primary_ptw = ptwId
-    #     if ptwId not in self.linked_ptws:
-    #         self.linked_ptws.append(ptwId)
-    #         self.latest_ptw = ptwId
-
-    # def holdPTW(self, ptwId):
-    #     try:
-    #         self.linked_ptws.remove(str(ptwId))
-    #     except Exception:
-    #         pass
-    #     if self.linked_ptws:
-    #         self.latest_ptw = self.linked_ptws[-1]
-    #     if str(ptwId) not in self.held_by:
-    #         self.held_by.append(str(ptwId))
-    #     # is_physically_isolated stays True — held PTW keeps isolation in place
-    #     self.is_physically_isolated = True
-
-    # def unlinkPTW(self, ptwId):
-    #     try:
-    #         self.linked_ptws.remove(str(ptwId))
-    #     except Exception as e:
-    #         print(f"couldn't remove PTW# {ptwId} from linked PTWs to isolation {self.tag}: {e}")
-    #     if self.linked_ptws:
-    #         self.latest_ptw = self.linked_ptws[-1]
-    #     if not self.linked_ptws and not self.held_by:
-    #         self.is_physically_isolated = False
-
-    # def isReallyActive(self):
-    #     return self.is_physically_isolated

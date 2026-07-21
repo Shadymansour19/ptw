@@ -18,6 +18,9 @@ from DialogSelectIsolations import DialogSelectIsolations
 from TableUsers import TableUsers
 from TableRisks import TableRisks
 from TableIsolations import TableIsolationsBrowser
+from TableIsolationCertificates import TableIsolationCertificates
+from DialogIsolationCertificate import DialogIsolationCertificate
+from Isolation import IsolationCertificate
 from TabServerLogs import TabServerLogs
 from DialogSettings import DialogSettings
 from clientRequests import ClientRequests
@@ -73,6 +76,7 @@ class MainWindow(QMainWindow):
         self.viewRequestorOption = TablePTWs.MenuOption('View Requestor', self.viewRequestor, qta.icon('fa6s.user'))
         self.viewPerformingOption = TablePTWs.MenuOption('View PA', self.viewPerforming, qta.icon('mdi6.account-hard-hat'))
         self.viewIssuingOption = TablePTWs.MenuOption('View IA', self.viewIssuing, qta.icon('fa6s.user-tie'))
+        self.viewCertOption = TablePTWs.MenuOption('View', self.viewCertificate, qta.icon('fa6.eye'))
 
         self.stack = QStackedWidget()
         self.stack.setAutoFillBackground(False)
@@ -93,6 +97,12 @@ class MainWindow(QMainWindow):
         self.tabAllUsers = TableUsers(self.stack, self.loggedUser, "All Users")
         self.tabRisks = TableRisks(self.stack, self.loggedUser, "All Risks", readonly=False, selectable=False)
         self.tabIsolations = TableIsolationsBrowser(self.stack, self.loggedUser, "Isolations")
+        self.tabCertRequested = TableIsolationCertificates(self.stack, self.loggedUser, "Requested Isolation Certificates")
+        self.tabCertUnderReview = TableIsolationCertificates(self.stack, self.loggedUser, "Under Review Isolation Certificates")
+        self.tabCertPending = TableIsolationCertificates(self.stack, self.loggedUser, "Pending Isolation Certificates")
+        self.tabCertActive = TableIsolationCertificates(self.stack, self.loggedUser, "Active Isolation Certificates")
+        self.tabCertSanctioned = TableIsolationCertificates(self.stack, self.loggedUser, "Sanctioned Isolation Certificates")
+        self.tabCertClosed = TableIsolationCertificates(self.stack, self.loggedUser, "Closed Isolation Certificates")
         self.tabServerLogs = TabServerLogs(self.stack, self.loggedUser, "Server Logs")
 
         self._homeApprovalChart: DonutChart | None = None
@@ -142,6 +152,12 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.tabAllUsers)
         self.stack.addWidget(self.tabRisks)
         self.stack.addWidget(self.tabIsolations)
+        self.stack.addWidget(self.tabCertRequested)
+        self.stack.addWidget(self.tabCertUnderReview)
+        self.stack.addWidget(self.tabCertPending)
+        self.stack.addWidget(self.tabCertActive)
+        self.stack.addWidget(self.tabCertSanctioned)
+        self.stack.addWidget(self.tabCertClosed)
         self.stack.addWidget(self.tabServerLogs)
 
         self.stack.currentChanged.connect(self.stackTabChanged)
@@ -183,6 +199,12 @@ class MainWindow(QMainWindow):
         # self.btnRisks = QPushButton(qta.icon('fa5s.exclamation-triangle'), "")
         self.btnRisks = QPushButton(qta.icon('mdi.shield-check-outline'), "")
         self.btnIsolations = QPushButton(qta.icon('fa6s.unlock-keyhole'), "")
+        self.btnCertRequested = QPushButton(qta.icon('fa6s.file-circle-plus'), "")
+        self.btnCertUnderReview = QPushButton(qta.icon('fa6s.magnifying-glass-chart'), "")
+        self.btnCertPending = QPushButton(qta.icon('fa6.hourglass'), "")
+        self.btnCertActive = QPushButton(qta.icon('fa6s.lock'), "")
+        self.btnCertSanctioned = QPushButton(qta.icon('fa6s.flask'), "")
+        self.btnCertClosed = QPushButton(qta.icon('fa6s.lock-open'), "")
         self.btnLanguage = QPushButton(qta.icon('fa5s.language'), "")
         self.btnTheme = QPushButton(qta.icon('fa6s.circle-half-stroke'), "")
         self.btnServerLogs = QPushButton(qta.icon('fa6s.file-lines'), "")
@@ -205,6 +227,12 @@ class MainWindow(QMainWindow):
         self.btnUsers.setToolTip("All Users")
         self.btnRisks.setToolTip("Risks")
         self.btnIsolations.setToolTip("Isolations")
+        self.btnCertRequested.setToolTip("Requested Isolation Certificates")
+        self.btnCertUnderReview.setToolTip("Under Review Isolation Certificates")
+        self.btnCertPending.setToolTip("Pending Isolation Certificates")
+        self.btnCertActive.setToolTip("Active Isolation Certificates")
+        self.btnCertSanctioned.setToolTip("Sanctioned Isolation Certificates")
+        self.btnCertClosed.setToolTip("Closed Isolation Certificates")
         self.btnLanguage.setToolTip("Switch Language")
         self.btnTheme.setToolTip("Toggle Light/Dark Mode")
         self.btnServerLogs.setToolTip("Server Logs")
@@ -225,6 +253,12 @@ class MainWindow(QMainWindow):
             self.btnUsers:                      self.tabAllUsers,
             self.btnRisks:                      self.tabRisks,
             self.btnIsolations:                 self.tabIsolations,
+            self.btnCertRequested:              self.tabCertRequested,
+            self.btnCertUnderReview:            self.tabCertUnderReview,
+            self.btnCertPending:                self.tabCertPending,
+            self.btnCertActive:                 self.tabCertActive,
+            self.btnCertSanctioned:             self.tabCertSanctioned,
+            self.btnCertClosed:                 self.tabCertClosed,
             self.btnServerLogs:                 self.tabServerLogs,
             self.btnRefresh:                    None,
             self.btnSettings:                   None,
@@ -750,6 +784,10 @@ class MainWindow(QMainWindow):
         )
         dlg.exec()
 
+    def viewCertificate(self, row: int, cert: IsolationCertificate):
+        dlg = DialogIsolationCertificate(self, self.loggedUser, cert, False, True, f"Isolation Certificate — {cert.type}")
+        dlg.exec()
+
     def requestToSuctionTestPTW(self, row: int, ptw: PTWData):
         pass
 
@@ -1169,6 +1207,8 @@ class MainWindow(QMainWindow):
             return f"PTW #{ptw_id}: {verb} (by {by})"
         if event_type == "ptw_archived":
             return f"PTWs #{ptw_ids} archived by {by}"
+        if event_type == "new_isolation_certificate":
+            return f"New isolation certificate created by {by} (type: {data.get('type', '?')})"
         return f"Update: {event_type} for PTW #{ptw_id}"
 
     def refreshWelcomePage(self):
@@ -1228,6 +1268,7 @@ class MainWindow(QMainWindow):
 
             self.tabIsolations.setIsolations(globalData.isolations)
             self.tabRisks.setRiskAssessmentsInGUI(globalData.allRiskAssessments)
+            self.refreshCertificatesGUI()
 
             if refreshArchivedPTWs:
                 self.refreshArchivedPTWs()
@@ -1238,13 +1279,43 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("GUI refreshed successfully.", 2000)
 
         globalData.refresh(
-            self.loggedUser, 
-            self.loggedUser.getDepartment() if self.loggedUser.getRole() in (UserRoles.USER, UserRoles.GUEST) else None, 
-            refreshUsers=True, refreshPTWs=True, refreshRiskAssessments=True, 
-            refreshMIWIs=True, refreshIsolations=True, 
-            callback=on_done, 
+            self.loggedUser,
+            self.loggedUser.getDepartment() if self.loggedUser.getRole() in (UserRoles.USER, UserRoles.GUEST) else None,
+            refreshUsers=True, refreshPTWs=True, refreshRiskAssessments=True,
+            refreshMIWIs=True, refreshIsolations=True, refreshIsolationCertificates=True,
+            callback=on_done,
         )
-    
+
+    def refreshCertificatesGUI(self):
+        tabs: list[TableIsolationCertificates] = [
+            self.tabCertRequested,
+            self.tabCertUnderReview,
+            self.tabCertPending,
+            self.tabCertActive,
+            self.tabCertSanctioned,
+            self.tabCertClosed,
+        ]
+        for tab in tabs:
+            tab.clear()
+
+        for cert in globalData.isolationCertificates.values():
+            status = cert.getStatus()
+            if status == IsolationCertificate.Status.CLOSED:
+                self.tabCertClosed.addCertificateToGUI(cert)
+            elif status == IsolationCertificate.Status.SANCTIONED:
+                self.tabCertSanctioned.addCertificateToGUI(cert)
+            elif status == IsolationCertificate.Status.ACTIVE:
+                self.tabCertActive.addCertificateToGUI(cert)
+            elif status == IsolationCertificate.Status.PENDING:
+                self.tabCertPending.addCertificateToGUI(cert)
+            elif self.loggedUser.getRole() == UserRoles.ISSUING:
+                self.tabCertUnderReview.addCertificateToGUI(cert)
+            else:
+                self.tabCertRequested.addCertificateToGUI(cert)
+
+        for tab in tabs:
+            tab.sort()
+
     def refreshArchivedPTWs(self):
         self.tabArchivedPTWs.clear()
         globalData.refresh(
@@ -1384,6 +1455,11 @@ class UserMainWindow(MainWindow):
         self.tabClosedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.printDeIsolationOption, self.printOption, self.archiveOption, self.exportOption])
         self.tabArchivedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.printOption, self.exportOption])
 
+        self.tabCertRequested.addOptions([self.viewCertOption])
+        self.tabCertPending.addOptions([self.viewCertOption])
+        self.tabCertActive.addOptions([self.viewCertOption])
+        self.tabCertSanctioned.addOptions([self.viewCertOption])
+        self.tabCertClosed.addOptions([self.viewCertOption])
 
         self.setAvailableTabs(
             [   # sidebar: curated, most-used tabs for a requestor
@@ -1391,6 +1467,7 @@ class UserMainWindow(MainWindow):
                 [self.btnRequestedPTWs, self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
                 [self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs],
                 [self.btnIsolations],
+                [self.btnCertRequested, self.btnCertPending, self.btnCertActive, self.btnCertSanctioned, self.btnCertClosed],
             ],
             {   # topbar: full set
                 '&PTWs': [
@@ -1400,6 +1477,7 @@ class UserMainWindow(MainWindow):
                     self.btnHeldPTWs, self.btnWaitingClsConfirmationPTWs, self.btnClosedPTWs, self.btnArchivedPTWs,
                 ],
                 '&Isolations': [self.btnIsolations],
+                '&Certificates': [self.btnCertRequested, self.btnCertPending, self.btnCertActive, self.btnCertSanctioned, self.btnCertClosed],
                 '&View': [self.btnWelcome, *self._footerButtons()],
             },
         )
@@ -1413,12 +1491,17 @@ class UserMainWindow(MainWindow):
     def stackTabChanged(self):
         super().stackTabChanged()
         tab = self.stack.currentWidget()
-        self.btnFAB.setVisible(tab in [self.tabRequestedPTWs, self.tabWelcome])
+        self.btnFAB.setVisible(tab in [self.tabRequestedPTWs, self.tabWelcome, self.tabCertRequested])
+        self.btnFAB.setToolTip("New Isolation Certificate" if tab == self.tabCertRequested else "Request New PTW [Ctrl+N]")
         if tab == self.tabArchivedPTWs and not globalData.archivedPTWs:
             self.refreshArchivedPTWs()
 
     def btnFABHandler(self):
-        if self.btnFAB.isVisible():
+        if not self.btnFAB.isVisible():
+            return
+        if self.stack.currentWidget() == self.tabCertRequested:
+            self.tabCertRequested.addNewCertificateDialog()
+        else:
             self.addPTWDialog()
 
     def refreshGUI(self, refreshArchivedPTWs: bool = False):
@@ -1500,12 +1583,30 @@ class IssuingMainWindow(MainWindow):
         self.tabClosedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.printDeIsolationOption, self.printOption, self.archiveOption, self.exportOption])
         self.tabArchivedPTWs.addOptions([self.viewOption, self.viewRequestorOption, self.viewApprovalsOption, self.requestPTWOption, self.printOption, self.exportOption])
 
+        self.tabCertUnderReview.addOptions([self.viewCertOption])
+        self.tabCertPending.addOptions([self.viewCertOption])
+        self.tabCertActive.addOptions([self.viewCertOption])
+        self.tabCertSanctioned.addOptions([self.viewCertOption])
+        self.tabCertClosed.addOptions([self.viewCertOption])
+
+        # no Requested button here: a cert never routes to tabCertRequested for the
+        # Issuing viewer (refreshCertificatesGUI always puts it in Under Review instead)
+        self._certTabs = [
+            self.btnCertUnderReview, self.btnCertPending,
+            self.btnCertActive, self.btnCertSanctioned, self.btnCertClosed,
+        ]
+        self._certTabsWidgets = [
+            self.tabCertUnderReview, self.tabCertPending,
+            self.tabCertActive, self.tabCertSanctioned, self.tabCertClosed,
+        ]
+
         self.setAvailableTabs(
             [   # sidebar: curated, run/hold/close confirmation is Issuing's core job
                 [self.btnWelcome],
                 [self.btnUnderReviewPTWs],
                 [self.btnWaitingRunConfirmationPTWs, self.btnRunningPTWs, self.btnWaitingHldConfirmationPTWs, self.btnHeldPTWs, self.btnWaitingClsConfirmationPTWs, self.btnClosedPTWs],
                 [self.btnIsolations],
+                self._certTabs,
             ],
             {   # topbar: full set
                 '&PTWs': [
@@ -1515,6 +1616,7 @@ class IssuingMainWindow(MainWindow):
                     self.btnHeldPTWs, self.btnWaitingClsConfirmationPTWs, self.btnClosedPTWs, self.btnArchivedPTWs,
                 ],
                 '&Isolations': [self.btnIsolations],
+                '&Certificates': self._certTabs,
                 '&View': [self.btnWelcome, *self._footerButtons()],
             },
         )
@@ -1526,7 +1628,7 @@ class IssuingMainWindow(MainWindow):
     def stackTabChanged(self):
         super().stackTabChanged()
         tab = self.stack.currentWidget()
-        self.btnFAB.setVisible(tab != self.tabWelcome and tab != self.tabIsolations)
+        self.btnFAB.setVisible(tab != self.tabWelcome and tab != self.tabIsolations and tab not in self._certTabsWidgets)
         if tab == self.tabArchivedPTWs and not globalData.archivedPTWs:
             self.refreshArchivedPTWs()
 
@@ -1724,6 +1826,47 @@ class AdminMainWindow(MainWindow):
 
         globalData.refresh(self.loggedUser, None, refreshUsers=True, callback=on_done)
         self.tabServerLogs.refresh()
+
+
+class IsolatorMainWindow(MainWindow):
+    def __init__(self, loggedUser: User):
+        super().__init__(loggedUser)
+        self.setWindowTitle("PTW (Permit To Work) - Isolator Window")
+
+        self.tabCertPending.addOptions([self.viewCertOption])
+        self.tabCertActive.addOptions([self.viewCertOption])
+        self.tabCertSanctioned.addOptions([self.viewCertOption])
+
+        self.setAvailableTabs(
+            [
+                [self.btnWelcome],
+                [self.btnCertPending, self.btnCertActive, self.btnCertSanctioned],
+            ],
+            {
+                '&Certificates': [self.btnCertPending, self.btnCertActive, self.btnCertSanctioned],
+                '&View': [self.btnWelcome, *self._footerButtons()],
+            },
+        )
+
+        self.btnFAB.setVisible(False)
+
+    def stackTabChanged(self):
+        super().stackTabChanged()
+        self.btnFAB.setVisible(False)
+
+    def btnFABHandler(self):
+        pass
+
+    def refreshGUI(self, refreshArchivedPTWs: bool = False):
+        def on_done(err, _):
+            if err:
+                QMessageBox.warning(self, "Error", f"Failed to refresh data: {err}")
+                return
+            self.refreshCertificatesGUI()
+            QApplication.beep()
+            self.statusBar().showMessage("GUI refreshed successfully.", 2000)
+
+        globalData.refresh(self.loggedUser, None, refreshUsers=True, refreshIsolationCertificates=True, callback=on_done)
 
 
 

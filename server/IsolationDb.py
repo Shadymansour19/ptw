@@ -1,6 +1,6 @@
 from psycopg2.extras import RealDictCursor
 
-from PTWData import Isolation
+from Isolation import Isolation
 from utils import dictToObj, objToDict
 from commonDb import CommonDB
 

@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QTableWi
                               QPushButton, QDialogButtonBox)
 from PyQt6.QtGui import QFont
 
-from PTWData import Isolation
+from Isolation import Isolation
 
 
 class DialogSelectIsolations(QDialog):

@@ -212,6 +212,31 @@ The `isReallyActive()` method returns `True` if `linked_ptws` is non-empty — m
 
 The system pre-loads a library all known isolation points (tags like `XV-7227A`, `LV-1409E`, etc.) covering mechanical, electrical, protective, and self-isolations across all plant areas.
 
+### Isolation Certificates *(phase 1 — foundation only)*
+
+A separate, formal isolation-request document — `IsolationCertificate` (`client`/`server` `Isolation.py`) — complementary to the tag-level tracking above, not a replacement for it: a certificate's `items` list references individual isolation tags/points, but the certificate itself is the approval document wrapping them (type, department, location, equipment, reason, long-term flag).
+
+**Fields:** `type` (Mechanical/Electrical/Self/Protective System/Other — same enum as plain `Isolation`), `department`, `location`, `equipment`, `reason`, `items` (list of `IsolationItem`: tag, description, state `OPEN`/`CLOSE`, `lock_num`, `lock_box_num`), `long_term`/`long_term_reason`, and four groups of requestor/issuing/isolator username+timestamp fields — `isolate_*`, `sanction_*` (sanction for test), `reisolate_*`, `deisolate_*` — one group per action in the eventual workflow. `isolate_issuing_action` (`'Approved'`/`'Rejected'`/`''`) records the one decision point actually wired up this phase.
+
+**`getStatus()`** derives a `Status` (`Requested`/`Rejected`/`Pending`/`Active`/`Sanctioned`/`Closed`) purely from which of those fields are set — `deisolate_isolator` set → `Closed`; `sanction_isolator` set and not yet reversed by `reisolate_isolator` → `Sanctioned`; `isolate_issuing_action == 'Rejected'` → `Rejected`; `isolate_isolator` or `reisolate_isolator` set → `Active`; `isolate_issuing_action == 'Approved'` → `Pending`; otherwise → `Requested`. Row/type coloring (`backgroundColor()`/`foregroundColor()`/`backgroundColorForType()`) mirrors `PTWData`'s pattern: Mechanical=gray, Electrical=yellow, Self=green, Protective System=blue, Other=neutral gray.
+
+**Tab routing is per-viewer, like PTW's Requested/Under Review split** (`MainWindow.refreshCertificatesGUI()`): a `Requested`-status certificate shows in `UserRoles.ISSUING`'s **Under Review** tab (their turn to decide) and everyone else's **Requested** tab. This is why `IssuingMainWindow` has no Requested button (always empty for that viewer) and `UserMainWindow` has no Under Review button (never populated for a non-Issuing viewer).
+
+**Roles wired this phase:**
+- `UserMainWindow` — Requested / Pending / Active / Sanctioned / Closed tabs; FAB on the Requested tab creates a new certificate (`TableIsolationCertificates.addNewCertificateDialog()`), submitting via `POST /isolation-certificates`.
+- `IssuingMainWindow` — Under Review / Pending / Active / Sanctioned / Closed tabs (view-only this phase).
+- `IsolatorMainWindow` *(new — `UserRoles.ISOLATOR` previously had no dedicated window at all)* — Pending / Active / Sanctioned tabs only, no PTW tabs, FAB permanently hidden.
+- Coordinator/Safety/Manager/Admin/Guest are untouched; the existing flat "Isolations" tab (plain `Isolation` tags) is unaffected for everyone.
+
+**`DialogIsolationCertificate` is tabbed, mirroring `WidgetPTW.DialogPTW`'s pattern** (reuses its `TabButton`/`lightenColor` helpers directly rather than duplicating them): a colored tab bar above a `QStackedWidget`, background/accent/highlight color driven by the certificate's type (same palette as the row coloring above).
+- **Basic Info** — Certificate #, Type, Department, Requestor, Location, Equipment, Reason, Long Term (+ reason).
+- **Isolation Items** — the embedded `TableIsolationItems` list. Lock #/Lock Box # are always read-only here regardless of mode — they're filled in by the isolator at confirmation time (a later phase), never by the requestor.
+- **History** and **PTW Linkage** — both only added to the dialog in readonly mode (a brand-new certificate has neither approvals nor a linked PTW yet). History lists requestor/issuing/isolator + timestamp for all four action groups (only rows with a set value render). PTW Linkage exposes the fields deferred for the PTW-linkage phase — `primary_ptw`, `latest_ptw`, `linked_ptws`, `held_by`, `is_physically_isolated` — all always empty until that phase lands. Every field in both tabs is a read-only `QLineEdit` (not `QLabel`) specifically so the text is selectable/copyable.
+
+**`TableIsolationCertificates` columns**: IC# (id), Status, Type, L.T. (Long Term), Requestor, Department, Location, Equipment, Reason. The L.T. column follows `TablePTWs`' Fast Track pattern exactly — real value lives in `Qt.ItemDataRole.UserRole` (cell text is intentionally empty), a `mdi6.timer-sand` icon badge renders in a fixed-width column, and the whole row goes bold when set. (An `fa6s.infinity`/`ph.infinity`/`mdi.infinity` badge was tried first — every icon set's infinity glyph turned out to have ~0px horizontal padding, always spanning the full pixmap width, so it visually clipped inside the circular badge regardless of size.)
+
+**Not implemented yet — explicitly deferred to a later phase:** approve/reject, isolator-confirm, hold/sanction-for-test, de-isolate request-response-confirm endpoints, and linking a certificate to a PTW. Only `POST /isolation-certificates` (create) and `GET /isolation-certificates` (list, department-scoped for `UserRoles.USER` only) exist server-side.
+
 ---
 
 ## Risk Assessments
@@ -440,6 +465,7 @@ The server broadcasts role-filtered events over this stream. The client connects
 | `ptw_hold`          | IA accepts/rejects hold request              |
 | `ptw_close_request` | PA sends close request                       |
 | `ptw_close`         | IA accepts/rejects close request             |
+| `new_isolation_certificate` | New isolation certificate created (broadcast to `ISSUING` only — the creator's own view updates via a local optimistic add instead, see [Isolation Certificates](#isolation-certificates-phase-1--foundation-only)) |
 
 ### Attachments
 | Method | Endpoint                    | Description                          |
@@ -453,6 +479,14 @@ The server broadcasts role-filtered events over this stream. The client connects
 | Method | Endpoint      | Description                     |
 |--------|---------------|---------------------------------|
 | GET    | `/isolations` | Get all active isolation records|
+
+### Isolation Certificates
+| Method | Endpoint                   | Description                                                              | Auth Required   |
+|--------|-----------------------------|--------------------------------------------------------------------------|-----------------|
+| GET    | `/isolation-certificates`  | Get all certificates (department-scoped for `USER` role, unrestricted for others) | Any authenticated user |
+| POST   | `/isolation-certificates`  | Create a new certificate (`department`/`isolate_requestor`/`isolate_requestor_timestamp` are stamped server-side from the caller, not trusted from the payload) | Any non-guest   |
+
+Only create and list are implemented — approve/reject, isolator-confirm, hold/sanction-for-test, and de-isolate routes don't exist yet (see [Isolation Certificates](#isolation-certificates-phase-1--foundation-only)).
 
 ### Risk Assessments
 | Method | Endpoint     | Description                                                      | Auth Required |
@@ -552,6 +586,54 @@ is_physically_isolated BOOLEAN      NOT NULL DEFAULT FALSE
 held_by                TEXT[]       NOT NULL DEFAULT '{}'
 ```
 
+### `isolation_certificates`
+
+Auto-created by introspecting a sample `IsolationCertificate` (same recipe as `ptws`, see `server/IsolationCertificateDb.py`): `id` → `SERIAL PRIMARY KEY`, `items` → `JSONB[]`, other lists → `TEXT[]`, `reason`/`long_term_reason` → `VARCHAR(300) NOT NULL`, `long_term` → `BOOLEAN`, everything else → `VARCHAR(100)`.
+
+```sql
+id                              SERIAL PRIMARY KEY
+type                            VARCHAR(100)
+department                      VARCHAR(100)
+location                        VARCHAR(100)
+equipment                       VARCHAR(100)
+reason                          VARCHAR(300) NOT NULL
+items                           JSONB[]
+isolate_requestor               VARCHAR(100)
+isolate_requestor_timestamp     VARCHAR(100)
+isolate_issuing                 VARCHAR(100)
+isolate_issuing_timestamp       VARCHAR(100)
+isolate_issuing_action          VARCHAR(100)
+isolate_isolator                VARCHAR(100)
+isolate_isolator_timestamp      VARCHAR(100)
+sanction_requestor              VARCHAR(100)
+sanction_requestor_timestamp    VARCHAR(100)
+sanction_issuing                VARCHAR(100)
+sanction_issuing_timestamp      VARCHAR(100)
+sanction_isolator               VARCHAR(100)
+sanction_isolator_timestamp     VARCHAR(100)
+reisolate_requestor             VARCHAR(100)
+reisolate_requestor_timestamp   VARCHAR(100)
+reisolate_issuing               VARCHAR(100)
+reisolate_issuing_timestamp     VARCHAR(100)
+reisolate_isolator              VARCHAR(100)
+reisolate_isolator_timestamp    VARCHAR(100)
+deisolate_requestor             VARCHAR(100)
+deisolate_requestor_timestamp   VARCHAR(100)
+deisolate_issuing               VARCHAR(100)
+deisolate_issuing_timestamp     VARCHAR(100)
+deisolate_isolator              VARCHAR(100)
+deisolate_isolator_timestamp    VARCHAR(100)
+long_term                       BOOLEAN NOT NULL DEFAULT FALSE
+long_term_reason                VARCHAR(300) NOT NULL
+linked_ptws                     TEXT[]
+primary_ptw                     VARCHAR(100)
+latest_ptw                      VARCHAR(100)
+is_physically_isolated          BOOLEAN NOT NULL DEFAULT FALSE
+held_by                         TEXT[]
+```
+
+`linked_ptws`/`primary_ptw`/`latest_ptw`/`is_physically_isolated`/`held_by` are reserved for the future PTW-linkage phase — always empty/default today.
+
 ### `risks`
 ```sql
 title          VARCHAR(300) NOT NULL
@@ -580,6 +662,7 @@ The desktop client is structured around role-based main windows. After login, `M
 - `allPTWs` — list of PTWData objects (non-archived)
 - `archivedPTWs` — list of PTWData objects (archived permits)
 - `isolations` — dict of tag → Isolation
+- `isolationCertificates` — dict of id → IsolationCertificate
 - `allRiskAssessments` — dict of title → RiskAssessment (generic library only; a PTW's own specific row set is fetched on demand via `GET /risks/ptw`, never cached globally)
 - `allMIWIs` — list of MIWI filenames
 
@@ -597,7 +680,7 @@ The desktop client is structured around role-based main windows. After login, `M
 | `GlobalData.py`             | Client-side data cache                                           |
 | `SSEListener.py`            | QThread that connects to `/events` and emits real-time PTW events|
 | `PTWData.py`                | Mirrored data model classes (client-side copy)                   |
-| `Isolation.py`              | Client-side isolation model (tags `StrEnum` + `Isolation` class) |
+| `Isolation.py`              | Client-side isolation model: `Isolation` (physical tag/point) + `IsolationCertificate` (formal request document, `getStatus()`, type coloring) |
 | `utils.py`                  | Shared helpers: `resource_path`, `objToDict`, `dictToObj`, `parseTabularFile` |
 | `User.py`                   | User model                                                       |
 | `WidgetPTW.py`              | Full PTW form (create/view/edit)                                 |
@@ -607,7 +690,11 @@ The desktop client is structured around role-based main windows. After login, `M
 | `ImportUsersExcel.py`       | Parses bulk-user Excel/CSV imports + DialogUsersPreview dialog   |
 | `TableRisks.py`             | Generic risk assessment CRUD list (Safety admin tab); also embedded read-only+checkboxes inside `DialogSelectGenericRisks` |
 | `RiskPreview.py`            | `DialogRiskItem` (single-item editor), `RiskItemsTable` (the flat table used for a PTW's risk assessment in all modes — add/delete/import/generic-pick, with dedup), `DialogSelectGenericRisks`, `RiskAssessmentPreview()` popup/embedded factory |
-| `TableIsolations.py`        | All available isolation points table                             |
+| `TableIsolations.py`        | All available isolation points table (`TableIsolationsBrowser`) + embedded editable list for a PTW form (`TablePTWIsolations`) |
+| `TableIsolationCertificates.py` | Isolation Certificate list, one instance per tab (Requested/Under Review/Pending/Active/Sanctioned/Closed), mirrors `TablePTWs`; IC#/Status/Type/L.T./Requestor/Department/Location/Equipment/Reason columns, L.T. rendered as an icon badge like Fast Track |
+| `DialogIsolationCertificate.py` | Isolation Certificate create/view dialog, tabbed like `WidgetPTW.DialogPTW` (Basic Info / Isolation Items / History / PTW Linkage — the last two only in readonly mode); `new`/`readOnly` flags mirror `WidgetPTW.DialogPTW` |
+| `TableIsolationItems.py`    | Embedded editable isolation-item list inside the certificate dialog, mirrors `TablePTWIsolations`; Description column stretches to fill remaining width |
+| `DialogIsolationItem.py`    | Single isolation-item add dialog (tag/description/state/lock #/lock box #); lock fields are always read-only — set by the isolator on confirmation, not the requestor |
 | `TableAttachments.py`       | PTW attachment management                                        |
 | `TabServerLogs.py`          | Admin-only log viewer: collapsible file panels, lazy load, level filter, color-coded lines |
 | `CheckableComboBox.py`      | Reusable multi-select checkbox combo box with `filterChanged` signal |
@@ -624,11 +711,12 @@ All role-specific views are implemented as classes within `MainWindow.py`. After
 
 - `AdminMainWindow` — full access
 - `GuestMainWindow` — unauthenticated visitor; creates/views PTWs
-- `UserMainWindow` — create PTWs, manage own permits. Has both a **Requested PTWs** tab (tracking-only — any PTW still `UNDER_REVIEW` that isn't currently this user's turn to act on) and an **Under Review** tab (actionable — this user's role+department is in the currently pending approval stage, e.g. a department rep on an `EX`-type permit)
+- `UserMainWindow` — create PTWs, manage own permits. Has both a **Requested PTWs** tab (tracking-only — any PTW still `UNDER_REVIEW` that isn't currently this user's turn to act on) and an **Under Review** tab (actionable — this user's role+department is in the currently pending approval stage, e.g. a department rep on an `EX`-type permit). Also has Requested/Pending/Active/Sanctioned/Closed Isolation Certificate tabs (no Under Review — never populated for this role); the FAB on the Requested Certificates tab creates a new certificate
 - `CoordinatorMainWindow` — PTW approval coordination
-- `IssuingMainWindow` — run/hold/close confirmation
+- `IssuingMainWindow` — run/hold/close confirmation. Also has Under Review/Pending/Active/Sanctioned/Closed Isolation Certificate tabs (no Requested — never populated for this role)
 - `SafetyMainWindow` — risk assessments, safety approvals
 - `ManagerMainWindow(loggedUser, role)` — one shared class for `PDH`/`PGM`/`SOD`/`DFGM`; `main.py` passes the role label in, it's not four separate classes
+- `IsolatorMainWindow` *(new — `UserRoles.ISOLATOR` previously had no dedicated window and silently fell through to the bare base `MainWindow` with no tabs at all)* — Pending/Active/Sanctioned Isolation Certificate tabs only, no PTW tabs; FAB is permanently hidden since no isolator-confirm action exists yet
 
 ### Sidebar, Topbar & Home Page
 

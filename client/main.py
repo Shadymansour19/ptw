@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtCore import QLocale, Qt
 from PyQt6.QtGui import QIcon
 from Login import LoginWindow
-from MainWindow import MainWindow, GuestMainWindow, AdminMainWindow, UserMainWindow, CoordinatorMainWindow, IssuingMainWindow, SafetyMainWindow, ManagerMainWindow
+from MainWindow import MainWindow, GuestMainWindow, AdminMainWindow, UserMainWindow, CoordinatorMainWindow, IssuingMainWindow, SafetyMainWindow, ManagerMainWindow, IsolatorMainWindow
 from User import UserRoles
 from utils import resource_path
 from qdarktheme import load_palette, load_stylesheet
@@ -32,6 +32,8 @@ def on_login_success(user):
         mainWindow = ManagerMainWindow(user, "DFGM")
     elif user.getRole() == UserRoles.ADMIN:
         mainWindow = AdminMainWindow(user)
+    elif user.getRole() == UserRoles.ISOLATOR:
+        mainWindow = IsolatorMainWindow(user)
     else:
         mainWindow = MainWindow(user)
 

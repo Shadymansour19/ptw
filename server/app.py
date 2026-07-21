@@ -18,9 +18,11 @@ from usersDb import UsersDb
 from ptwDb import PtwsDb
 from risksDb import RisksDb
 from IsolationDb import IsolationDb
+from IsolationCertificateDb import IsolationCertificateDb
 from User import User, UserRoles, UserDepartments
 from GlobalData import globalData
-from PTWData import PTWData, Isolation
+from PTWData import PTWData
+from Isolation import Isolation, IsolationCertificate
 from utils import objToDict
 
 # Resolve the directory that contains this file (works both as a plain script and
@@ -140,7 +142,8 @@ try:
     ptwDB = PtwsDb()
     risksDB = RisksDb()
     isoDB = IsolationDb()
-    globalData.refresh(userDB, ptwDB, isoDB)
+    certDB = IsolationCertificateDb()
+    globalData.refresh(userDB, ptwDB, isoDB, certDB)
     log.info("All databases initialized successfully")
 except Exception as e:
     log.critical("Database initialization failed: %s", e, exc_info=True)
@@ -161,7 +164,7 @@ def _periodic_refresh():
     while True:
         sleep(_DB_PERIODIC_REFRESH_INTERVAL)
         try:
-            globalData.refresh(userDB, ptwDB, isoDB)
+            globalData.refresh(userDB, ptwDB, isoDB, certDB)
             log.info("Periodic DB resync completed")
         except Exception as e:
             log.error("Periodic DB resync failed: %s", e, exc_info=True)
@@ -1315,6 +1318,57 @@ def getAllIsolations():
         return jsonify({"success": True, "isolations": objToDict([iso for iso in isolations.values()])})
     except Exception as e:
         log.error("GET /isolations failed: %s", e, exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+@app.route("/isolation-certificates", methods=["GET"])
+def getAllIsolationCertificates():
+    user = getVerifiedUser(request.authorization)
+    if user is None:
+        log.warning("GET /isolation-certificates unauthorized (ip=%s)", request.remote_addr)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    try:
+        data = request.get_json(silent=True) or {}
+        dep = user.getDepartment() if user.getRole() == UserRoles.USER else data.get('department')
+        with globalData.lock:
+            snapshot = list(globalData.isolationCertificates.values())
+        certs = [c for c in snapshot if dep is None or (c.department or '').casefold() == dep.casefold()]
+        log.debug("GET /isolation-certificates: %d certificates returned to user='%s'", len(certs), user.getUsername())
+        return jsonify({"success": True, "certificates": objToDict(certs)})
+    except Exception as e:
+        log.error("GET /isolation-certificates failed: %s", e, exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+@app.route("/isolation-certificates", methods=["POST"])
+def addIsolationCertificateRequest():
+    user = getVerifiedUser(request.authorization)
+    if user is None:
+        log.warning("POST /isolation-certificates unauthorized (ip=%s)", request.remote_addr)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    if user.getRole() == UserRoles.GUEST:
+        log.warning("POST /isolation-certificates: forbidden for guest '%s'", user.getUsername())
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    certDict = request.get_json(silent=True) or {}
+    try:
+        cert = IsolationCertificate(certDict)
+        cert.department = user.getDepartment()
+        cert.isolate_requestor = user.getUsername()
+        cert.isolate_requestor_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        cert_id = certDB.addCertificateFromDict(objToDict(cert))
+        new_cert = certDB.getCertificateById(cert_id)
+        if new_cert:
+            with globalData.lock:
+                globalData.isolationCertificates[new_cert.id] = new_cert
+        _broadcast(
+            "new_isolation_certificate",
+            {"certificate_id": cert_id, "type": cert.type, "by": user.getUsername()},
+            roles=[UserRoles.ISSUING],
+        )
+        log.info("Isolation certificate created: id=%s type='%s' by='%s'", cert_id, cert.type, user.getUsername())
+        return jsonify({"success": True, "certificate-id": cert_id})
+    except Exception as e:
+        log.error("POST /isolation-certificates failed: %s", e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
 
 

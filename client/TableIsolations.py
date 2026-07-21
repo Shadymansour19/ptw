@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QT
 from PyQt6.QtGui import QFont, QKeySequence, QAction, QShortcut
 import qtawesome as qta
 
-from PTWData import Isolation
+from Isolation import Isolation
 from DialogIsolation import DialogIsolation
 from CheckableComboBox import CheckableComboBox
 

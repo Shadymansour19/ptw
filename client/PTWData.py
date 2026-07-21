@@ -5,6 +5,7 @@ from typing import Iterable
 from types import SimpleNamespace
 from GlobalData import globalData
 from User import UserRoles, UserDepartments
+from Isolation import Isolation
 
 
 class RiskItem:
@@ -77,78 +78,6 @@ class Attachment:
 
     def __str__(self):
         return f'localPath: {self.localPath}, remoteName: {self.remoteName}, uploaded: {self.uploaded}'
-
-
-class Isolation:
-    class Types(enum.StrEnum):
-        MECHANICAL = 'Mechanical'
-        ELECTRICAL = 'Electrical'
-        SELF       = 'Self'
-        PROTECTIVE = 'Protective System'
-        OTHER      = 'Other'
-
-    def __init__(self, type: str = '', tag: str = '', description: str = ''):
-        self.type = type
-        self.tag = tag
-        self.description = description
-        self.linked_ptws: list = []
-        self.primary_ptw: str = ''
-        self.latest_ptw: str = ''
-        self.is_physically_isolated: bool = False
-        self.held_by: list = []
-
-    def setAll(self, data: dict = None, namespace: SimpleNamespace = None):
-        if namespace:
-            self.__dict__.update(vars(namespace))
-        elif data:
-            for k, v in data.items():
-                if hasattr(self, k):
-                    try:
-                        setattr(self, k, v)
-                    except Exception:
-                        pass
-        return self
-
-    def __str__(self):
-        return f"{self.type} - {self.description if self.description else ''} {self.tag}"
-
-    def linkPTW(self, ptwId):
-        ptwId = str(ptwId)
-        try:
-            self.held_by.remove(ptwId)
-        except ValueError:
-            pass
-        if not self.linked_ptws and not self.held_by:
-            self.primary_ptw = ptwId
-        if ptwId not in self.linked_ptws:
-            self.linked_ptws.append(ptwId)
-            self.latest_ptw = ptwId
-        self.is_physically_isolated = True
-
-    def holdPTW(self, ptwId):
-        try:
-            self.linked_ptws.remove(str(ptwId))
-        except Exception:
-            pass
-        if self.linked_ptws:
-            self.latest_ptw = self.linked_ptws[-1]
-        if str(ptwId) not in self.held_by:
-            self.held_by.append(str(ptwId))
-        # is_physically_isolated stays True — held PTW keeps isolation in place
-        self.is_physically_isolated = True
-
-    def unlinkPTW(self, ptwId):
-        try:
-            self.linked_ptws.remove(str(ptwId))
-        except Exception as e:
-            print(f"couldn't remove PTW# {ptwId} from linked PTWs to isolation {self.tag}: {e}")
-        if self.linked_ptws:
-            self.latest_ptw = self.linked_ptws[-1]
-        if not self.linked_ptws and not self.held_by:
-            self.is_physically_isolated = False
-
-    def isReallyActive(self):
-        return self.is_physically_isolated
 
 
 class PTWData:

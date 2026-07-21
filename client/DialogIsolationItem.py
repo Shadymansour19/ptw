@@ -1,58 +1,56 @@
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QDialog, QFormLayout, QComboBox, QTextEdit, QDialogButtonBox, QMessageBox
+from PyQt6.QtWidgets import QDialog, QFormLayout, QComboBox, QLineEdit, QTextEdit, QDialogButtonBox, QMessageBox
 
 from PTWData import PTWData
-from Isolation import Isolation
+from Isolation import IsolationCertificate
 from SearchableComboBox import SearchableComboBox
 
 
-class DialogIsolation(QDialog):
+class DialogIsolationItem(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("New Isolation")
+        self.setWindowTitle("New Isolation Item")
         self.setModal(True)
-        self.isolation = None
+        self.item = None
 
         lyt = QFormLayout()
         lyt.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         self.setLayout(lyt)
 
-        self.typeCombo = QComboBox()
         self.boxTag = SearchableComboBox()
+        self.boxTag.setItems(list(PTWData.ALL_ISOLATIONS.keys()))
         self.boxDescription = QTextEdit()
-        self.boxDescription.setFixedHeight(self.boxDescription.fontMetrics().lineSpacing() * 4 + 10)
+        self.boxDescription.setFixedHeight(self.boxDescription.fontMetrics().lineSpacing() * 3 + 10)
+        self.stateCombo = QComboBox()
+        self.stateCombo.addItems([s.value for s in IsolationCertificate.IsolationItem.States])
+        self.boxLockNum = QLineEdit()
+        self.boxLockNum.setReadOnly(True)
+        self.boxLockNum.setPlaceholderText("Set by isolator on confirmation")
+        self.boxLockBoxNum = QLineEdit()
+        self.boxLockBoxNum.setReadOnly(True)
+        self.boxLockBoxNum.setPlaceholderText("Set by isolator on confirmation")
 
-        self.typeCombo.addItems([t.value for t in Isolation.Types])
-
-        self._tagsForType = {t.value: [] for t in Isolation.Types}
-        for iso in PTWData.ALL_ISOLATIONS.values():
-            self._tagsForType[iso.type.value].append(iso.tag)
-
-        self.typeCombo.currentTextChanged.connect(self._on_type_changed)
         self.boxTag.itemSelected.connect(self._on_tag_selected)
-        self._on_type_changed()
 
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         btns.accepted.connect(self.accept)
         btns.rejected.connect(self.reject)
-        
-        lyt.addRow("Type:", self.typeCombo)
+
         lyt.addRow("Tag:", self.boxTag)
         lyt.addRow("Description:", self.boxDescription)
+        lyt.addRow("State:", self.stateCombo)
+        lyt.addRow("Lock #:", self.boxLockNum)
+        lyt.addRow("Lock Box #:", self.boxLockBoxNum)
         lyt.addWidget(btns)
-
-    def _on_type_changed(self, _=None):
-        self.boxTag.setItems(self._tagsForType[self.typeCombo.currentText()])
 
     def _on_tag_selected(self, tag):
         isolation = PTWData.ALL_ISOLATIONS.get(tag)
         self.boxDescription.setText(isolation.description if isolation else '')
 
-    def getIsolation(self):
-        return self.isolation
+    def getItem(self):
+        return self.item
 
     def accept(self):
-        type = self.typeCombo.currentText()
         tag = self.boxTag.currentText()
         description = self.boxDescription.toPlainText()
 
@@ -63,5 +61,6 @@ class DialogIsolation(QDialog):
             QMessageBox.warning(self, "Invalid Input", "Please enter a description.")
             return
 
-        self.isolation = Isolation(type=type, tag=tag, description=description)
+        self.item = IsolationCertificate.IsolationItem(tag=tag, description=description, state=self.stateCombo.currentText())
+        self.item.setLockNum(self.boxLockNum.text()).setLockBoxNum(self.boxLockBoxNum.text())
         super().accept()

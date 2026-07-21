@@ -8,19 +8,21 @@ class GlobalData:
         self.archivedPTWs: list = []            # list[PTWData]
         self.allMIWIs: list = []                # list[str]
         self.isolations: dict = {}        # dict[str, Isolation]
+        self.isolationCertificates: dict = {}   # dict[int, IsolationCertificate]
 
     @async_request
     def refresh(
-        self, 
-        loggedUser, 
-        department = None, 
-        refreshUsers: bool = False, 
-        refreshRiskAssessments: bool = False, 
-        refreshPTWs: bool = False, 
-        refreshArchivedPTWs: bool = False, 
-        refreshMIWIs: bool = False, 
-        refreshIsolations: bool = False, 
-        refreshAll: bool = False, 
+        self,
+        loggedUser,
+        department = None,
+        refreshUsers: bool = False,
+        refreshRiskAssessments: bool = False,
+        refreshPTWs: bool = False,
+        refreshArchivedPTWs: bool = False,
+        refreshMIWIs: bool = False,
+        refreshIsolations: bool = False,
+        refreshIsolationCertificates: bool = False,
+        refreshAll: bool = False,
     ) -> str:
         from clientRequests import ClientRequests
     
@@ -53,6 +55,12 @@ class GlobalData:
             if err:
                 return err
             self.isolations = allIsolations
+
+        if refreshIsolationCertificates or refreshAll:
+            err, allIsolationCertificates = ClientRequests.getAllIsolationCertificates(loggedUser, department=department)
+            if err:
+                return err
+            self.isolationCertificates = allIsolationCertificates
 
         if refreshMIWIs or refreshAll:
             err, allMIWIs = ClientRequests.getAllMIWIs(loggedUser, department=department)

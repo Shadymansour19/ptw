@@ -32,6 +32,7 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 - **Multi-stage approval workflow** — Coordinator → Issuing → Safety → Management chain (PDH → PGM → SOD → DFGM)
 - **Full running lifecycle** — Run / Hold / Close with two-party confirmation (Performing Authority + Issuing Authority)
 - **Equipment isolation management** — Tracks shared isolation points across multiple concurrent PTWs; enforces primary/latest ownership rules
+- **Isolation Certificates** *(phase 1 — data model, dialogs, and create/list wired; approve/reject/isolator-confirm/sanction/deisolate workflow not yet implemented)* — formal isolation request documents (type, location, equipment, reason, isolation items) with their own Requested/Under Review/Pending/Active/Sanctioned/Closed lifecycle, color-coded by isolation type (Mechanical=gray, Electrical=yellow, Self=green, Protective System=blue, Other=neutral gray), and a dedicated Isolator role window
 - **Color-coded permit types** — Cold Work (blue), Spark (yellow), Hot Work (red), HydroCarbon (black), Excavation (gray), Confined Space (green)
 - **Risk assessment library** — Safety team maintains a reusable generic risk assessment library; each PTW gets its own editable, deduplicated risk item table — built by adding items manually, pulling from the generic library, or importing an Excel/CSV file — that becomes its permanent risk record, carried over automatically on re-request
 - **PDF permit reports** — Printable PDF generation for each PTW
@@ -184,6 +185,14 @@ Isolations are safety locks placed on equipment to prevent accidental energizati
 - PTW → `HELD`: only `keep_isolations` tags remain linked; others are released
 - PTW → `CLOSED`: all its isolations are unlinked
 
+### Isolation Certificates
+
+A separate, formal request workflow for isolation work — complementary to the shared isolation-point tracking above, not a replacement (a certificate's `items` are isolation tags/points, but the certificate itself is the approval document around them).
+
+- **Lifecycle:** `Requested` → (Issuing approves/rejects) → `Pending` → (Isolator carries out & confirms) → `Active` → … → `Sanctioned` (for-test) / `Closed` (de-isolated)
+- **Roles:** requestor (User) creates a certificate; Issuing approves/rejects; Isolator physically carries it out and confirms
+- **Phase 1 (current):** data model, dialogs, and the create/list round trip are implemented. Approve/reject, isolator-confirm, hold/sanction-for-test, de-isolate, and PTW linkage are **not yet implemented** — the tabs for those stages exist in the UI but stay empty until those actions are built.
+
 ---
 
 ## Project Structure
@@ -200,10 +209,14 @@ ptw/
 │   ├── RequestWorker.py         # @async_request decorator — runs requests off the GUI thread
 │   ├── SSEListener.py           # Real-time event listener (QThread)
 │   ├── PTWData.py               # Client-side data models
-│   ├── Isolation.py             # Client-side isolation model (tags enum + Isolation class)
+│   ├── Isolation.py             # Client-side isolation model (Isolation + IsolationCertificate)
 │   ├── utils.py                 # Shared helpers (resource_path, objToDict, dictToObj)
 │   ├── WidgetPTW.py             # Full PTW form (create/view/edit)
 │   ├── TablePTWs.py             # PTW list with filters + Excel export
+│   ├── TableIsolationCertificates.py  # Isolation Certificate list (one instance per tab, mirrors TablePTWs)
+│   ├── DialogIsolationCertificate.py  # Isolation Certificate create/view dialog (new/readOnly modes)
+│   ├── TableIsolationItems.py   # Embedded editable isolation-item list inside the certificate dialog
+│   ├── DialogIsolationItem.py   # Single isolation-item add dialog (tag/description/state/lock)
 │   ├── TabServerLogs.py         # Admin log viewer tab (collapsible, color-coded, filterable)
 │   ├── CheckableComboBox.py     # Reusable multi-select checkbox combo box
 │   ├── SearchableComboBox.py    # Reusable fuzzy-autocomplete combo box that accepts free text
@@ -216,12 +229,14 @@ ptw/
 └── server/                      # Flask REST API
     ├── app.py                   # All route handlers + SSE broadcast
     ├── PTWData.py               # Core data models & enums
+    ├── Isolation.py             # Server-side isolation model (Isolation + IsolationCertificate)
     ├── User.py                  # User model (UserRoles enum, SecuredUser, User classes)
     ├── utils.py                 # Shared helpers (objToDict, dictToObj)
     ├── commonDb.py              # Shared DB base class (ThreadedConnectionPool, generic CRUD)
     ├── ptwDb.py                 # PTW database operations
     ├── usersDb.py               # User database operations
     ├── IsolationDb.py           # Isolation database operations
+    ├── IsolationCertificateDb.py # Isolation Certificate database operations
     ├── risksDb.py               # Risk assessment DB operations
     ├── GlobalData.py            # Server-side in-memory cache
     ├── miwi/                    # MIWI PDFs, one subfolder per department (e.g. miwi/Turbo/)
@@ -299,6 +314,7 @@ On first launch, open **Settings** and point the client at your server URL.
 | Close cycle | `POST /ptws/close-request` · `POST /ptws/close` |
 | Attachments | `GET/POST/DELETE /ptws/attachments` · `POST /ptws/attachments/copy` |
 | Isolations | `GET /isolations` |
+| Isolation Certificates | `GET/POST /isolation-certificates` |
 | Risks | `GET/POST/PUT/DELETE /risks` |
 | MIWI docs | `GET /miwi` · `GET /miwis` · `POST /miwi` |
 | Archive | `GET /ptws/archive` · `POST /ptws/archive` |

@@ -1,6 +1,7 @@
 import requests
 from User import User, SecuredUser, UserDepartments
-from PTWData import PTWData, RiskAssessment, Attachment, Isolation
+from PTWData import PTWData, RiskAssessment, Attachment
+from Isolation import Isolation, IsolationCertificate
 from utils import dictToObj, objToDict
 from typing import Iterable
 import tempfile
@@ -582,6 +583,47 @@ class ClientRequests:
             return f"Failed to get active isolations\n{err}", None
 
         return None, {iso['tag']: Isolation().setAll(namespace=dictToObj(iso)) for iso in data.get("isolations", [])}
+
+    @async_request
+    def getAllIsolationCertificates(loggedUser: User, department: UserDepartments = None):
+        response = None
+        try:
+            response = requests.get(
+                f'{ClientRequests.SERVER_URL}/isolation-certificates',
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                json={'department': department}
+            )
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to get isolation certificates\n{err}", None
+
+        if not data.get("success"):
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to get isolation certificates\n{err}", None
+
+        return None, {cert['id']: IsolationCertificate().setAll(namespace=dictToObj(cert)) for cert in data.get("certificates", [])}
+
+    @async_request
+    def addIsolationCertificate(loggedUser: User, cert: IsolationCertificate) -> tuple[str, str]:
+        response = None
+        try:
+            response = requests.post(
+                f'{ClientRequests.SERVER_URL}/isolation-certificates',
+                json=objToDict(cert),
+                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+            )
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to add isolation certificate\n{err}", None
+
+        if not data.get("success"):
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to add isolation certificate\n{err}", None
+        return None, data.get('certificate-id')
 
 
     @async_request
