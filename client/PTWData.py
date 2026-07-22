@@ -1562,6 +1562,7 @@ class PTWData:
         self.hazards : list[str] = data.get('hazards', [])
         self.controls : list[str] = data.get('controls', [])
         self.risks : list[str] = data.get('risks', [])
+        self.linked_ics : list[str] = data.get('linked_ics', [])
         self.approvals : list[PTWData.Approval] = [PTWData.Approval().setAll(approval) for approval in data.get('approvals', [])]
         self.approval_status : PTWData.ApprovalStatus = data.get('approval_status') or PTWData.ApprovalStatus.UNDER_REVIEW
         self.running_status : PTWData.RunningStatus = data.get('running_status') or PTWData.RunningStatus.NOT_RUNNING

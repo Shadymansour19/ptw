@@ -5,11 +5,12 @@ from PyQt6.QtWidgets import (QToolButton, QDialog, QVBoxLayout, QHBoxLayout, QFo
                               QGridLayout, QStackedWidget, QWidget, QLineEdit, QComboBox,
                               QTextEdit, QPushButton, QCheckBox, QRadioButton, QButtonGroup,
                               QDialogButtonBox, QMessageBox, QApplication, QStyle,
-                              QFileDialog, QSizePolicy, QFrame)
+                              QFileDialog, QSizePolicy, QFrame, QLabel, QScrollArea)
 from PyQt6.QtGui import QFont, QKeySequence, QIcon, QPalette, QShortcut, QColor
 import re
 
 from PTWData import PTWData, Attachment, RiskAssessment
+from Isolation import IsolationCertificate
 from TableRisks import TableRisks
 from TableAttachments import TableAttachments
 from GlobalData import globalData
@@ -93,6 +94,73 @@ class TabButton(QToolButton):
                 font-weight: bold;
             }}
         """)
+
+
+class TimelineEntry(QWidget):
+    DOT_SIZE = 14
+    RAIL_WIDTH = 20
+    GAP = 26
+
+    def __init__(self, color: QColor, contentWidget: QWidget, isLast: bool = False, parent=None):
+        super().__init__(parent)
+        lyt = QHBoxLayout(self)
+        lyt.setContentsMargins(0, 0, 0, 0)
+        lyt.setSpacing(10)
+
+        rail = QWidget()
+        rail.setFixedWidth(self.RAIL_WIDTH)
+        railLyt = QVBoxLayout(rail)
+        railLyt.setContentsMargins(0, 4, 0, 0)
+        railLyt.setSpacing(0)
+
+        dot = QFrame()
+        dot.setFixedSize(self.DOT_SIZE, self.DOT_SIZE)
+        dot.setStyleSheet(f"background-color: {color.name()}; border-radius: {self.DOT_SIZE // 2}px;")
+        railLyt.addWidget(dot, alignment=Qt.AlignmentFlag.AlignHCenter)
+
+        if not isLast:
+            line = QFrame()
+            line.setFixedWidth(3)
+            line.setStyleSheet("background-color: #AAAAAA;")
+            railLyt.addWidget(line, stretch=1, alignment=Qt.AlignmentFlag.AlignHCenter)
+        else:
+            railLyt.addStretch(1)
+
+        # The gap lives in the content column (not as a margin on this row) so the
+        # rail's line stretches through it uninterrupted, connecting to the next dot.
+        contentCol = QWidget()
+        contentColLyt = QVBoxLayout(contentCol)
+        contentColLyt.setContentsMargins(0, 0, 0, 0)
+        contentColLyt.setSpacing(0)
+        contentColLyt.addWidget(contentWidget)
+        if not isLast:
+            contentColLyt.addSpacing(self.GAP)
+
+        lyt.addWidget(rail)
+        lyt.addWidget(contentCol, stretch=1)
+
+
+class Timeline(QScrollArea):
+    def __init__(self, entries: list[tuple[QColor, QWidget]], emptyText: str, parent=None):
+        super().__init__(parent)
+        self.setWidgetResizable(True)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        container = QWidget()
+        lyt = QVBoxLayout(container)
+        lyt.setContentsMargins(4, 4, 4, 4)
+        lyt.setSpacing(0)
+
+        if not entries:
+            lyt.addWidget(QLabel(emptyText))
+        else:
+            for i, (color, contentWidget) in enumerate(entries):
+                lyt.addWidget(TimelineEntry(color, contentWidget, isLast=(i == len(entries) - 1)))
+        lyt.addStretch(1)
+
+        self.setWidget(container)
+
 
 class DialogPTW(QDialog):
     GRID_LYT_COLS = 3
@@ -237,6 +305,23 @@ class DialogPTW(QDialog):
             self.btnMiwiMos:        self.tabMiwiMos,
             self.btnAttachments:    self.tabAttachments
         }
+
+        # History and IC Linkage are only meaningful once there's something to show,
+        # so both are only offered in readonly mode (a brand-new PTW has neither
+        # approvals nor any linked IC yet).
+        lytHistoryPanes = None
+        formLinkage = None
+        if readOnly:
+            self.tabHistory = QWidget(self.stack)
+            lytHistoryPanes = QHBoxLayout(self.tabHistory)
+            self.btnHistory = TabButton(self.stack, t("History"), "fa6s.clock-rotate-left")
+            self.tabsBtnsMap[self.btnHistory] = self.tabHistory
+
+            self.tabLinkage = QWidget(self.stack)
+            formLinkage = QFormLayout(self.tabLinkage)
+            formLinkage.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+            self.btnLinkage = TabButton(self.stack, t("IC Linkage"), "mdi.link-variant")
+            self.tabsBtnsMap[self.btnLinkage] = self.tabLinkage
 
         for btn, tab in self.tabsBtnsMap.items():
             btn.clicked.connect(partial(self.stack.setCurrentWidget, tab))
@@ -476,7 +561,15 @@ class DialogPTW(QDialog):
         lytAttachments.addWidget(self.tableAttachments, stretch=1)
         if not readOnly:
             lytAttachments.addWidget(self.btnNewAttach, stretch=0)
-        
+
+        if readOnly:
+            lytHistoryPanes.addWidget(self._buildApprovalTimelinePane(), stretch=1)
+            lytHistoryPanes.addWidget(self._buildRunningTimelinePane(), stretch=1)
+
+            groupedICs = self._linkedICsByType()
+            for icType in IsolationCertificate.Types:
+                formLinkage.addRow(t(f"{icType}:"), self._makeReadOnlyField(', '.join(groupedICs[icType]) or '—'))
+
         for tabIdx in range(self.stack.count()):
             QShortcut(QKeySequence(f"Alt+{tabIdx + 1}"), self).activated.connect(partial(self.stack.setCurrentIndex, tabIdx))
 
@@ -489,6 +582,57 @@ class DialogPTW(QDialog):
         self.stackTabChanged()
         self.miwiMosSwitch()
         self.ptwTypeChanged()
+
+    def _makeReadOnlyField(self, text: str) -> QLineEdit:
+        box = QLineEdit(text)
+        box.setReadOnly(True)
+        box.setCursorPosition(0)
+        return box
+
+    def _timelinePane(self, title: str, timeline: Timeline) -> QWidget:
+        pane = QWidget()
+        lyt = QVBoxLayout(pane)
+        lyt.setContentsMargins(0, 0, 0, 0)
+        lyt.addWidget(QLabel(f"<b>{title}</b>", font=QFont("Helvetica", 14)))
+        lyt.addWidget(timeline, stretch=1)
+        return pane
+
+    def _buildApprovalTimelinePane(self) -> QWidget:
+        entries = []
+        for approval in self.ptw.approvals:
+            color = QColor('green') if approval.action == PTWData.ApprovalActions.APPROVED else QColor('orange')
+            firstWord, _, rest = str(approval).partition(' ')
+            text = f"<b>{firstWord}</b> {rest}"
+            if approval.comment:
+                text += f"<br><b>{t('Comment')}:</b> {approval.comment}"
+            content = QLabel(text)
+            content.setWordWrap(True)
+            content.setFont(QFont("Helvetica", 13))
+            content.setStyleSheet(f"color: {color.name()};")
+            entries.append((color, content))
+
+        for approver in self.ptw.pendingApprovers():
+            color = QColor('gray')
+            content = QLabel('<b>Pending</b> ' + str(approver))
+            content.setFont(QFont("Helvetica", 13))
+            content.setStyleSheet(f"color: {color.name()};")
+            entries.append((color, content))
+
+        timeline = Timeline(entries, t("There's no approval history at the moment"))
+        return self._timelinePane(t("Approval Timeline"), timeline)
+
+    def _buildRunningTimelinePane(self) -> QWidget:
+        timeline = Timeline([], t("Running timeline — coming soon"))
+        return self._timelinePane(t("Running Timeline"), timeline)
+
+    def _linkedICsByType(self) -> dict:
+        certsById = {str(cert.id): cert for cert in globalData.isolationCertificates.values()}
+        grouped = {icType: [] for icType in IsolationCertificate.Types}
+        for icId in self.ptw.linked_ics:
+            cert = certsById.get(str(icId))
+            if cert and cert.type in grouped:
+                grouped[cert.type].append(str(icId))
+        return grouped
 
     def ptwTypeChanged(self):
         color = PTWData.backgroundColorForType(self.boxPTWType.currentData())

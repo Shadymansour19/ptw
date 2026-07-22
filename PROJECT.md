@@ -342,6 +342,7 @@ hazards     — Identified hazards: Confined Space, Working at Height, etc...
 controls    — Safety controls: Initial Gas Test, Continuous Gas Test, etc...
 risks       — List of referenced risk assessment titles
 isolations  — List of Isolation objects (type, tag, description)
+linked_ics  — List of linked Isolation Certificate IDs (reserved for the future PTW↔IC linkage phase; always empty today, mirrors IsolationCertificate.linked_ptws)
 ```
 
 ### Tools, Hazards & Controls Rules
@@ -567,12 +568,15 @@ tools                       TEXT[]
 hazards                     TEXT[]
 controls                    TEXT[]
 risks                       TEXT[]
+linked_ics                  TEXT[]
 approval_status             VARCHAR(100)
 running_status              VARCHAR(100)
 approvals                   JSONB[]
 isolations                  JSONB[]
 attachs                     TEXT[]
 ```
+
+`linked_ics` is reserved for the future PTW↔IC linkage phase — always empty today (see [Isolation Certificates](#isolation-certificates-phase-1--foundation-only)).
 
 ### `isolations`
 ```sql
@@ -683,7 +687,7 @@ The desktop client is structured around role-based main windows. After login, `M
 | `Isolation.py`              | Client-side isolation model: `Isolation` (physical tag/point) + `IsolationCertificate` (formal request document, `getStatus()`, type coloring) |
 | `utils.py`                  | Shared helpers: `resource_path`, `objToDict`, `dictToObj`, `parseTabularFile` |
 | `User.py`                   | User model                                                       |
-| `WidgetPTW.py`              | Full PTW form (create/view/edit)                                 |
+| `WidgetPTW.py`              | Full PTW form (create/view/edit); `DialogPTW` is tabbed (Basic Info / Tools / Hazards / Controls / Risks / Isolation / MIWI-MOS / Attachments / **History** / **IC Linkage** — the last two only in readonly mode, mirroring `DialogIsolationCertificate`'s History/PTW Linkage split). History renders the approval log as two side-by-side `Timeline` panes (Approval Timeline live; Running Timeline a placeholder for a later phase) — a vertical rail of colored dots (green=approved, orange=returned, gray=pending) connected by a continuous line, each dot's row scrollable via `QScrollArea`. IC Linkage groups `ptw.linked_ics` by looking up each id's type in `globalData.isolationCertificates`, one row per `IsolationCertificate.Types` value. `TimelineEntry`/`Timeline` are reusable widget classes defined at module scope in this file. |
 | `TablePTWs.py`              | Table listing all PTWs with filters; supports Excel export; `filterColumn(label, values)` sets a specific column filter programmatically (used by the home dashboard's location segments) |
 | `TableUsers.py`             | Admin user management table; supports bulk user import from Excel; also has `filterColumn(label, values)` (used by the Admin dashboard's department segments) |
 | `DonutChart.py`             | Reusable donut-chart widget (`DonutChart`/`DonutSegment`) for the home-page dashboard — clickable/hoverable ring + legend, fixed categorical palette |
