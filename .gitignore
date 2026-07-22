@@ -32,3 +32,6 @@ client/qr-summery-*.png
 # IDE
 .vscode/
 *.swp
+
+# One-off dev/maintenance scripts — not for the repo
+dev-scripts/
