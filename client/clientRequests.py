@@ -625,6 +625,48 @@ class ClientRequests:
             return f"Failed to add isolation certificate\n{err}", None
         return None, data.get('certificate-id')
 
+    @async_request
+    def updateApprovalCertificate(loggedUser: User, certId, approval: IsolationCertificate.Approval) -> str:
+        response = None
+        try:
+            response = requests.post(
+                f'{ClientRequests.SERVER_URL}/isolation-certificates/approvals',
+                json={'certificate-id': certId, 'approval': approval.__dict__},
+                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+            )
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to update isolation certificate approvals\n{err}"
+
+        if not data.get("success"):
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to update isolation certificate approvals\n{err}"
+
+        return None
+
+    @async_request
+    def requestIsolateCertificate(loggedUser: User, certId) -> str:
+        response = None
+        try:
+            response = requests.post(
+                f'{ClientRequests.SERVER_URL}/isolation-certificates/isolate-request',
+                json={'certificate-id': certId},
+                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+            )
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to request isolation\n{err}"
+
+        if not data.get("success"):
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to request isolation\n{err}"
+
+        return None
+
 
     @async_request
     def getAllRiskAssessments(loggedUser: User) -> tuple[str, dict[str, RiskAssessment]]:

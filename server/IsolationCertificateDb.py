@@ -1,3 +1,4 @@
+import json
 from psycopg2.extras import RealDictCursor
 
 from Isolation import IsolationCertificate
@@ -13,7 +14,7 @@ class IsolationCertificateDb:
                 columns = list(objToDict(certSample).keys())
                 types = [
                     'SERIAL PRIMARY KEY' if columns[i] == 'id' else
-                    'JSONB[]' if columns[i] == 'items' else
+                    'JSONB[]' if columns[i] in ('items', 'approvals') else
                     'TEXT[]' if isinstance(getattr(certSample, columns[i]), list) else
                     'VARCHAR(300) NOT NULL' if columns[i] in ('reason', 'long_term_reason') else
                     'BOOLEAN NOT NULL DEFAULT FALSE' if isinstance(getattr(certSample, columns[i]), bool) else
@@ -67,6 +68,15 @@ class IsolationCertificateDb:
         except Exception as e:
             raise Exception("Error fetching isolation certificates from database: " + str(e))
         return certs
+
+    def updateCertificateApprovals(self, certId: int, approval: 'IsolationCertificate.Approval'):
+        with CommonDB.get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute(
+                    'UPDATE isolation_certificates SET approvals = array_append(approvals, %s) WHERE id = %s',
+                    (json.dumps(approval.__dict__), certId)
+                )
+            conn.commit()
 
     def deleteCertificate(self, certId: int):
         try:

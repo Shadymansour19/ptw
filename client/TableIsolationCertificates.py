@@ -38,8 +38,8 @@ class TableIsolationCertificates(QWidget):
         self.loggedUser = loggedUser
         self.options = []
 
-        self.summeryLabels = ['IC#', 'Status', 'Type', 'L.T.',      'Requestor',         'Department', 'Location', 'Equipment', 'Reason']
-        self.summeryFields = ['id',  'status', 'type', 'long_term', 'isolate_requestor', 'department', 'location', 'equipment', 'reason']
+        self.summeryLabels = ['IC#', 'Status', 'Type', 'L.T.',      'Requestor', 'Request Time',        'Department', 'Location', 'Equipment', 'Reason']
+        self.summeryFields = ['id',  'status', 'type', 'long_term', 'requestor', 'requestor_timestamp', 'department', 'location', 'equipment', 'reason']
         self._ltCol = self.summeryFields.index('long_term')
 
         lblLyt = QHBoxLayout()
@@ -177,7 +177,7 @@ class TableIsolationCertificates(QWidget):
                 value = 'Yes' if cert.long_term else 'No'
             else:
                 value = getattr(cert, field)
-                if field == 'isolate_requestor' and value:
+                if field == 'requestor' and value:
                     user = globalData.allUsers.get(value)
                     if user:
                         value = user.getName()

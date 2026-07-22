@@ -2,6 +2,9 @@ import enum
 from types import SimpleNamespace
 from datetime import datetime
 
+from User import UserRoles
+from GlobalData import globalData
+
 
 class Isolation:
     class Types(enum.StrEnum):
@@ -118,54 +121,112 @@ class IsolationCertificate:
 
     class Status(enum.StrEnum):
         REQUESTED  = 'Requested'
-        REJECTED   = 'Rejected'
+        RETURNED   = 'Returned'
+        APPROVED   = 'Approved'
         PENDING    = 'Pending'
         ACTIVE     = 'Active'
         SANCTIONED = 'Sanctioned'
         CLOSED     = 'Closed'
 
+    class ApprovalActions(enum.StrEnum):
+        APPROVED = 'Approved'
+        RETURNED = 'Returned'
+
+    class Approval:
+        def __init__(self, action=None, username: str = None, timestamp: str = None, comment: str = None):
+            self.action = action
+            self.username = username
+            self.timestamp = timestamp
+            self.comment = comment
+
+        def setAll(self, data: dict):
+            for k, v in data.items():
+                if hasattr(self, k):
+                    try:
+                        setattr(self, k, v)
+                    except Exception:
+                        pass
+            return self
+
+        def __str__(self):
+            user = globalData.allUsers.get(self.username)
+            if user is None:
+                return f"{self.action} by [deleted user: {self.username}] at {self.timestamp}"
+            if user.getRole() == UserRoles.USER:
+                return f"{self.action} by {user.getRole()} {user.getName()} ({user.getDepartment()}) at {self.timestamp}"
+            return f"{self.action} by {user.getRole()} {user.getName()} at {self.timestamp}"
+
+    class Approver:
+        def __init__(self, role: 'UserRoles', department=None):
+            self.role = role
+            self.department = department
+
+        def matchesRoleDept(self, role, department) -> bool:
+            return role == self.role and (self.department is None or self.department == department)
+
+        def matchesUser(self, user) -> bool:
+            return user is not None and self.matchesRoleDept(user.getRole(), user.getDepartment())
+
+        def __eq__(self, other):
+            return isinstance(other, IsolationCertificate.Approver) and self.role == other.role and self.department == other.department
+
+        def __hash__(self):
+            return hash((self.role, self.department))
+
+        def __str__(self):
+            if self.role == UserRoles.USER:
+                return str(self.department) if self.department else str(self.role)
+            return str(self.role)
+
     def __init__(self, data: dict = {}):
         self.id : str = data.get('id')
         self.type : str = data.get('type')
         self.department : str = data.get('department')
+        self.requestor : str = data.get('requestor')
+        self.requestor_timestamp : str = data.get('requestor_timestamp') or datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        self.approvals : list['IsolationCertificate.Approval'] = [IsolationCertificate.Approval().setAll(a) for a in data.get('approvals', [])]
         self.location : str = data.get('location')
         self.equipment : str = data.get('equipment')
         self.reason : str = data.get('reason')
         self.items : list[IsolationCertificate.IsolationItem] = [IsolationCertificate.IsolationItem().setAll(iso) for iso in data.get('items', [])]
 
         # ============== isolation usernames & timestamps =================
+        # isolate_requestor/timestamp are set later, when someone requests the isolation
+        # actually be carried out (automatically if isolate_asap, else manually after
+        # approval) - NOT at IC creation, which is tracked by requestor/requestor_timestamp above.
+        self.isolate_asap: bool = data.get('isolate_asap', False)
         self.isolate_requestor = data.get('isolate_requestor')
-        self.isolate_requestor_timestamp = data.get('isolate_requestor_timestamp') or datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        self.isolate_requestor_timestamp = data.get('isolate_requestor_timestamp')
         self.isolate_issuing = data.get('isolate_issuing')
         self.isolate_issuing_timestamp = data.get('isolate_issuing_timestamp')
         self.isolate_issuing_action = data.get('isolate_issuing_action', '')
         self.isolate_isolator = data.get('isolate_isolator')
         self.isolate_isolator_timestamp = data.get('isolate_isolator_timestamp')
-
+        
         # ============== sanction for test usernames & timestamps =================
         self.sanction_requestor = data.get('sanction_requestor')
-        self.sanction_requestor_timestamp = data.get('sanction_requestor_timestamp') or datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        self.sanction_requestor_timestamp = data.get('sanction_requestor_timestamp')
         self.sanction_issuing = data.get('sanction_issuing')
         self.sanction_issuing_timestamp = data.get('sanction_issuing_timestamp')
         self.sanction_isolator = data.get('sanction_isolator')
         self.sanction_isolator_timestamp = data.get('sanction_isolator_timestamp')
-
+        
         # ============== re-isolation usernames & timestamps =================
         self.reisolate_requestor = data.get('reisolate_requestor')
-        self.reisolate_requestor_timestamp = data.get('reisolate_requestor_timestamp') or datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        self.reisolate_requestor_timestamp = data.get('reisolate_requestor_timestamp')
         self.reisolate_issuing = data.get('reisolate_issuing')
         self.reisolate_issuing_timestamp = data.get('reisolate_issuing_timestamp')
         self.reisolate_isolator = data.get('reisolate_isolator')
         self.reisolate_isolator_timestamp = data.get('reisolate_isolator_timestamp')
-
+        
         # ============== de-isolation usernames & timestamps =================
         self.deisolate_requestor = data.get('deisolate_requestor')
-        self.deisolate_requestor_timestamp = data.get('deisolate_requestor_timestamp') or datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        self.deisolate_requestor_timestamp = data.get('deisolate_requestor_timestamp')
         self.deisolate_issuing = data.get('deisolate_issuing')
         self.deisolate_issuing_timestamp = data.get('deisolate_issuing_timestamp')
         self.deisolate_isolator = data.get('deisolate_isolator')
         self.deisolate_isolator_timestamp = data.get('deisolate_isolator_timestamp')
-
+        
         self.long_term: bool = data.get('long_term', False)
         self.long_term_reason: str = data.get('long_term_reason')
         self.linked_ptws: list = []
@@ -177,11 +238,18 @@ class IsolationCertificate:
     def setAll(self, data: dict = None, namespace: SimpleNamespace = None):
         if namespace:
             self.__dict__.update(vars(namespace))
+            self.approvals = [IsolationCertificate.Approval().setAll(a.__dict__) for a in self.approvals]
+            self.items = [IsolationCertificate.IsolationItem().setAll(i.__dict__) for i in self.items]
         elif data:
             for k, v in data.items():
                 if hasattr(self, k):
                     try:
-                        setattr(self, k, v)
+                        if k == 'approvals':
+                            self.approvals = [IsolationCertificate.Approval().setAll(a) for a in v]
+                        elif k == 'items':
+                            self.items = [IsolationCertificate.IsolationItem().setAll(i) for i in v]
+                        else:
+                            setattr(self, k, v)
                     except Exception:
                         pass
         return self
@@ -189,15 +257,69 @@ class IsolationCertificate:
     def __str__(self):
         return f"{self.id} - {self.type} {self.reason if self.reason else ''} {self.primary_ptw}"
 
+    def requiredApprovers(self) -> list[list['IsolationCertificate.Approver']]:
+        stages = [[IsolationCertificate.Approver(UserRoles.ISSUING)]]
+        if self.type == IsolationCertificate.Types.PROTECTIVE:
+            stages.extend([
+                [IsolationCertificate.Approver(UserRoles.PDH)],
+                [IsolationCertificate.Approver(UserRoles.PGM)],
+                [IsolationCertificate.Approver(UserRoles.SOD)],
+                [IsolationCertificate.Approver(UserRoles.DFGM)],
+            ])
+        return stages
+
+    def _stageSatisfied(self, stage: list['IsolationCertificate.Approver']) -> bool:
+        approvedBy = [globalData.allUsers.get(a.username) for a in self.approvals if a.action == IsolationCertificate.ApprovalActions.APPROVED]
+        return all(any(approver.matchesUser(user) for user in approvedBy) for approver in stage)
+
+    def _pendingStageIndex(self) -> int:
+        """Index of the first not-yet-satisfied approval stage, or len(stages) if fully approved."""
+        stages = self.requiredApprovers()
+        for i, stage in enumerate(stages):
+            if not self._stageSatisfied(stage):
+                return i
+        return len(stages)
+
+    def pendingApprovers(self) -> list['IsolationCertificate.Approver']:
+        """Flattened Approvers still needed, across the current and any later stage."""
+        approvedBy = [globalData.allUsers.get(a.username) for a in self.approvals if a.action == IsolationCertificate.ApprovalActions.APPROVED]
+        stages = self.requiredApprovers()
+        return [
+            approver
+            for stage in stages[self._pendingStageIndex():]
+            for approver in stage
+            if not any(approver.matchesUser(user) for user in approvedBy)
+        ]
+
+    def getApprovalStatus(self, role=None, department=None):
+        """No role -> overall approval-chain status. With role/department -> that
+        viewer's status: the action they already took, 'Requested' if it's their
+        turn right now, or None if they're not an approver for this certificate."""
+        if role is None:
+            if any(a.action == IsolationCertificate.ApprovalActions.RETURNED for a in self.approvals):
+                return IsolationCertificate.Status.RETURNED
+            if self._pendingStageIndex() >= len(self.requiredApprovers()):
+                return IsolationCertificate.Status.APPROVED
+            return IsolationCertificate.Status.REQUESTED
+
+        for approval in self.approvals[::-1]:
+            user = globalData.allUsers.get(approval.username)
+            if user is not None and user.getRole() == role and user.getDepartment() == department:
+                return approval.action
+
+        stages = self.requiredApprovers()
+        pending = self._pendingStageIndex()
+        if pending < len(stages) and any(approver.matchesRoleDept(role, department) for approver in stages[pending]):
+            return IsolationCertificate.Status.REQUESTED
+        return None
+
     def getStatus(self) -> 'IsolationCertificate.Status':
         if self.deisolate_isolator:
             return self.Status.CLOSED
         if self.sanction_isolator and not self.reisolate_isolator:
             return self.Status.SANCTIONED
-        if self.isolate_issuing_action == 'Rejected':
-            return self.Status.REJECTED
         if self.isolate_isolator or self.reisolate_isolator:
             return self.Status.ACTIVE
-        if self.isolate_issuing_action == 'Approved':
+        if self.isolate_requestor:
             return self.Status.PENDING
-        return self.Status.REQUESTED
+        return self.getApprovalStatus()

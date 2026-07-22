@@ -32,7 +32,7 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 - **Multi-stage approval workflow** — Coordinator → Issuing → Safety → Management chain (PDH → PGM → SOD → DFGM)
 - **Full running lifecycle** — Run / Hold / Close with two-party confirmation (Performing Authority + Issuing Authority)
 - **Equipment isolation management** — Tracks shared isolation points across multiple concurrent PTWs; enforces primary/latest ownership rules
-- **Isolation Certificates** *(phase 1 — data model, dialogs, and create/list wired; approve/reject/isolator-confirm/sanction/deisolate workflow not yet implemented)* — formal isolation request documents (type, location, equipment, reason, isolation items) with their own Requested/Under Review/Pending/Active/Sanctioned/Closed lifecycle, color-coded by isolation type (Mechanical=gray, Electrical=yellow, Self=green, Protective System=blue, Other=neutral gray), and a dedicated Isolator role window
+- **Isolation Certificates** — formal isolation request documents (type, location, equipment, reason, isolation items) with a staged approval chain (Issuing, plus PDH→PGM→SOD→DFGM for Protective-type certificates, mirroring the PTW approval-chain pattern) and their own Requested/Under Review/Pending/Active/Sanctioned/Closed lifecycle, color-coded by isolation type (Mechanical=gray, Electrical=yellow, Self=green, Protective System=red, Other=neutral gray), a two-pane approval/isolation history timeline, and a dedicated Isolator role window *(isolator-confirm, sanction-for-test, and de-isolate execution not yet implemented)*
 - **Color-coded permit types** — Cold Work (blue), Spark (yellow), Hot Work (red), HydroCarbon (black), Excavation (gray), Confined Space (green)
 - **Risk assessment library** — Safety team maintains a reusable generic risk assessment library; each PTW gets its own editable, deduplicated risk item table — built by adding items manually, pulling from the generic library, or importing an Excel/CSV file — that becomes its permanent risk record, carried over automatically on re-request
 - **PDF permit reports** — Printable PDF generation for each PTW
@@ -189,9 +189,9 @@ Isolations are safety locks placed on equipment to prevent accidental energizati
 
 A separate, formal request workflow for isolation work — complementary to the shared isolation-point tracking above, not a replacement (a certificate's `items` are isolation tags/points, but the certificate itself is the approval document around them).
 
-- **Lifecycle:** `Requested` → (Issuing approves/rejects) → `Pending` → (Isolator carries out & confirms) → `Active` → … → `Sanctioned` (for-test) / `Closed` (de-isolated)
-- **Roles:** requestor (User) creates a certificate; Issuing approves/rejects; Isolator physically carries it out and confirms
-- **Phase 1 (current):** data model, dialogs, and the create/list round trip are implemented. Approve/reject, isolator-confirm, hold/sanction-for-test, de-isolate, and PTW linkage are **not yet implemented** — the tabs for those stages exist in the UI but stay empty until those actions are built.
+- **Lifecycle:** `Requested` → (staged approval — Issuing, plus PDH→PGM→SOD→DFGM for a Protective-type certificate) → `Approved` → (isolate request → Issuing confirms → Isolator carries out & confirms — *not yet implemented*) → `Active` → … → `Sanctioned` (for-test) / `Closed` (de-isolated)
+- **Roles:** requestor (User) creates a certificate; Issuing (and PDH/PGM/SOD/DFGM for Protective-type certificates) approve/reject in sequence; Isolator will physically carry it out and confirm once that part is built
+- **Implemented:** data model, dialogs, the create/list round trip, and the full staged approval chain (approve/reject, mirroring the PTW approval-chain pattern). **Not yet implemented:** isolator-confirm, hold/sanction-for-test, de-isolate, and PTW linkage — the tabs for those stages exist in the UI but stay empty until those actions are built.
 
 ---
 
@@ -200,6 +200,7 @@ A separate, formal request workflow for isolation work — complementary to the 
 ```
 ptw/
 ├── .github/workflows/build.yml  # CI/CD — builds Windows + Linux binaries via Nuitka
+├── dev-scripts/                 # One-off dev/maintenance scripts (DB migrations, etc.) — gitignored, not part of the app
 ├── client/                      # PyQt6 desktop application
 │   ├── main.py                  # Entry point
 │   ├── Login.py                 # Login & password reset
