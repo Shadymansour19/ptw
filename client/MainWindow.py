@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QStackedWidget, QVBoxLayout, 
                               QFormLayout, QLabel, QPushButton, QToolButton,
                               QToolBar, QDialog, QDialogButtonBox, QTextEdit, QListWidget,
                               QListWidgetItem, QMenu, QSizePolicy, QSystemTrayIcon,
-                              QMessageBox, QApplication, QGraphicsOpacityEffect, QStyle)
+                              QMessageBox, QApplication, QGraphicsOpacityEffect, QStyle, QInputDialog)
 from PyQt6.QtGui import QFont, QIcon, QPalette, QKeySequence, QPainter, QPixmap, QAction, QActionGroup, QShortcut
 
 from PTWData import PTWData, RiskAssessment
@@ -698,59 +698,58 @@ class MainWindow(QMainWindow):
     
     def requestToRunPTW(self, row: int, ptw: PTWData):
         for p in globalData.allPTWs:
-            if p.performing == self.loggedUser.getUsername():
+            if p.getPerforming() == self.loggedUser.getUsername():
                 QMessageBox.warning(self, 'Not Allowed', f"You are already the PA for PTW# {p.id}.")
                 return
-        
+
         pa = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         ClientRequests.requestToRunPTW(self.loggedUser, ptw.id, pa, ts, callback=self._on_request_done_generic)
-    
+
     def runAcceptTW(self, row: int, ptw: PTWData):
-        reply = QMessageBox.question(
-            self, f'Accept PTW#{ptw.id} Run', f"Are you sure you want to accept run request for PTW#{ptw.id}?", 
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
-        )
-        if reply != QMessageBox.StandardButton.Yes:
+        proceed, comment = self.getOptionalComment(f'Accept PTW#{ptw.id} Run', f"Are you sure you want to accept run request for PTW#{ptw.id}?")
+        if not proceed:
             return
 
         ia = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        ClientRequests.runResponsePTW(self.loggedUser, ptw.id, ia, ts, True, callback=self._on_request_done_generic)
+        ClientRequests.runResponsePTW(self.loggedUser, ptw.id, ia, ts, True, comment, callback=self._on_request_done_generic)
 
     def runRejectTW(self, row: int, ptw: PTWData):
+        proceed, comment = self.getOptionalComment(f'Reject PTW#{ptw.id} Run', f"Are you sure you want to reject run request for PTW#{ptw.id}?")
+        if not proceed:
+            return
+
         ia = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        ClientRequests.runResponsePTW(self.loggedUser, ptw.id, ia, ts, False, callback=self._on_request_done_generic)
+        ClientRequests.runResponsePTW(self.loggedUser, ptw.id, ia, ts, False, comment, callback=self._on_request_done_generic)
 
     def requestToClsPTW(self, row: int, ptw: PTWData):
-        reply = QMessageBox.question(
-            self, 'Close PTW', f"Are you sure you want to close PTW#{ptw.id}?", 
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
-        )
-        if reply != QMessageBox.StandardButton.Yes:
+        proceed, comment = self.getOptionalComment('Close PTW', f"Are you sure you want to close PTW#{ptw.id}?")
+        if not proceed:
             return
-    
+
         pa = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        ClientRequests.requestToClsPTW(self.loggedUser, ptw.id, pa, ts, callback=self._on_request_done_generic)
-    
+        ClientRequests.requestToClsPTW(self.loggedUser, ptw.id, pa, ts, comment, callback=self._on_request_done_generic)
+
     def clsAcceptPTW(self, row: int, ptw: PTWData):
-        reply = QMessageBox.question(
-            self, f'Accept PTW#{ptw.id} Close', f"Are you sure you want to accept close request for PTW#{ptw.id}? This is irreversible", 
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
-        )
-        if reply != QMessageBox.StandardButton.Yes:
+        proceed, comment = self.getOptionalComment(f'Accept PTW#{ptw.id} Close', f"Are you sure you want to accept close request for PTW#{ptw.id}? This is irreversible")
+        if not proceed:
             return
-        
+
         ia = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        ClientRequests.clsResponsePTW(self.loggedUser, ptw.id, ia, ts, True, callback=self._on_request_done_generic)
+        ClientRequests.clsResponsePTW(self.loggedUser, ptw.id, ia, ts, True, comment, callback=self._on_request_done_generic)
 
     def clsRejectPTW(self, row: int, ptw: PTWData):
+        proceed, comment = self.getOptionalComment(f'Reject PTW#{ptw.id} Close', f"Are you sure you want to reject close request for PTW#{ptw.id}?")
+        if not proceed:
+            return
+
         ia = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        ClientRequests.clsResponsePTW(self.loggedUser, ptw.id, ia, ts, False, callback=self._on_request_done_generic)
+        ClientRequests.clsResponsePTW(self.loggedUser, ptw.id, ia, ts, False, comment, callback=self._on_request_done_generic)
 
     def requestToHldPTW(self, row: int, ptw: PTWData):
         dlg = DialogSelectIsolations(self, ptw.isolations, selectable=True, title=f"Hold PTW# {ptw.id} - Select Isolations to Keep")
@@ -758,35 +757,43 @@ class MainWindow(QMainWindow):
             return
 
         keptTags = dlg.getKeptTags()
+        proceed, comment = self.getOptionalComment(f'Hold PTW# {ptw.id}', f"Are you sure you want to request hold for PTW#{ptw.id}?")
+        if not proceed:
+            return
         pa = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        ClientRequests.requestToHldPTW(self.loggedUser, ptw.id, pa, ts, keptTags, callback=self._on_request_done_generic)
+        ClientRequests.requestToHldPTW(self.loggedUser, ptw.id, pa, ts, comment, keptTags, callback=self._on_request_done_generic)
 
-    def hldAcceptPTW(self, row: int, ptw: PTWData):
+    def hldAcceptPTW(self, row: int, ptw: PTWData, comment: str = None):
         ia = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        ClientRequests.hldResponsePTW(self.loggedUser, ptw.id, ia, ts, True, callback=self._on_request_done_generic)
+        ClientRequests.hldResponsePTW(self.loggedUser, ptw.id, ia, ts, True, comment, callback=self._on_request_done_generic)
 
-    def hldRejectPTW(self, row: int, ptw: PTWData):
+    def hldRejectPTW(self, row: int, ptw: PTWData, comment: str = None):
         ia = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        ClientRequests.hldResponsePTW(self.loggedUser, ptw.id, ia, ts, False, callback=self._on_request_done_generic)
+        ClientRequests.hldResponsePTW(self.loggedUser, ptw.id, ia, ts, False, comment, callback=self._on_request_done_generic)
 
     def hldTakeAction(self, row: int, ptw: PTWData):
         if ptw.running_status != PTWData.RunningStatus.WAITING_HLD_CONFIRM:
             QMessageBox.warning(self, 'Not Allowed', f"PTW# {ptw.id} is not waiting for hold confirmation.")
             return
-        dlg = DialogSelectIsolations(self, ptw.isolations, kept=ptw.keep_isolations, selectable=False, review_mode=True, title=f"Hold Action - PTW# {ptw.id}")
+        dlg = DialogSelectIsolations(self, ptw.isolations, kept=ptw.getKeepIsolations(), selectable=False, review_mode=True, title=f"Hold Action - PTW# {ptw.id}")
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
+        if dlg.action not in ('accept', 'reject'):
+            return
+        proceed, comment = self.getOptionalComment(f'Hold Action - PTW# {ptw.id}', f"Confirm {dlg.action} for the hold request on PTW#{ptw.id}?")
+        if not proceed:
+            return
         if dlg.action == 'accept':
-            self.hldAcceptPTW(row, ptw)
+            self.hldAcceptPTW(row, ptw, comment)
         elif dlg.action == 'reject':
-            self.hldRejectPTW(row, ptw)
+            self.hldRejectPTW(row, ptw, comment)
 
     def viewIsolations(self, row: int, ptw: PTWData):
         dlg = DialogSelectIsolations(
-            self, ptw.isolations, kept=ptw.keep_isolations,
+            self, ptw.isolations, kept=ptw.getKeepIsolations(),
             selectable=False, view_only=True,
             title=f"Isolations - PTW# {ptw.id}"
         )
@@ -845,10 +852,10 @@ class MainWindow(QMainWindow):
         self.viewUser(ptw.requestor, 'Requestor')
 
     def viewPerformingPTW(self, row: int, ptw: PTWData):
-        self.viewUser(ptw.performing, 'PA')
+        self.viewUser(ptw.getPerforming(), 'PA')
 
     def viewIssuing(self, row: int, ptw: PTWData):
-        self.viewUser(ptw.issuing, 'IA')
+        self.viewUser(ptw.getIssuing(), 'IA')
     
     def viewApprovals(self, row: int, ptw: PTWData):
         dlg = QDialog(self)
@@ -1377,37 +1384,18 @@ class MainWindow(QMainWindow):
         ClientRequests.updateApprovalPTW(self.loggedUser, ptw.id, approval, callback=self._on_request_done_generic)
         
     def getComment(self, title: str, emptyCommentErr: str = 'Empty comment not allowed'):
-        comment = ''
+        while True:
+            comment, ok = QInputDialog.getMultiLineText(self, title, "Comment:")
+            if not ok:
+                return None
+            if comment:
+                return comment
+            QMessageBox.warning(self, 'Not Allowed', emptyCommentErr)
 
-        dlg = QDialog(self)
-        dlg.setWindowTitle(title)
-
-        lyt = QFormLayout(dlg)
-        boxComment = QTextEdit(self)
-        boxComment.setPlaceholderText("Comment to be sent for requestor")
-        lyt.addRow("Comment:", boxComment)
-        dlg.setLayout(lyt)
-
-        btnsDlgComment = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
-            Qt.Orientation.Horizontal, self
-        )
-
-        def getComment():
-            nonlocal comment
-            comment = boxComment.toPlainText()
-            if not comment:
-                QMessageBox.warning(self, 'Not Allowed', emptyCommentErr)
-                return
-            dlg.accept()
-        
-        btnsDlgComment.accepted.connect(getComment)
-        btnsDlgComment.rejected.connect(dlg.reject)
-        lyt.addRow(btnsDlgComment)
-
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            return comment
-        return None
+    def getOptionalComment(self, title: str, prompt: str) -> tuple[bool, str]:
+        """Confirm an action with an optional comment. Returns (proceed, comment) — comment may be empty/None."""
+        comment, ok = QInputDialog.getMultiLineText(self, title, prompt)
+        return ok, (comment or None)
     
     def requestEditsPTW(self, row: int, ptw: PTWData):
         comment = self.getComment(f'Return PTW# {ptw.id} to be Edited')

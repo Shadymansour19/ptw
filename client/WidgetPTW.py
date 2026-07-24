@@ -219,7 +219,7 @@ class DialogPTW(QDialog):
         self.boxDepartment.setText(self.loggedUser.department if new else str(ptw.department) if self.loggedUser.department else '')
         self._requestorUsername = self.loggedUser.getUsername() if new else ptw.requestor
         self.boxRequestor.setText(DialogPTW.displayNameForUsername(self._requestorUsername))
-        self.boxPerforming.setText(DialogPTW.displayNameForUsername(ptw.performing))
+        self.boxPerforming.setText(DialogPTW.displayNameForUsername(ptw.getPerforming()))
         self.boxLocation.setCurrentIndex(max(0, self.boxLocation.findData(str(ptw.location) if ptw.location else '')))
         self.boxAreaClass.setCurrentIndex(max(0, self.boxAreaClass.findData(str(ptw.area_class) if ptw.area_class else '')))
         self.boxEquipment.setText(str(ptw.equipment) if ptw.equipment else '')
@@ -497,8 +497,57 @@ class DialogPTW(QDialog):
         timeline = Timeline(entries, t("There's no approval history at the moment"))
         return self._timelinePane(t("Approval Timeline"), timeline)
 
+    def _runCycleRequestEntry(self, label: str, username: str, timestamp: str, comment: str = None) -> tuple:
+        if username:
+            text = f"<b>{label}</b> by {DialogPTW.displayNameForUsername(username)}"
+            if timestamp:
+                text += f" at {timestamp}"
+            if comment:
+                text += f"<br><b>{t('Comment')}:</b> {comment}"
+            color = QColor('green')
+        else:
+            text = f"<b>{label}</b> — {t('Pending')}"
+            color = QColor('gray')
+        content = QLabel(text)
+        content.setWordWrap(True)
+        content.setFont(QFont("Helvetica", 13))
+        content.setStyleSheet(f"color: {color.name()};")
+        return (color, content)
+
+    def _runCycleResponseEntry(self, verb: str, username: str, action: str, timestamp: str, comment: str = None) -> tuple:
+        if action:
+            color = QColor('orange') if action == PTWData.RunCycle.Actions.REJECTED else QColor('green')
+            text = f"<b>{verb} {action}</b> by {DialogPTW.displayNameForUsername(username)}"
+            if timestamp:
+                text += f" at {timestamp}"
+            if comment:
+                text += f"<br><b>{t('Comment')}:</b> {comment}"
+        else:
+            color = QColor('gray')
+            text = f"<b>{verb}</b> — {t('Pending')}"
+        content = QLabel(text)
+        content.setWordWrap(True)
+        content.setFont(QFont("Helvetica", 13))
+        content.setStyleSheet(f"color: {color.name()};")
+        return (color, content)
+
     def _buildRunningTimelinePane(self) -> QWidget:
-        timeline = Timeline([], t("Running timeline — coming soon"))
+        entries = []
+        for i, cycle in enumerate(self.ptw.run_cycles, start=1):
+            header = QLabel(f"<b>{t('Run Cycle')} #{i}</b>")
+            header.setFont(QFont("Helvetica", 13))
+            header.setStyleSheet("color: #777777;")
+            entries.append((QColor('#AAAAAA'), header))
+
+            entries.append(self._runCycleRequestEntry(t('Run Requested'), cycle.run_pa, cycle.run_pa_timestamp))
+            entries.append(self._runCycleResponseEntry(t('Run'), cycle.run_ia, cycle.run_ia_action, cycle.run_ia_timestamp, cycle.run_ia_comment))
+
+            if cycle.stop_pa_request:
+                stopLabel = t(cycle.stop_pa_request)
+                entries.append(self._runCycleRequestEntry(f"{stopLabel} {t('Requested')}", cycle.stop_pa, cycle.stop_pa_timestamp, cycle.stop_pa_comment))
+                entries.append(self._runCycleResponseEntry(stopLabel, cycle.stop_ia, cycle.stop_ia_action, cycle.stop_ia_timestamp, cycle.stop_ia_comment))
+
+        timeline = Timeline(entries, t("There's no running history at the moment"))
         return self._timelinePane(t("Running Timeline"), timeline)
 
     def _linkedICsByType(self) -> dict:

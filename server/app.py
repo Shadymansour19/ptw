@@ -195,12 +195,14 @@ def _auto_archive_closed_ptws():
                 closed = [ptw for ptw in globalData.allPTWs.values() if ptw.running_status == PTWData.RunningStatus.CLOSED]
             staleIds = []
             for ptw in closed:
-                if not ptw.close_issuing_timestamp:
+                lastCycle = ptw.lastRunCycle()
+                closeTimestamp = lastCycle.stop_ia_timestamp if lastCycle else None
+                if not closeTimestamp:
                     continue
                 try:
-                    closedAt = datetime.strptime(ptw.close_issuing_timestamp, "%d/%m/%Y %H:%M:%S")
+                    closedAt = datetime.strptime(closeTimestamp, "%d/%m/%Y %H:%M:%S")
                 except ValueError:
-                    log.warning("Auto-archive: PTW #%s has unparseable close_issuing_timestamp='%s'", ptw.id, ptw.close_issuing_timestamp)
+                    log.warning("Auto-archive: PTW #%s has unparseable close timestamp='%s'", ptw.id, closeTimestamp)
                     continue
                 if closedAt <= cutoff:
                     staleIds.append(ptw.id)
@@ -937,6 +939,7 @@ def runPTW():
     ia = payload.get('ia')
     ts = payload.get('timestamp')
     ok = payload.get('response')
+    comment = payload.get('comment')
     if ptwId is None or ia is None or ts is None or ok is None:
         log.warning("POST /ptws/run: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
@@ -948,7 +951,7 @@ def runPTW():
 
     try:
         if ok:
-            ptwDB.runAcceptPTW(ptwId, ia, ts)
+            ptwDB.runAcceptPTW(ptwId, ia, ts, comment)
             with globalData.lock:
                 for iso in ptw.isolations:
                     if iso.tag not in globalData.isolations:
@@ -960,7 +963,7 @@ def runPTW():
             log.info("PTW run accepted: id=%s by IA='%s' isolations=%d", ptwId, ia, len(ptw.isolations))
             return jsonify({"success": True})
         else:
-            ptwDB.runRejectPTW(ptwId, ia, ts)
+            ptwDB.runRejectPTW(ptwId, ia, ts, comment)
             _sync_ptw(ptwId)
             _broadcast("ptw_run", {"ptw_id": ptwId, "accepted": False, "by": ia})
             log.info("PTW run rejected: id=%s by IA='%s'", ptwId, ia)
@@ -983,12 +986,13 @@ def requestToHldPTW():
     ptwId = payload.get('ptw-id')
     pa = payload.get('pa')
     ts = payload.get('timestamp')
+    comment = payload.get('comment')
     keepTags = payload.get('keep-tags', [])
     if ptwId is None or pa is None or ts is None:
         log.warning("POST /ptws/hold-request: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     try:
-        ptwDB.requestToHldPTW(ptwId, pa, ts, keepTags)
+        ptwDB.requestToHldPTW(ptwId, pa, ts, comment, keepTags)
         _sync_ptw(ptwId)
         _broadcast("ptw_hold_request", {"ptw_id": ptwId, "by": pa}, roles=[UserRoles.USER, UserRoles.ISSUING])
         log.info("PTW hold requested: id=%s by PA='%s' keep_tags=%s", ptwId, pa, keepTags)
@@ -1012,6 +1016,7 @@ def hldPTW():
     ia = payload.get('ia')
     ts = payload.get('timestamp')
     ok = payload.get('response')
+    comment = payload.get('comment')
     if ptwId is None or ia is None or ts is None or ok is None:
         log.warning("POST /ptws/hold: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
@@ -1022,9 +1027,9 @@ def hldPTW():
         return jsonify({"success": False, "error": f"PTW# {ptwId} not found"}), 400
 
     try:
-        keepTags = ptw.keep_isolations
+        keepTags = ptw.getKeepIsolations()
         if ok:
-            ptwDB.hldAcceptPTW(ptwId, ia, ts)
+            ptwDB.hldAcceptPTW(ptwId, ia, ts, comment)
             with globalData.lock:
                 for iso in ptw.isolations:
                     if iso.tag not in globalData.isolations:
@@ -1039,7 +1044,7 @@ def hldPTW():
             log.info("PTW hold accepted: id=%s by IA='%s'", ptwId, ia)
             return jsonify({"success": True})
         else:
-            ptwDB.hldRejectPTW(ptwId, ia, ts)
+            ptwDB.hldRejectPTW(ptwId, ia, ts, comment)
             _sync_ptw(ptwId)
             _broadcast("ptw_hold", {"ptw_id": ptwId, "accepted": False, "by": ia})
             log.info("PTW hold rejected: id=%s by IA='%s'", ptwId, ia)
@@ -1062,11 +1067,12 @@ def requestToClsPTW():
     ptwId = payload.get('ptw-id')
     pa = payload.get('pa')
     ts = payload.get('timestamp')
+    comment = payload.get('comment')
     if ptwId is None or pa is None or ts is None:
         log.warning("POST /ptws/close-request: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     try:
-        result = ptwDB.requestToClsPTW(ptwId, pa, ts)
+        result = ptwDB.requestToClsPTW(ptwId, pa, ts, comment)
         _sync_ptw(ptwId)
         _broadcast("ptw_close_request", {"ptw_id": ptwId, "by": pa}, roles=[UserRoles.USER, UserRoles.ISSUING])
         log.info("PTW close requested: id=%s by PA='%s'", ptwId, pa)
@@ -1090,6 +1096,7 @@ def clsPTW():
     ia = payload.get('ia')
     ts = payload.get('timestamp')
     ok = payload.get('response')
+    comment = payload.get('comment')
     if ptwId is None or ia is None or ts is None or ok is None:
         log.warning("POST /ptws/close: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
@@ -1101,7 +1108,7 @@ def clsPTW():
 
     try:
         if ok:
-            ptwDB.clsAcceptPTW(ptwId, ia, ts)
+            ptwDB.clsAcceptPTW(ptwId, ia, ts, comment)
             with globalData.lock:
                 for iso in ptw.isolations:
                     if iso.tag in globalData.isolations:
@@ -1114,7 +1121,7 @@ def clsPTW():
             log.info("PTW closed (accepted): id=%s by IA='%s'", ptwId, ia)
             return jsonify({"success": True})
         else:
-            ptwDB.clsRejectPTW(ptwId, ia, ts)
+            ptwDB.clsRejectPTW(ptwId, ia, ts, comment)
             _sync_ptw(ptwId)
             _broadcast("ptw_close", {"ptw_id": ptwId, "accepted": False, "by": ia})
             log.info("PTW close rejected: id=%s by IA='%s'", ptwId, ia)

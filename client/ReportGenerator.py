@@ -33,7 +33,7 @@ class ReportGenerator:
             ['Status', str(ptw.running_status if ptw.approval_status == PTWData.ApprovalStatus.APPROVED and ptw.running_status is not None else ptw.approval_status)],
             ['Department', str(ptw.department)],
             ['Requestor', str(globalData.allUsers[ptw.requestor].getName()) if ptw.requestor in globalData.allUsers else 'None'],
-            ['PA', str(globalData.allUsers[ptw.performing].getName()) if ptw.performing in globalData.allUsers else 'None'],
+            ['PA', str(globalData.allUsers[ptw.getPerforming()].getName()) if ptw.getPerforming() in globalData.allUsers else 'None'],
             ['Location', str(ptw.location)],
             ['Equipment', str(ptw.equipment)],
             ['Description', str(ptw.description)],
@@ -119,11 +119,11 @@ class ReportGenerator:
             ['Status', str(ptw.running_status if ptw.approval_status == PTWData.ApprovalStatus.APPROVED and ptw.running_status is not None else ptw.approval_status)], 
             ['Request Date', str(ptw.request_date)], 
             ['Department', str(ptw.department)], 
-            ['Requestor', str(globalData.allUsers[ptw.requestor].getName()) if ptw.requestor in globalData.allUsers else 'None'], 
-            ['PA', str(globalData.allUsers[ptw.performing].getName()) if ptw.performing in globalData.allUsers else 'None'], 
-            ['Location', str(ptw.location)], 
-            ['Equipment', str(ptw.equipment)], 
-            ['Area Class', str(ptw.area_class)], 
+            ['Requestor', str(globalData.allUsers[ptw.requestor].getName()) if ptw.requestor in globalData.allUsers else 'None'],
+            ['PA', str(globalData.allUsers[ptw.getPerforming()].getName()) if ptw.getPerforming() in globalData.allUsers else 'None'],
+            ['Location', str(ptw.location)],
+            ['Equipment', str(ptw.equipment)],
+            ['Area Class', str(ptw.area_class)],
             ['Description', str(ptw.description)], 
         ]
 
@@ -274,11 +274,13 @@ class ReportGenerator:
             return cols
 
         def runConfirmationColumns():
-            pa = globalData.allUsers[ptw.performing].getName() if ptw.performing in globalData.allUsers else str(ptw.performing or '')
-            ia = globalData.allUsers[ptw.issuing].getName()    if ptw.issuing    in globalData.allUsers else str(ptw.issuing    or '')
+            performing = ptw.getPerforming()
+            issuing = ptw.getIssuing()
+            pa = globalData.allUsers[performing].getName() if performing in globalData.allUsers else str(performing or '')
+            ia = globalData.allUsers[issuing].getName()    if issuing    in globalData.allUsers else str(issuing    or '')
             return [
-                ('PA', pa, ptw.performing_timestamp if ptw.performing_timestamp else ''),
-                ('IA', ia, ptw.issuing_timestamp    if ptw.issuing_timestamp    else ''),
+                ('PA', pa, ptw.getPerformingTimestamp() or ''),
+                ('IA', ia, ptw.getIssuingTimestamp()    or ''),
             ]
 
         elements.extend([
@@ -470,7 +472,7 @@ class ReportGenerator:
                 pass
 
             ignore = (
-                (isolate and (iso.tag in ptw.keep_isolations or (isolated_on and str(ptw.id) != str(isolated_on)))) or
+                (isolate and (iso.tag in ptw.getKeepIsolations() or (isolated_on and str(ptw.id) != str(isolated_on)))) or
                 (not isolate and (isReallyActive or str(ptw.id) != str(latestPTW)))
             )
 
@@ -581,7 +583,8 @@ class ReportGenerator:
         for row_idx, ptw in enumerate(ptws, start=2):
             status = str(ptw.running_status if ptw.approval_status == PTWData.ApprovalStatus.APPROVED and ptw.running_status is not None else ptw.approval_status)
             requestor = globalData.allUsers[ptw.requestor].getName() if ptw.requestor in globalData.allUsers else str(ptw.requestor or '')
-            pa = globalData.allUsers[ptw.performing].getName() if ptw.performing in globalData.allUsers else str(ptw.performing or '')
+            performing = ptw.getPerforming()
+            pa = globalData.allUsers[performing].getName() if performing in globalData.allUsers else str(performing or '')
 
             row_data = [
                 ptw.id,
@@ -915,20 +918,15 @@ class ReportGenerator:
         except Exception:
             sig_font = 'Helvetica-Oblique'
 
-        if ptw.running_status == PTWData.RunningStatus.HELD:
-            pa_user = globalData.allUsers[ptw.hold_performing].getName() if ptw.hold_performing in globalData.allUsers else str(ptw.hold_performing or '')
-            ia_user = globalData.allUsers[ptw.hold_issuing].getName()    if ptw.hold_issuing    in globalData.allUsers else str(ptw.hold_issuing    or '')
-            sig_cols = [
-                ('PA', pa_user, ptw.hold_performing_timestamp or ''),
-                ('IA', ia_user, ptw.hold_issuing_timestamp    or ''),
-            ]
-        else:
-            pa_user = globalData.allUsers[ptw.close_performing].getName() if ptw.close_performing in globalData.allUsers else str(ptw.close_performing or '')
-            ia_user = globalData.allUsers[ptw.close_issuing].getName()    if ptw.close_issuing    in globalData.allUsers else str(ptw.close_issuing    or '')
-            sig_cols = [
-                ('PA', pa_user, ptw.close_performing_timestamp or ''),
-                ('IA', ia_user, ptw.close_issuing_timestamp    or ''),
-            ]
+        lastCycle = ptw.operativeRunCycle()
+        stopPa = lastCycle.stop_pa if lastCycle else None
+        stopIa = lastCycle.stop_ia if lastCycle else None
+        pa_user = globalData.allUsers[stopPa].getName() if stopPa in globalData.allUsers else str(stopPa or '')
+        ia_user = globalData.allUsers[stopIa].getName() if stopIa in globalData.allUsers else str(stopIa or '')
+        sig_cols = [
+            ('PA', pa_user, (lastCycle.stop_pa_timestamp if lastCycle else None) or ''),
+            ('IA', ia_user, (lastCycle.stop_ia_timestamp if lastCycle else None) or ''),
+        ]
 
         SIG_TRAILER_HEIGHT = 2.0 * inch
         left_x = MARGIN + QR_CODE_WIDTH

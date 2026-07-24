@@ -1511,6 +1511,54 @@ class PTWData:
                 return str(self.department) if self.department else str(self.role)
             return str(self.role)
 
+    class RunCycle:
+        """One pass through the running state machine: a PA run request, the IA's response,
+        and — once running — the PA's hold/close request and the IA's response to that.
+        A new RunCycle is appended each time a run is requested (including resuming from HELD);
+        stop_* fields are filled in later, in place, as the same cycle progresses."""
+
+        class StopTypes(enum.StrEnum):
+            HOLD = 'Hold'
+            CLOSE = 'Close'
+
+        class Actions(enum.StrEnum):
+            APPROVED = 'Approved'
+            REJECTED = 'Rejected'
+
+        def __init__(self, run_pa: str = None, run_pa_timestamp: str = None,
+                     run_ia: str = None, run_ia_action: str = None, run_ia_comment: str = None, run_ia_timestamp: str = None,
+                     stop_pa: str = None, stop_pa_request: str = None, stop_pa_comment: str = None, stop_pa_timestamp: str = None,
+                     stop_ia: str = None, stop_ia_action: str = None, stop_ia_comment: str = None, stop_ia_timestamp: str = None,
+                     keep_isolations: list = None):
+            self.run_pa = run_pa
+            self.run_pa_timestamp = run_pa_timestamp
+            self.run_ia = run_ia
+            self.run_ia_action = run_ia_action
+            self.run_ia_comment = run_ia_comment
+            self.run_ia_timestamp = run_ia_timestamp
+            self.stop_pa = stop_pa
+            self.stop_pa_request = stop_pa_request
+            self.stop_pa_comment = stop_pa_comment
+            self.stop_pa_timestamp = stop_pa_timestamp
+            self.stop_ia = stop_ia
+            self.stop_ia_action = stop_ia_action
+            self.stop_ia_comment = stop_ia_comment
+            self.stop_ia_timestamp = stop_ia_timestamp
+            self.keep_isolations = list(keep_isolations) if keep_isolations else []
+
+        def setAll(self, data: dict):
+            for k,v in data.items():
+                if hasattr(self, k):
+                    try:
+                        setattr(self, k, v)
+                    except Exception as e:
+                        pass
+            return self
+
+        def isOpen(self) -> bool:
+            """Still awaiting further action: the run wasn't rejected, and any stop request hasn't been approved."""
+            return self.run_ia_action != PTWData.RunCycle.Actions.REJECTED and self.stop_ia_action != PTWData.RunCycle.Actions.APPROVED
+
 
     __backgroundColors = {
         Types.CW:   QColor( 30,  90, 160, 200),  # blue
@@ -1541,19 +1589,7 @@ class PTWData:
         self.description : str = data.get('description')
         self.fast_track : bool = data.get('fast_track', False)
         self.requestor : str = data.get('requestor')
-        self.performing : str = data.get('performing')
-        self.issuing : str = data.get('issuing')
-        self.performing_timestamp : str = data.get('performing_timestamp')
-        self.issuing_timestamp : str = data.get('issuing_timestamp')
-        self.close_performing : str = data.get('close_performing')
-        self.close_issuing : str = data.get('close_issuing')
-        self.close_performing_timestamp : str = data.get('close_performing_timestamp')
-        self.close_issuing_timestamp : str = data.get('close_issuing_timestamp')
-        self.hold_performing: str = data.get('hold_performing')
-        self.hold_performing_timestamp: str = data.get('hold_performing_timestamp')
-        self.hold_issuing: str = data.get('hold_issuing')
-        self.hold_issuing_timestamp: str = data.get('hold_issuing_timestamp')
-        self.keep_isolations : list[str] = data.get('keep_isolations', [])
+        self.run_cycles : list['PTWData.RunCycle'] = [PTWData.RunCycle().setAll(cycle) for cycle in data.get('run_cycles', [])]
         self.miwi : str = data.get('miwi')
         self.mos : str = data.get('mos')
         self.attachs : list[str] = data.get('attachs', [])
@@ -1574,6 +1610,7 @@ class PTWData:
             self.__dict__.update(vars(namespace))
             self.approvals = [PTWData.Approval().setAll(approval.__dict__) for approval in self.approvals]
             self.isolations = [Isolation().setAll(iso.__dict__) for iso in self.isolations]
+            self.run_cycles = [PTWData.RunCycle().setAll(cycle.__dict__) for cycle in self.run_cycles]
         for k,v in data.items():
             if hasattr(self, k):
                 try:
@@ -1581,6 +1618,8 @@ class PTWData:
                         self.approvals = [PTWData.Approval().setAll(approval) for approval in v]
                     elif k == 'isolations':
                         self.isolations = [Isolation().setAll(iso) for iso in v]
+                    elif k == 'run_cycles':
+                        self.run_cycles = [PTWData.RunCycle().setAll(cycle) for cycle in v]
                     else:
                         setattr(self, k, v)
                 except Exception as e:
@@ -1638,10 +1677,6 @@ class PTWData:
         self.requestor = requestor
         return self
     
-    def setPerforming(self, performing: str):
-        self.performing = performing
-        return self
-
     def setMiwi(self, miwi: str):
         self.miwi = miwi
         return self
@@ -1835,23 +1870,51 @@ class PTWData:
 
     def clearApprovals(self):
         self.approvals = []
-        self.performing = None
-        self.issuing = None
-        self.performing_timestamp = None
-        self.issuing_timestamp = None
-        self.hold_performing = None
-        self.hold_issuing = None
-        self.hold_performing_timestamp = None
-        self.hold_issuing_timestamp = None
-        self.close_performing = None
-        self.close_issuing = None
-        self.close_performing_timestamp = None
-        self.close_issuing_timestamp = None
+        self.run_cycles = []
         self.approval_status = PTWData.ApprovalStatus.UNDER_REVIEW
         self.running_status = PTWData.RunningStatus.NOT_RUNNING
         self.prev_running_status = PTWData.RunningStatus.NOT_RUNNING
         return self
-    
+
+    def lastRunCycle(self) -> 'PTWData.RunCycle':
+        """The most recent run cycle regardless of whether it's still open, or None if the PTW never ran."""
+        return self.run_cycles[-1] if self.run_cycles else None
+
+    def currentRunCycle(self) -> 'PTWData.RunCycle':
+        """The run cycle still in progress (run not rejected, stop not yet approved), or None."""
+        cycle = self.lastRunCycle()
+        return cycle if cycle is not None and cycle.isOpen() else None
+
+    def operativeRunCycle(self) -> 'PTWData.RunCycle':
+        """Most recent cycle that actually reached RUNNING, skipping any trailing cycle(s) whose
+        run request was rejected — those never changed running/isolation state, so e.g. rejecting
+        a resume-from-HELD attempt must not hide the still-relevant data from the cycle that HELD it."""
+        for cycle in reversed(self.run_cycles):
+            if cycle.run_ia_action == PTWData.RunCycle.Actions.REJECTED:
+                continue
+            return cycle
+        return None
+
+    def getPerforming(self) -> str:
+        cycle = self.currentRunCycle()
+        return cycle.run_pa if cycle else None
+
+    def getPerformingTimestamp(self) -> str:
+        cycle = self.currentRunCycle()
+        return cycle.run_pa_timestamp if cycle else None
+
+    def getIssuing(self) -> str:
+        cycle = self.currentRunCycle()
+        return cycle.run_ia if cycle and cycle.run_ia_action == PTWData.RunCycle.Actions.APPROVED else None
+
+    def getIssuingTimestamp(self) -> str:
+        cycle = self.currentRunCycle()
+        return cycle.run_ia_timestamp if cycle and cycle.run_ia_action == PTWData.RunCycle.Actions.APPROVED else None
+
+    def getKeepIsolations(self) -> list[str]:
+        cycle = self.operativeRunCycle()
+        return cycle.keep_isolations if cycle else []
+
     def requiredApprovers(self) -> list[list['PTWData.Approver']]:
         requiredApprovers = [
             [PTWData.Approver(UserRoles.COORDINATOR, UserDepartments.PROD)],

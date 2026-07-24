@@ -174,7 +174,17 @@ WAITING_RUN_CONFIRM
 | HELD                 | Work paused; selected isolations maintained                           |
 | ARCHIVED             | Permit archived after closure (terminal state); stored separately     |
 
-**Archiving:** A `CLOSED` PTW can be archived manually (`POST /ptws/archive`, any authenticated non-guest user) or automatically. A daemon thread (`server/app.py` — `_auto_archive_closed_ptws`) sweeps `globalData.allPTWs` every `_AUTO_ARCHIVE_CHECK_INTERVAL` (1 hour) and archives any `CLOSED` PTW whose `close_issuing_timestamp` is `_AUTO_ARCHIVE_AFTER_DAYS` (7 days) or older. Both paths call the same `PtwsDb.archivePTWs()` and broadcast the same `ptw_archived` SSE event with `"by"` set to the acting user (manual) or `"system"` (automatic).
+**Archiving:** A `CLOSED` PTW can be archived manually (`POST /ptws/archive`, any authenticated non-guest user) or automatically. A daemon thread (`server/app.py` — `_auto_archive_closed_ptws`) sweeps `globalData.allPTWs` every `_AUTO_ARCHIVE_CHECK_INTERVAL` (1 hour) and archives any `CLOSED` PTW whose last `RunCycle.stop_ia_timestamp` is `_AUTO_ARCHIVE_AFTER_DAYS` (7 days) or older. Both paths call the same `PtwsDb.archivePTWs()` and broadcast the same `ptw_archived` SSE event with `"by"` set to the acting user (manual) or `"system"` (automatic).
+
+**`RunCycle` — full audit trail for the running cycle** (`PTWData.RunCycle`, `client`/`server` `PTWData.py`, kept in sync): `PTWData.run_cycles` is an ordered list of `RunCycle` records, one per pass through the state machine above — a fresh `RunCycle` is appended every time a PA sends a run request (including resuming from `HELD`), and its `stop_*` fields are filled in later, in place, as that same cycle progresses. Each `RunCycle` has:
+
+- `run_pa` / `run_pa_timestamp` — who requested the run, and when.
+- `run_ia` / `run_ia_action` (`Approved`/`Rejected`) / `run_ia_comment` / `run_ia_timestamp` — the IA's response to the run request.
+- `stop_pa` / `stop_pa_request` (`Hold`/`Close`) / `stop_pa_comment` / `stop_pa_timestamp` — the PA's hold-or-close request, once running.
+- `stop_ia` / `stop_ia_action` (`Approved`/`Rejected`) / `stop_ia_comment` / `stop_ia_timestamp` — the IA's response to that stop request.
+- `keep_isolations` — the isolation tags selected to remain linked for this specific hold (submitted alongside the hold request; empty for a close, or if this cycle hasn't reached a stop request yet).
+
+A cycle is "open" (`RunCycle.isOpen()`) as long as its run wasn't rejected and its stop hasn't been approved; `PTWData.currentRunCycle()` returns the last cycle if it's still open (used for `getPerforming()`/`getIssuing()` — the live PA/IA of an in-progress run — mirroring the old behavior where those fields went blank once a hold/close was accepted). `PTWData.lastRunCycle()` always returns the most recent cycle regardless of whether it's still open. `PTWData.operativeRunCycle()` walks backward from the end and skips any trailing cycle(s) whose run was rejected — a rejected resume-from-`HELD` attempt appends its own (otherwise-empty) cycle for the audit trail, but never actually changes running/isolation state, so reads that care about "what's actually in effect" (`getKeepIsolations()`, and `ReportGenerator`'s de-isolation report reading back who performed the hold/close) use `operativeRunCycle()` rather than `lastRunCycle()`, so they aren't fooled by that trailing no-op cycle into looking blank. This replaces the old flat, overwritten `performing`/`issuing`/`hold_*`/`close_*`/`keep_isolations` fields, which silently lost history on every rejection (a reject handler blanked its own fields instead of recording who rejected and when) and on every hold/close acceptance (which wiped `performing`/`issuing` rather than keeping them alongside the new stop record).
 
 ---
 
@@ -313,33 +323,16 @@ requestor       — Username of person requesting the permit
 fast_track      — Whether this permit is flagged for fast-track processing (bool, defaults to false)
 ```
 
-### Work Authorization
+### Running Cycle History
 
 ```
-performing              — Username of person performing the work
-issuing                 — Username of the issuing authority
-performing_timestamp    — Timestamp when performing party signed
-issuing_timestamp       — Timestamp when issuing party signed
+run_cycles  — Ordered list of RunCycle records, one per pass through the running state
+              machine (run request/response, then hold-or-close request/response); see
+              RunCycle above. Replaces the old flat performing/issuing/hold_*/close_*/
+              keep_isolations fields.
 ```
 
-### Close Workflow Fields
-
-```
-close_performing            — Username requesting closure
-close_issuing               — Username approving closure
-close_performing_timestamp
-close_issuing_timestamp
-```
-
-### Hold Workflow Fields
-
-```
-hold_performing             — Username requesting hold
-hold_issuing                — Username approving hold
-hold_performing_timestamp
-hold_issuing_timestamp
-keep_isolations             — List of isolation tags to keep active during hold
-```
+`getPerforming()` / `getIssuing()` / `getPerformingTimestamp()` / `getIssuingTimestamp()` return the live PA/IA of the currently open run cycle (or `None` once it's been rejected, held, or closed — matching the old fields' behavior of going blank at that point). `getKeepIsolations()` returns the most recent cycle's kept isolation tags regardless of whether that cycle is still open (used both while `WAITING_HLD_CONFIRM`/`HELD`, and read back afterward for reporting).
 
 ### Safety & Work Instructions
 
@@ -457,6 +450,8 @@ New-user invitation email (`POST /users`) and the password-reset verification em
 
 `POST /ptws` runs `PTWData.validate()` (required/restricted/requirements rules for tools, hazards, controls, plus required attachments — see [Tools, Hazards & Controls Rules](#tools-hazards--controls-rules)) before persisting; a failing submission is rejected with `400` and never written to the database.
 
+`/ptws/run`, `/ptws/hold`, `/ptws/close` (the IA's response) and `/ptws/hold-request`, `/ptws/close-request` (the PA's stop request) all accept an optional `comment` field in the JSON body, stored on the relevant `RunCycle` (`run_ia_comment`/`stop_pa_comment`/`stop_ia_comment` — see [Running Cycle](#2-running-cycle)); `/ptws/run-request` has no comment field, matching `RunCycle.run_pa`/`run_pa_timestamp` having none either.
+
 ### Real-Time Events (SSE)
 | Method | Endpoint   | Description                                              |
 |--------|------------|----------------------------------------------------------|
@@ -560,19 +555,7 @@ department                  VARCHAR(100)
 description                 VARCHAR(300) NOT NULL
 fast_track                  BOOLEAN NOT NULL DEFAULT FALSE
 requestor                   VARCHAR(100)
-performing                  VARCHAR(100)
-issuing                     VARCHAR(100)
-performing_timestamp        VARCHAR(100)
-issuing_timestamp           VARCHAR(100)
-close_performing            VARCHAR(100)
-close_issuing               VARCHAR(100)
-close_performing_timestamp  VARCHAR(100)
-close_issuing_timestamp     VARCHAR(100)
-hold_performing             VARCHAR(100)
-hold_issuing                VARCHAR(100)
-hold_performing_timestamp   VARCHAR(100)
-hold_issuing_timestamp      VARCHAR(100)
-keep_isolations             TEXT[]
+run_cycles                  JSONB[]
 prev_running_status         VARCHAR(100)
 miwi                        VARCHAR(100)
 mos                         VARCHAR(100)
@@ -588,7 +571,7 @@ isolations                  JSONB[]
 attachs                     TEXT[]
 ```
 
-`linked_ics` is reserved for the future PTW↔IC linkage phase — always empty today (see [Isolation Certificates](#isolation-certificates)).
+`linked_ics` is reserved for the future PTW↔IC linkage phase — always empty today (see [Isolation Certificates](#isolation-certificates)). `run_cycles` replaced the old flat `performing`/`issuing`/`performing_timestamp`/`issuing_timestamp`/`close_performing`/`close_issuing`/`close_performing_timestamp`/`close_issuing_timestamp`/`hold_performing`/`hold_issuing`/`hold_performing_timestamp`/`hold_issuing_timestamp`/`keep_isolations` columns (see [Running Cycle](#2-running-cycle)); `dev-scripts/migrate_ptw_run_cycles.py` is the one-time migration that adds it, backfills it from those old columns, and drops them.
 
 ### `isolations`
 ```sql
@@ -699,7 +682,7 @@ The desktop client is structured around role-based main windows. After login, `M
 | `Isolation.py`              | Client-side isolation model: `Isolation` (physical tag/point) + `IsolationCertificate` (formal request document, `getStatus()`, type coloring) |
 | `utils.py`                  | Shared helpers: `resource_path`, `objToDict`, `dictToObj`, `parseTabularFile` |
 | `User.py`                   | User model                                                       |
-| `WidgetPTW.py`              | Full PTW form (create/view/edit); `DialogPTW` is tabbed (Basic Info / Tools / Hazards / Controls / Risks / Isolation / MIWI-MOS / Attachments / **History** / **IC Linkage** — the last two only in readonly mode, mirroring `DialogIsolationCertificate`'s History/PTW Linkage split). History renders the approval log as two side-by-side `Timeline` panes (Approval Timeline live; Running Timeline a placeholder for a later phase) — a vertical rail of colored dots (green=approved, orange=returned, gray=pending) connected by a continuous line, each dot's row scrollable via `QScrollArea`. IC Linkage groups `ptw.linked_ics` by looking up each id's type in `globalData.isolationCertificates`, one row per `IsolationCertificate.Types` value. |
+| `WidgetPTW.py`              | Full PTW form (create/view/edit); `DialogPTW` is tabbed (Basic Info / Tools / Hazards / Controls / Risks / Isolation / MIWI-MOS / Attachments / **History** / **IC Linkage** — the last two only in readonly mode, mirroring `DialogIsolationCertificate`'s History/PTW Linkage split). History renders the approval log and the running cycle as two side-by-side `Timeline` panes — a vertical rail of colored dots (green=approved, orange=returned/rejected, gray=pending) connected by a continuous line, each dot's row scrollable via `QScrollArea`. The Approval Timeline reads `ptw.approvals`; the Running Timeline (`_buildRunningTimelinePane`/`_runCycleRequestEntry`/`_runCycleResponseEntry`) reads `ptw.run_cycles`, rendering each `RunCycle` as a "Run Cycle #N" header followed by its Run Requested/Run Approved-or-Rejected rows, and — once a hold or close has actually been requested on that cycle — its Hold/Close Requested and Hold/Close Approved-or-Rejected rows (gray "Pending" only for whichever step the *current*, still-open cycle hasn't reached yet; earlier, already-finished cycles never show a pending row). IC Linkage groups `ptw.linked_ics` by looking up each id's type in `globalData.isolationCertificates`, one row per `IsolationCertificate.Types` value. |
 | `UiUtils.py`                 | Reusable UI helpers shared across dialogs: `TabButton` (colored tab-bar button), `lightenColor` (accent-color helper), `Timeline`/`TimelineEntry` (vertical rail of colored dots + content, used for approval/isolation history panes) — extracted here since both `WidgetPTW.py` and `DialogIsolationCertificate.py` import them |
 | `TablePTWs.py`              | Table listing all PTWs with filters; supports Excel export; `filterColumn(label, values)` sets a specific column filter programmatically (used by the home dashboard's location segments) |
 | `TableUsers.py`             | Admin user management table; supports bulk user import from Excel; also has `filterColumn(label, values)` (used by the Admin dashboard's department segments) |

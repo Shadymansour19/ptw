@@ -459,12 +459,12 @@ class ClientRequests:
         return None
 
     @async_request
-    def runResponsePTW(loggedUser: User, ptwId: str, ia: str, ts: str, accepted: bool) -> str:
+    def runResponsePTW(loggedUser: User, ptwId: str, ia: str, ts: str, accepted: bool, comment: str = None) -> str:
         response = None
         try:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/ptws/run',
-                json={'ptw-id': ptwId, 'ia': ia, 'timestamp': ts, 'response': accepted},
+                json={'ptw-id': ptwId, 'ia': ia, 'timestamp': ts, 'response': accepted, 'comment': comment},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword())
             )
             response.raise_for_status()
@@ -480,12 +480,12 @@ class ClientRequests:
         return None
 
     @async_request
-    def requestToHldPTW(loggedUser: User, ptwId: str, pa: str, ts: str, keepTags: list[str] = []):
+    def requestToHldPTW(loggedUser: User, ptwId: str, pa: str, ts: str, comment: str = None, keepTags: list[str] = []):
         response = None
         try:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/ptws/hold-request',
-                json={'ptw-id': ptwId, 'pa': pa, 'timestamp': ts, 'keep-tags': keepTags},
+                json={'ptw-id': ptwId, 'pa': pa, 'timestamp': ts, 'comment': comment, 'keep-tags': keepTags},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword())
             )
             response.raise_for_status()
@@ -501,12 +501,12 @@ class ClientRequests:
         return None
 
     @async_request
-    def hldResponsePTW(loggedUser: User, ptwId: str, ia: str, ts: str, accepted: bool) -> str:
+    def hldResponsePTW(loggedUser: User, ptwId: str, ia: str, ts: str, accepted: bool, comment: str = None) -> str:
         response = None
         try:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/ptws/hold',
-                json={'ptw-id': ptwId, 'ia': ia, 'timestamp': ts, 'response': accepted},
+                json={'ptw-id': ptwId, 'ia': ia, 'timestamp': ts, 'response': accepted, 'comment': comment},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword())
             )
             response.raise_for_status()
@@ -522,12 +522,12 @@ class ClientRequests:
         return None
 
     @async_request
-    def requestToClsPTW(loggedUser: User, ptwId: str, pa: str, ts: str):
+    def requestToClsPTW(loggedUser: User, ptwId: str, pa: str, ts: str, comment: str = None):
         response = None
         try:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/ptws/close-request',
-                json={'ptw-id': ptwId, 'pa': pa, 'timestamp': ts},
+                json={'ptw-id': ptwId, 'pa': pa, 'timestamp': ts, 'comment': comment},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword())
             )
             response.raise_for_status()
@@ -543,12 +543,12 @@ class ClientRequests:
         return None
 
     @async_request
-    def clsResponsePTW(loggedUser: User, ptwId: str, ia: str, ts: str, accepted: bool) -> str:
+    def clsResponsePTW(loggedUser: User, ptwId: str, ia: str, ts: str, accepted: bool, comment: str = None) -> str:
         response = None
         try:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/ptws/close',
-                json={'ptw-id': ptwId, 'ia': ia, 'timestamp': ts, 'response': accepted},
+                json={'ptw-id': ptwId, 'ia': ia, 'timestamp': ts, 'response': accepted, 'comment': comment},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword())
             )
             response.raise_for_status()
