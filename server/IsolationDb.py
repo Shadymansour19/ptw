@@ -15,13 +15,13 @@ class IsolationDb:
                             tag                    VARCHAR(30)  PRIMARY KEY,
                             type                   VARCHAR(30)  NOT NULL,
                             description            VARCHAR(300) NOT NULL,
-                            primary_ptw            VARCHAR(30)  NOT NULL,
-                            latest_ptw             VARCHAR(30)  NOT NULL,
                             linked_ptws            TEXT[]       NOT NULL DEFAULT '{}',
-                            is_physically_isolated BOOLEAN      NOT NULL DEFAULT FALSE,
                             held_by                TEXT[]       NOT NULL DEFAULT '{}'
                         )
                     """)
+                    cursor.execute("ALTER TABLE isolations DROP COLUMN IF EXISTS primary_ptw")
+                    cursor.execute("ALTER TABLE isolations DROP COLUMN IF EXISTS latest_ptw")
+                    cursor.execute("ALTER TABLE isolations DROP COLUMN IF EXISTS is_physically_isolated")
                 conn.commit()
             except Exception as e:
                 raise Exception("Error initializing isolations database: " + str(e))
@@ -32,18 +32,13 @@ class IsolationDb:
             with CommonDB.get_conn() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
-                        INSERT INTO isolations (tag, type, description, primary_ptw, latest_ptw,
-                                               linked_ptws, is_physically_isolated, held_by)
-                        VALUES (%(tag)s, %(type)s, %(description)s, %(primary_ptw)s, %(latest_ptw)s,
-                                %(linked_ptws)s, %(is_physically_isolated)s, %(held_by)s)
+                        INSERT INTO isolations (tag, type, description, linked_ptws, held_by)
+                        VALUES (%(tag)s, %(type)s, %(description)s, %(linked_ptws)s, %(held_by)s)
                         ON CONFLICT (tag) DO UPDATE SET
-                            type                   = EXCLUDED.type,
-                            description            = EXCLUDED.description,
-                            primary_ptw            = EXCLUDED.primary_ptw,
-                            latest_ptw             = EXCLUDED.latest_ptw,
-                            linked_ptws            = EXCLUDED.linked_ptws,
-                            is_physically_isolated = EXCLUDED.is_physically_isolated,
-                            held_by                = EXCLUDED.held_by
+                            type        = EXCLUDED.type,
+                            description = EXCLUDED.description,
+                            linked_ptws = EXCLUDED.linked_ptws,
+                            held_by     = EXCLUDED.held_by
                     """, data)
                 conn.commit()
             return None

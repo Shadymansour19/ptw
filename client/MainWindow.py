@@ -71,7 +71,6 @@ class MainWindow(QMainWindow):
         self.optionAcceptPTW = TablePTWs.MenuOption('Accept', self.acceptPTW, qta.icon('fa6s.check'))
         self.optionExportPTW = TablePTWs.MenuOption('Export', self.exportPTWs, qta.icon('fa6s.file-excel'), allAtOnce=True)
         self.optionPrintPTW = TablePTWs.MenuOption('Print', self.printPTW, qta.icon('fa6s.print'))
-        self.printDeIsolationOption = TablePTWs.MenuOption('Print De-Isolation', self.printDeIsolation, qta.icon('fa6s.print'))
         self.viewIsolationsOption = TablePTWs.MenuOption('View Isolations', self.viewIsolations, qta.icon('fa6s.unlock-keyhole'))
         self.viewApprovalsOption = TablePTWs.MenuOption('View Approvals', self.viewApprovals, qta.icon('fa6s.check-double'))
         self.optionViewRequestorPTW = TablePTWs.MenuOption('View Requestor', self.viewRequestorPTW, qta.icon('fa6s.user'))
@@ -112,6 +111,10 @@ class MainWindow(QMainWindow):
         self.optionLinkPTWToIC = TablePTWs.MenuOption(
             'Link to PTW', self.linkPTWToCertificate, qta.icon('mdi.link-variant'),
             visibleFor=lambda cert: not cert.isWindingDown(),
+        )
+        self.optionLinkICToPTW = TablePTWs.MenuOption(
+            'Link to IC', self.linkCertificateToPTW, qta.icon('mdi.link-variant'),
+            visibleFor=lambda ptw: ptw.approval_status == PTWData.ApprovalStatus.APPROVED and ptw.running_status == PTWData.RunningStatus.NOT_RUNNING,
         )
 
         self.stack = QStackedWidget()
@@ -957,6 +960,20 @@ class MainWindow(QMainWindow):
             return
         ClientRequests.linkPTWToCertificate(self.loggedUser, cert.id, ptwId, callback=self._on_request_done_generic)
 
+    def linkCertificateToPTW(self, row: int, ptw: PTWData):
+        certIdText, ok = QInputDialog.getText(self, f'Link PTW #{ptw.id} to Certificate', 'Certificate #:')
+        if not ok or not certIdText.strip():
+            return
+        try:
+            certId = int(certIdText.strip())
+        except ValueError:
+            QMessageBox.warning(self, "Invalid Certificate #", "Certificate # must be a number.")
+            return
+        if str(certId) in ptw.linked_ics:
+            QMessageBox.warning(self, "Already Linked", f"Certificate #{certId} is already linked to this PTW.")
+            return
+        ClientRequests.linkPTWToCertificate(self.loggedUser, certId, ptw.id, callback=self._on_request_done_generic)
+
     def requestToSuctionTestPTW(self, row: int, ptw: PTWData):
         pass
 
@@ -1552,9 +1569,6 @@ class MainWindow(QMainWindow):
     def printPTW(self, row: int, ptw: PTWData):
         ReportGenerator.ptwReport(self.loggedUser, ptw)
 
-    def printDeIsolation(self, row: int, ptw: PTWData):
-        ReportGenerator.deIsolationReport(self.loggedUser, ptw)
-
     def printPTWs(self):
         tab: TablePTWs = self.stack.currentWidget()
         for i,ptw in enumerate(tab.ptwsData):
@@ -1611,13 +1625,13 @@ class UserMainWindow(MainWindow):
         self.tabRequestedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
         self.tabUnderReviewPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionAcceptPTW, self.optionPrintPTW, self.optionExportPTW])
         self.tabReturnedPTWs.addOptions([self.optionViewPTW, self.optionEditPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionDltPTW, self.optionPrintPTW, self.optionExportPTW])
-        self.tabApprovedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionRunRequestPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabApprovedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionRunRequestPTW, self.optionLinkICToPTW, self.optionPrintPTW, self.optionExportPTW])
         self.tabWaitingRunConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
         self.tabRunningPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionClsRequestPTW, self.optionHldRequestPTW, self.optionPrintPTW, self.optionExportPTW])
         self.tabWaitingClsConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
         self.tabWaitingHldConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.viewIsolationsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
-        self.tabHeldPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.viewIsolationsOption, self.optionRequestPTW, self.optionRunRequestPTW, self.printDeIsolationOption, self.optionPrintPTW, self.optionExportPTW])
-        self.tabClosedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.printDeIsolationOption, self.optionPrintPTW, self.optionArchivePTW, self.optionExportPTW])
+        self.tabHeldPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.viewIsolationsOption, self.optionRequestPTW, self.optionRunRequestPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabClosedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionArchivePTW, self.optionExportPTW])
         self.tabArchivedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
 
         self.tabRequestedICs.addOptions([self.optionViewIC, self.optionLinkPTWToIC])
@@ -1692,8 +1706,8 @@ class CoordinatorMainWindow(MainWindow):
         self.tabRunningPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionExportPTW])
         self.tabWaitingClsConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionExportPTW])
         self.tabWaitingHldConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.viewIsolationsOption, self.optionPrintPTW, self.optionExportPTW])
-        self.tabHeldPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.viewIsolationsOption, self.printDeIsolationOption, self.optionPrintPTW, self.optionExportPTW])
-        self.tabClosedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.printDeIsolationOption, self.optionPrintPTW, self.optionArchivePTW, self.optionExportPTW])
+        self.tabHeldPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.viewIsolationsOption, self.optionPrintPTW, self.optionExportPTW])
+        self.tabClosedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionArchivePTW, self.optionExportPTW])
         self.tabArchivedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
 
         self.setAvailableTabs(
@@ -1745,13 +1759,13 @@ class IssuingMainWindow(MainWindow):
 
         self.tabUnderReviewPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestEditsPTW, self.optionAcceptPTW, self.optionPrintPTW, self.optionExportPTW])
         self.tabReturnedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionExportPTW])
-        self.tabApprovedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionExportPTW])
+        self.tabApprovedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionLinkICToPTW, self.optionPrintPTW, self.optionExportPTW])
         self.tabWaitingRunConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.optionRunAcceptPTW, self.optionRunRejectPTW, self.optionPrintPTW, self.optionExportPTW])
         self.tabRunningPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionExportPTW])
         self.tabWaitingHldConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.viewIsolationsOption, self.optionHldTakeActionPTW, self.optionPrintPTW, self.optionExportPTW])
-        self.tabHeldPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.viewIsolationsOption, self.printDeIsolationOption, self.optionPrintPTW, self.optionExportPTW])
+        self.tabHeldPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.viewIsolationsOption, self.optionPrintPTW, self.optionExportPTW])
         self.tabWaitingClsConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.optionClsAcceptPTW, self.optionClsRejectPTW, self.optionPrintPTW, self.optionExportPTW])
-        self.tabClosedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.printDeIsolationOption, self.optionPrintPTW, self.optionArchivePTW, self.optionExportPTW])
+        self.tabClosedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionArchivePTW, self.optionExportPTW])
         self.tabArchivedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
 
         self.tabUnderReviewICs.addOptions([self.optionViewIC, self.optionAcceptIC, self.optionRequestEditsIC, self.optionLinkPTWToIC])
@@ -1876,8 +1890,8 @@ class ManagerMainWindow(MainWindow):
         self.tabReturnedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionExportPTW])
         self.tabApprovedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionExportPTW])
         self.tabRunningPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionExportPTW])
-        self.tabHeldPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.viewIsolationsOption, self.printDeIsolationOption, self.optionPrintPTW, self.optionExportPTW])
-        self.tabClosedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.printDeIsolationOption, self.optionPrintPTW, self.optionArchivePTW, self.optionExportPTW])
+        self.tabHeldPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.viewIsolationsOption, self.optionPrintPTW, self.optionExportPTW])
+        self.tabClosedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionArchivePTW, self.optionExportPTW])
         self.tabArchivedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
 
         # Managers are only ever involved in a Protective-type certificate's approval

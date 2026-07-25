@@ -20,7 +20,6 @@ import platform
 import os
 import subprocess
 from clientRequests import ClientRequests
-from pypdf import PdfWriter, PdfReader
 from utils import resource_path
 
 
@@ -185,29 +184,6 @@ class ReportGenerator:
             elements.append(listToBullets(mosSteps, styles['Normal']))
             elements.append(PageBreak())
         
-
-        isolationsByType = {}
-        for iso in ptw.isolations:
-            if iso.type not in isolationsByType:
-                isolationsByType[iso.type] = []
-            isolationsByType[iso.type].append(iso)
-        
-        if ptw.running_status == PTWData.RunningStatus.RUNNING:
-            for isoType in isolationsByType:
-                elements.extend([
-                    Paragraph(f'{isoType} Isolations:', styles["Title"]),
-                    Spacer(1, 0.07 * inch),
-                    ReportGenerator._isolationsTable(ptw, isolationsByType[isoType], dataTableWidth, isolate=True), 
-                    PageBreak(),
-                ])
-        # elif ptw.running_status == PTWData.RunningStatus.CLOSED:
-        #     for isoType in isolationsByType:
-        #         elements.extend([
-        #             Paragraph(f'{isoType} De-Isolations:', styles["Title"]),
-        #             Spacer(1, 0.07 * inch),
-        #             ReportGenerator._isolationsTable(ptw, isolationsByType[isoType], dataTableWidth, isolate=False), 
-        #             PageBreak(),
-        #         ])
 
         try:
             pdfmetrics.registerFont(TTFont('Satisfy', resource_path('fonts/Satisfy/Satisfy-Regular.ttf')))
@@ -376,21 +352,8 @@ class ReportGenerator:
 
         doc.build(elements, onFirstPage=pageHeaderAndWatermark, onLaterPages=pageHeaderAndWatermark, canvasmaker=NumberedCanvas)
         buffer.seek(0)
-        main_bytes = buffer.read()
-        deiso_bytes = ReportGenerator._buildDeIsolationPdf(ptw)
-        if deiso_bytes:
-            writer = PdfWriter()
-            for src in (main_bytes, deiso_bytes):
-                for page in PdfReader(io.BytesIO(src)).pages:
-                    writer.add_page(page)
-            merged_buf = io.BytesIO()
-            writer.write(merged_buf)
-            merged_buf.seek(0)
-            final_bytes = merged_buf.read()
-        else:
-            final_bytes = main_bytes
         with tempfile.NamedTemporaryFile(delete=False, prefix=f'ptw-{ptw.id}-', suffix='.pdf') as ptwPdfFile:
-            ptwPdfFile.write(final_bytes)
+            ptwPdfFile.write(buffer.read())
             ptwPdfFile.flush()
             ReportGenerator.openPDF(ptwPdfFile.name)
         # ReportGenerator.MOSReport(ptw.mos, ptw.id, ptw.description)
@@ -419,106 +382,6 @@ class ReportGenerator:
 
         return None
     
-
-    def _isolationsTable(ptw, isolations, dataTableWidth, isolate: bool = True):
-        styles = getSampleStyleSheet()
-
-        styles['Title'].fontSize = 24
-        styles['Title'].leading = 26
-        styles["Title"].alignment = TA_LEFT
-
-        styles['Normal'].fontSize = 16
-        styles['Normal'].leading = 18
-        styles['Normal'].fontName = 'Helvetica'
-
-        styles['Heading3'].fontSize = 16
-        styles['Heading3'].leading = 18
-        styles['Heading3'].fontName = 'Helvetica-Bold'
-
-        hdr = ParagraphStyle('IsoHdr', parent=styles['Heading3'], fontSize=14, leading=16, alignment=TA_CENTER)
-        cel = ParagraphStyle('IsoCell', parent=styles['Normal'],  fontSize=12, leading=14, alignment=TA_CENTER)
-
-        colWeights = [2, 4, 9, 5, 5, 5]
-        colWeightsSum  = sum(colWeights)
-
-        ignore_style = ParagraphStyle('IsoIgn', parent=styles['Normal'], fontSize=12, leading=14, alignment=TA_CENTER, textColor=colors.Color(0.6, 0, 0))
-
-        rows = [[
-            Paragraph('No.',         hdr),
-            Paragraph('Tag',         hdr),
-            Paragraph('Description', hdr),
-            Paragraph('Isolator',    hdr),
-            Paragraph('Signature',   hdr),
-            Paragraph('Date / Time', hdr),
-        ]]
-        span_cmds = []
-        for i, iso in enumerate(isolations, start=1):
-            row_idx = len(rows)
-            isolated_on = None
-            try:
-                isolated_on = globalData.isolations[iso.tag].primary_ptw
-            except Exception:
-                pass
-
-            requiresIsolation = set()
-            isReallyActive = False
-            latestPTW = None
-            try:
-                iso_state = globalData.isolations[iso.tag]
-                latestPTW = iso_state.latest_ptw
-                requiresIsolation = set(iso_state.linked_ptws) | set(iso_state.held_by)
-                isReallyActive = iso_state.isReallyActive()
-            except Exception:
-                pass
-
-            ignore = (
-                (isolate and (iso.tag in ptw.getKeepIsolations() or (isolated_on and str(ptw.id) != str(isolated_on)))) or
-                (not isolate and (isReallyActive or str(ptw.id) != str(latestPTW)))
-            )
-
-            if ignore:
-                if not isolate:
-                    if not requiresIsolation:
-                        requiresIsolation.add(str(latestPTW))
-                    ignore_message = 'Keep isolated for PTW: ' + ", ".join(sorted(requiresIsolation))
-                # elif iso.tag in ptw.keep_isolations:
-                #     ignore_message = 'Held isolated on this PTW: ' + isolated_on
-                else:
-                    ignore_message = 'Already isolated on PTW: ' + isolated_on
-                if not requiresIsolation:
-                    requiresIsolation.add(str(latestPTW))
-                rows.append([
-                    Paragraph(str(i),                cel),
-                    Paragraph(iso.tag or '',         cel),
-                    Paragraph(_html.escape(iso.description or ''), cel),
-                    Paragraph(ignore_message, ignore_style),
-                    Paragraph('', cel),
-                    Paragraph('', cel),
-                ])
-                span_cmds.append(('SPAN',            (3, row_idx), (5, row_idx)))
-                # span_cmds.append(('BACKGROUND',      (3, row_idx), (5, row_idx), colors.Color(1, 0.95, 0.95)))
-            else:
-                rows.append([
-                    Paragraph(str(i),                cel),
-                    Paragraph(iso.tag or '',         cel),
-                    Paragraph(_html.escape(iso.description or ''), cel),
-                    Paragraph(''),
-                    Paragraph(''),
-                    Paragraph(''),
-                ])
-
-        table = Table(rows, repeatRows=1, colWidths=[dataTableWidth * w / colWeightsSum for w in colWeights])
-        table.setStyle(TableStyle([
-            ('BACKGROUND',    (0, 0), (-1, 0),  colors.Color(0, 0, 0, 0.15)),
-            ('ALIGN',         (0, 0), (-1, -1), 'CENTER'),
-            ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
-            ('TOPPADDING',    (0, 0), (-1, -1), 8),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-            ('GRID',          (0, 0), (-1, -1), 0.5, colors.black),
-            *span_cmds,
-        ]))
-        return table
-
 
     def openPDF(filepath: str):
         webbrowser.open_new_tab(filepath)
@@ -875,147 +738,3 @@ class ReportGenerator:
             riskPdfFile.flush()
             ReportGenerator.openPDF(riskPdfFile.name)
         
-
-    def _buildDeIsolationPdf(ptw: PTWData):
-        """Returns PDF bytes for the de-isolation report, or None if not applicable."""
-        if not ptw.isolations:
-            return None
-        if ptw.running_status not in (PTWData.RunningStatus.HELD, PTWData.RunningStatus.CLOSED):
-            return None
-
-        QR_CODE_WIDTH = 60*mm
-        LOGO_IMG_WIDTH = 40*mm
-        MARGIN = 0.6 * inch
-
-        buffer = io.BytesIO()
-        timestamp = datetime.now().strftime('%d-%m-%Y - %H:%M:%S')
-
-        pageWidth, pageHeight = landscape(A4)
-        dataTableWidth = pageWidth - 2*MARGIN - QR_CODE_WIDTH
-
-        styles = getSampleStyleSheet()
-        styles['Title'].fontSize = 24
-        styles['Title'].leading = 26
-        styles['Title'].alignment = TA_LEFT
-        styles['Normal'].fontSize = 16
-        styles['Normal'].leading = 18
-        styles['Normal'].fontName = 'Helvetica'
-        styles['Heading3'].fontSize = 16
-        styles['Heading3'].leading = 18
-        styles['Heading3'].fontName = 'Helvetica-Bold'
-
-        qrPath = ReportGenerator._makeQrWithLogo(ptw)
-
-        isolationsByType = {}
-        for iso in ptw.isolations:
-            if iso.type not in isolationsByType:
-                isolationsByType[iso.type] = []
-            isolationsByType[iso.type].append(iso)
-
-        try:
-            pdfmetrics.registerFont(TTFont('Satisfy', resource_path('fonts/Satisfy/Satisfy-Regular.ttf')))
-            sig_font = 'Satisfy'
-        except Exception:
-            sig_font = 'Helvetica-Oblique'
-
-        lastCycle = ptw.operativeRunCycle()
-        stopPa = lastCycle.stop_pa if lastCycle else None
-        stopIa = lastCycle.stop_ia if lastCycle else None
-        pa_user = globalData.allUsers[stopPa].getName() if stopPa in globalData.allUsers else str(stopPa or '')
-        ia_user = globalData.allUsers[stopIa].getName() if stopIa in globalData.allUsers else str(stopIa or '')
-        sig_cols = [
-            ('PA', pa_user, (lastCycle.stop_pa_timestamp if lastCycle else None) or ''),
-            ('IA', ia_user, (lastCycle.stop_ia_timestamp if lastCycle else None) or ''),
-        ]
-
-        SIG_TRAILER_HEIGHT = 2.0 * inch
-        left_x = MARGIN + QR_CODE_WIDTH
-
-        label_style = ParagraphStyle('SigLabel', parent=styles['Heading3'], fontSize=16, leading=18, alignment=TA_CENTER)
-        sig_style   = ParagraphStyle('Signature', parent=styles['Normal'],  fontSize=16, leading=18, alignment=TA_CENTER, fontName=sig_font)
-        date_style  = ParagraphStyle('SigDate',   parent=styles['Normal'],  fontSize=14, leading=16, alignment=TA_CENTER)
-
-        def sigTables(columns: list, chunk_size=3):
-            chunks = [columns[i:i+chunk_size] for i in range(0, len(columns), chunk_size)]
-            result = []
-            for chunk in chunks:
-                col_w = dataTableWidth / len(chunk)
-                header_row, name_row, date_row = [], [], []
-                style_cmds = [
-                    ('ALIGN',         (0, 0), (-1, -1), 'CENTER'),
-                    ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
-                    ('TOPPADDING',    (0, 0), (-1, -1), 6),
-                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-                ]
-                for i, col in enumerate(chunk):
-                    if col is not None:
-                        label, sig, ts = col
-                        style_cmds.append(('LINEBELOW', (i, 0), (i, 0), 0.5, colors.black))
-                        style_cmds.append(('LINEBELOW', (i, 1), (i, 1), 0.5, colors.black))
-                    else:
-                        label, sig, ts = '', '', ''
-                    header_row.append(Paragraph(label or ' ', label_style))
-                    name_row.append(  Paragraph(sig   or ' ', sig_style))
-                    date_row.append(  Paragraph(ts    or ' ', date_style))
-                table = Table(
-                    [header_row, name_row, date_row],
-                    colWidths=[col_w] * len(chunk),
-                )
-                table.setStyle(TableStyle(style_cmds))
-                result.append(table)
-                result.append(Spacer(1, 0.2 * inch))
-            return result
-
-        def pageHeaderAndWatermark(canv, doc):
-            canv.saveState()
-            canv.drawImage(resource_path('assets/rashpetco-logo.png'), 0.7 * MARGIN + (QR_CODE_WIDTH - LOGO_IMG_WIDTH) / 2, (pageHeight - LOGO_IMG_WIDTH) / 2.0 + pageHeight / 3.5, LOGO_IMG_WIDTH, LOGO_IMG_WIDTH, mask='auto')
-            canv.drawImage(resource_path('assets/burullus-logo.png'),  0.7 * MARGIN + (QR_CODE_WIDTH - LOGO_IMG_WIDTH) / 2, (pageHeight - LOGO_IMG_WIDTH) / 2.0 - pageHeight / 3.5, LOGO_IMG_WIDTH, LOGO_IMG_WIDTH, mask='auto')
-            canv.setFont('Helvetica-Bold', 50)
-            canv.setFillColorRGB(0, 0, 0, 0.2)
-            canv.translate(pageWidth / 2.0, pageHeight / 2.0)
-            canv.rotate(35)
-            canv.drawCentredString(0, 0, f'Printed @ {timestamp}')
-            canv.restoreState()
-            canv.drawImage(qrPath, 0.7 * MARGIN, (pageHeight - QR_CODE_WIDTH) / 2.0, QR_CODE_WIDTH, QR_CODE_WIDTH)
-
-            sig_flowables = [
-                Paragraph('De-Isolation Confirmations:', styles['Title']),
-                Spacer(1, 0.07 * inch),
-                *sigTables(sig_cols),
-            ]
-            sig_frame = Frame(
-                left_x, MARGIN * 0.7,
-                dataTableWidth, SIG_TRAILER_HEIGHT,
-                leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
-            )
-            sig_frame.addFromList(sig_flowables, canv)
-
-        doc = SimpleDocTemplate(
-            buffer, pagesize=landscape(A4),
-            leftMargin=MARGIN + QR_CODE_WIDTH, rightMargin=MARGIN,
-            topMargin=MARGIN * 0.7, bottomMargin=MARGIN * 0.7 + SIG_TRAILER_HEIGHT,
-        )
-
-        elements = []
-        for isoType in isolationsByType:
-            elements.extend([
-                Paragraph(f'{isoType} De-Isolations:', styles['Title']),
-                Spacer(1, 0.07 * inch),
-                ReportGenerator._isolationsTable(ptw, isolationsByType[isoType], dataTableWidth, isolate=False),
-                PageBreak(),
-            ])
-
-        doc.build(elements, onFirstPage=pageHeaderAndWatermark, onLaterPages=pageHeaderAndWatermark)
-        buffer.seek(0)
-        return buffer.read()
-
-
-    def deIsolationReport(loggedUser, ptw: PTWData):
-        pdf_bytes = ReportGenerator._buildDeIsolationPdf(ptw)
-        if pdf_bytes is None:
-            return
-        with tempfile.NamedTemporaryFile(delete=False, prefix=f'ptw-{ptw.id}-', suffix='.pdf') as f:
-            f.write(pdf_bytes)
-            f.flush()
-            ReportGenerator.openPDF(f.name)
-

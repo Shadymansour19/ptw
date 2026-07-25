@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
 from PyQt6.QtGui import QFont, QKeySequence, QShortcut, QColor
 import re
 
+from User import UserRoles
 from PTWData import PTWData, Attachment, RiskAssessment
 from Isolation import IsolationCertificate
 from TableRisks import TableRisks
@@ -460,6 +461,22 @@ class DialogPTW(QDialog):
         dlg = DialogIsolationCertificate(self, self.loggedUser, cert, False, True, f"Isolation Certificate — {cert.type}")
         dlg.exec()
 
+    def _unlinkIC(self, icId):
+        reply = QMessageBox.question(
+            self, t("Unlink Certificate"), t("Unlink Certificate #{0} from this PTW?").format(icId),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        def on_done(err, _):
+            if err:
+                QMessageBox.warning(self, t("Unlink Failed"), err)
+                return
+            QMessageBox.information(self, t("Unlinked"), t("Certificate #{0} has been unlinked. Reopen this PTW to see the updated linkage.").format(icId))
+            self.reject()
+        ClientRequests.unlinkPTWFromCertificate(self.loggedUser, int(icId), self.ptw.id, callback=on_done)
+
     def _icLinkRow(self, icId) -> QWidget:
         row = QWidget()
         lyt = QHBoxLayout(row)
@@ -468,6 +485,10 @@ class DialogPTW(QDialog):
         btnView = QPushButton(t("View"))
         btnView.clicked.connect(partial(self._viewLinkedIC, icId))
         lyt.addWidget(btnView)
+        if self.loggedUser.getRole() != UserRoles.GUEST:
+            btnUnlink = QPushButton(t("Unlink"))
+            btnUnlink.clicked.connect(partial(self._unlinkIC, icId))
+            lyt.addWidget(btnUnlink)
         return row
 
     def _addICLinkRows(self, formLayout: QFormLayout, label: str, icIds: list):

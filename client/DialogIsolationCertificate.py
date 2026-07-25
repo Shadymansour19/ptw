@@ -7,11 +7,13 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QCo
                               QTextEdit, QCheckBox, QLabel, QDialogButtonBox, QMessageBox,
                               QWidget, QStackedWidget, QPushButton)
 
+from User import UserRoles
 from PTWData import PTWData
 from Isolation import IsolationCertificate
 from TableIsolationItems import TableIsolationItems
 from UiUtils import TabButton, lightenColor, Timeline
 from GlobalData import globalData
+from clientRequests import ClientRequests
 from i18n import t
 
 
@@ -128,11 +130,8 @@ class DialogIsolationCertificate(QDialog):
             lytHistoryPanes.addWidget(self._buildApprovalTimelinePane(), stretch=1)
             lytHistoryPanes.addWidget(self._buildIsolationTimelinePane(), stretch=1)
 
-            self._addPTWLinkRows(formLinkage, "Primary PTW:", [cert.primary_ptw])
-            self._addPTWLinkRows(formLinkage, "Latest PTW:", [cert.latest_ptw])
             self._addPTWLinkRows(formLinkage, "Linked PTW:", cert.linked_ptws)
             self._addPTWLinkRows(formLinkage, "Held By:", cert.held_by)
-            formLinkage.addRow(t("Physically Isolated:"), self._makeReadOnlyField(t('Yes') if cert.is_physically_isolated else t('No')))
 
         self._populate()
         self._applyReadOnly()
@@ -170,6 +169,22 @@ class DialogIsolationCertificate(QDialog):
         dlg = DialogPTW(self, self.loggedUser, ptw, None, False, True, f"View Mode - PTW# {ptw.id}")
         dlg.exec()
 
+    def _unlinkPTW(self, ptwId):
+        reply = QMessageBox.question(
+            self, t("Unlink PTW"), t("Unlink PTW #{0} from this certificate?").format(ptwId),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        def on_done(err, _):
+            if err:
+                QMessageBox.warning(self, t("Unlink Failed"), err)
+                return
+            QMessageBox.information(self, t("Unlinked"), t("PTW #{0} has been unlinked. Reopen this certificate to see the updated linkage.").format(ptwId))
+            self.reject()
+        ClientRequests.unlinkPTWFromCertificate(self.loggedUser, self.cert.id, ptwId, callback=on_done)
+
     def _ptwLinkRow(self, ptwId) -> QWidget:
         row = QWidget()
         lyt = QHBoxLayout(row)
@@ -178,6 +193,10 @@ class DialogIsolationCertificate(QDialog):
         btnView = QPushButton(t("View"))
         btnView.clicked.connect(partial(self._viewLinkedPTW, ptwId))
         lyt.addWidget(btnView)
+        if self.loggedUser.getRole() != UserRoles.GUEST:
+            btnUnlink = QPushButton(t("Unlink"))
+            btnUnlink.clicked.connect(partial(self._unlinkPTW, ptwId))
+            lyt.addWidget(btnUnlink)
         return row
 
     def _addPTWLinkRows(self, formLayout: QFormLayout, label: str, ptwIds: list):

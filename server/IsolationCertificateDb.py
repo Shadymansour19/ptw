@@ -24,6 +24,9 @@ class IsolationCertificateDb:
                 query = "CREATE TABLE IF NOT EXISTS isolation_certificates (" + ", ".join(columns[i] + ' ' + types[i] for i in range(len(columns))) + ")"
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                     cursor.execute(query)
+                    cursor.execute("ALTER TABLE isolation_certificates DROP COLUMN IF EXISTS primary_ptw")
+                    cursor.execute("ALTER TABLE isolation_certificates DROP COLUMN IF EXISTS latest_ptw")
+                    cursor.execute("ALTER TABLE isolation_certificates DROP COLUMN IF EXISTS is_physically_isolated")
                 conn.commit()
             except Exception as e:
                 raise Exception("Error initializing isolation_certificates database: " + str(e))

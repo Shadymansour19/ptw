@@ -19,9 +19,6 @@ class Isolation:
         self.tag = tag
         self.description = description
         self.linked_ptws: list = []
-        self.primary_ptw: str = ''
-        self.latest_ptw: str = ''
-        self.is_physically_isolated: bool = False
         self.held_by: list = []
 
     def setAll(self, data: dict = None, namespace: SimpleNamespace = None):
@@ -45,37 +42,22 @@ class Isolation:
             self.held_by.remove(ptwId)
         except ValueError:
             pass
-        if not self.linked_ptws and not self.held_by:
-            self.primary_ptw = ptwId
         if ptwId not in self.linked_ptws:
             self.linked_ptws.append(ptwId)
-            self.latest_ptw = ptwId
-        self.is_physically_isolated = True
 
     def holdPTW(self, ptwId):
         try:
             self.linked_ptws.remove(str(ptwId))
         except Exception:
             pass
-        if self.linked_ptws:
-            self.latest_ptw = self.linked_ptws[-1]
         if str(ptwId) not in self.held_by:
             self.held_by.append(str(ptwId))
-        # is_physically_isolated stays True — held PTW keeps isolation in place
-        self.is_physically_isolated = True
 
     def unlinkPTW(self, ptwId):
         try:
             self.linked_ptws.remove(str(ptwId))
         except Exception as e:
             print(f"couldn't remove PTW# {ptwId} from linked PTWs to isolation {self.tag}: {e}")
-        if self.linked_ptws:
-            self.latest_ptw = self.linked_ptws[-1]
-        if not self.linked_ptws and not self.held_by:
-            self.is_physically_isolated = False
-
-    def isReallyActive(self):
-        return self.is_physically_isolated
 
 
 class IsolationCertificate:
@@ -234,9 +216,6 @@ class IsolationCertificate:
         self.long_term: bool = data.get('long_term', False)
         self.long_term_reason: str = data.get('long_term_reason')
         self.linked_ptws: list = []
-        self.primary_ptw: str = ''
-        self.latest_ptw: str = ''
-        self.is_physically_isolated: bool = False
         self.held_by: list = []
 
     def setAll(self, data: dict = None, namespace: SimpleNamespace = None):
@@ -259,7 +238,7 @@ class IsolationCertificate:
         return self
 
     def __str__(self):
-        return f"{self.id} - {self.type} {self.reason if self.reason else ''} {self.primary_ptw}"
+        return f"{self.id} - {self.type} {self.reason if self.reason else ''}"
 
     def requiredApprovers(self) -> list[list['IsolationCertificate.Approver']]:
         stages = [[IsolationCertificate.Approver(UserRoles.ISSUING)]]
@@ -361,9 +340,16 @@ class IsolationCertificate:
             self.held_by.remove(ptwId)
         except ValueError:
             pass
-        if not self.linked_ptws and not self.held_by:
-            self.primary_ptw = ptwId
         if ptwId not in self.linked_ptws:
             self.linked_ptws.append(ptwId)
-            self.latest_ptw = ptwId
-        self.is_physically_isolated = True
+
+    def unlinkPTW(self, ptwId):
+        ptwId = str(ptwId)
+        try:
+            self.linked_ptws.remove(ptwId)
+        except ValueError:
+            pass
+        try:
+            self.held_by.remove(ptwId)
+        except ValueError:
+            pass

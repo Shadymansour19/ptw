@@ -1752,19 +1752,67 @@ def linkPTWToCertificate():
         certDB.updateCertificateFromDict({
             'id': certId,
             'linked_ptws': cert.linked_ptws,
-            'primary_ptw': cert.primary_ptw,
-            'latest_ptw': cert.latest_ptw,
-            'is_physically_isolated': cert.is_physically_isolated,
+            'held_by': cert.held_by,
         })
+        if str(certId) not in ptw.linked_ics:
+            ptw.linked_ics.append(str(certId))
+            ptwDB.updatePTWFromDict({'id': ptwId, 'linked_ics': ptw.linked_ics})
         updated = certDB.getCertificateById(certId)
         if updated:
             with globalData.lock:
                 globalData.isolationCertificates[updated.id] = updated
+        _sync_ptw(ptwId)
         _broadcast("isolation_certificate_link_ptw", {"certificate_id": certId, "ptw_id": ptwId, "by": user.getUsername()})
         log.info("Isolation certificate linked to PTW: id=%s ptw=%s by='%s'", certId, ptwId, user.getUsername())
         return jsonify({"success": True})
     except Exception as e:
         log.error("POST /isolation-certificates/link-ptw failed for certificate #%s: %s", certId, e, exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+@app.route("/isolation-certificates/unlink-ptw", methods=["POST"])
+def unlinkPTWFromCertificate():
+    user = getVerifiedUser(request.authorization)
+    if user is None:
+        log.warning("POST /isolation-certificates/unlink-ptw unauthorized (ip=%s)", request.remote_addr)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    if user.getRole() == UserRoles.GUEST:
+        log.warning("POST /isolation-certificates/unlink-ptw: forbidden for guest '%s'", user.getUsername())
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    payload = request.get_json(silent=True) or {}
+    certId = payload.get('certificate-id')
+    ptwId = payload.get('ptw-id')
+    if certId is None or not ptwId:
+        log.warning("POST /isolation-certificates/unlink-ptw: missing required fields (user='%s')", user.getUsername())
+        return jsonify({"success": False, "error": "Missing required fields"}), 400
+    with globalData.lock:
+        cert = globalData.isolationCertificates.get(certId)
+    if cert is None:
+        log.warning("POST /isolation-certificates/unlink-ptw: certificate #%s not found (user='%s')", certId, user.getUsername())
+        return jsonify({"success": False, "error": "Isolation certificate not found"}), 404
+    if str(ptwId) not in cert.linked_ptws and str(ptwId) not in cert.held_by:
+        return jsonify({"success": False, "error": f"PTW #{ptwId} is not linked to this certificate"}), 400
+    try:
+        ptw = ptwDB.getPTWById(ptwId)
+        cert.unlinkPTW(ptwId)
+        certDB.updateCertificateFromDict({
+            'id': certId,
+            'linked_ptws': cert.linked_ptws,
+            'held_by': cert.held_by,
+        })
+        if ptw is not None and str(certId) in ptw.linked_ics:
+            ptw.linked_ics.remove(str(certId))
+            ptwDB.updatePTWFromDict({'id': ptwId, 'linked_ics': ptw.linked_ics})
+        updated = certDB.getCertificateById(certId)
+        if updated:
+            with globalData.lock:
+                globalData.isolationCertificates[updated.id] = updated
+        _sync_ptw(ptwId)
+        _broadcast("isolation_certificate_unlink_ptw", {"certificate_id": certId, "ptw_id": ptwId, "by": user.getUsername()})
+        log.info("Isolation certificate unlinked from PTW: id=%s ptw=%s by='%s'", certId, ptwId, user.getUsername())
+        return jsonify({"success": True})
+    except Exception as e:
+        log.error("POST /isolation-certificates/unlink-ptw failed for certificate #%s: %s", certId, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
 
 

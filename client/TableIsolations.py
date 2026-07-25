@@ -146,8 +146,8 @@ class TableIsolationsBrowser(QWidget):
         self.isolationsData: list[Isolation] = []
         self.loggedUser = loggedUser
 
-        self.summaryLabels = ['Type', 'Tag', 'Description', 'Primary PTW', 'Held By', 'Physical', 'Linked PTWs']
-        self.summeryFields = ['type', 'tag', 'description', 'primary_ptw', 'held_by', 'is_physically_isolated', 'linked_ptws']
+        self.summaryLabels = ['Type', 'Tag', 'Description', 'Held By', 'Linked PTWs']
+        self.summeryFields = ['type', 'tag', 'description', 'held_by', 'linked_ptws']
 
         lblLyt = QHBoxLayout()
         lblLyt.setContentsMargins(10, 0, 10, 0)
@@ -314,11 +314,8 @@ class TableIsolationsBrowser(QWidget):
             ("Type",                str(iso.type)),
             ("Tag",                 str(iso.tag)),
             ("Description",         str(iso.description)),
-            ("Primary PTW",         str(iso.primary_ptw)),
-            ("Latest PTW",          str(iso.latest_ptw)),
             ("Linked PTWs",         ', '.join(str(p) for p in iso.linked_ptws) or '—'),
             ("Held By",             ', '.join(str(p) for p in iso.held_by) or '—'),
-            ("Physically Isolated", 'Yes' if iso.is_physically_isolated else 'No'),
         ]:
             val_lbl = QLabel(value)
             val_lbl.setWordWrap(True)
