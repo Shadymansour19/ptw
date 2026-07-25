@@ -1460,6 +1460,11 @@ def requestIsolateCertificate():
             'id': certId,
             'isolate_requestor': user.getUsername(),
             'isolate_requestor_timestamp': datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+            # Reset any stale decision from a previous, since-returned attempt so a fresh
+            # IA review starts clean — otherwise a leftover 'Returned' would mask this new request.
+            'isolate_issuing': None,
+            'isolate_issuing_timestamp': None,
+            'isolate_issuing_action': '',
         })
         updated = certDB.getCertificateById(certId)
         if updated:
@@ -1470,6 +1475,95 @@ def requestIsolateCertificate():
         return jsonify({"success": True})
     except Exception as e:
         log.error("POST /isolation-certificates/isolate-request failed for certificate #%s: %s", certId, e, exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+@app.route("/isolation-certificates/isolate-confirm", methods=["POST"])
+def confirmIsolateCertificate():
+    user = getVerifiedUser(request.authorization)
+    if user is None:
+        log.warning("POST /isolation-certificates/isolate-confirm unauthorized (ip=%s)", request.remote_addr)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    if user.getRole() != UserRoles.ISSUING:
+        log.warning("POST /isolation-certificates/isolate-confirm: forbidden for role='%s' user='%s'", user.getRole(), user.getUsername())
+        return jsonify({"success": False, "error": "Forbidden"}), 403
+    payload = request.get_json(silent=True) or {}
+    certId = payload.get('certificate-id')
+    response = payload.get('response')
+    if certId is None or response is None:
+        log.warning("POST /isolation-certificates/isolate-confirm: missing required fields (user='%s')", user.getUsername())
+        return jsonify({"success": False, "error": "Missing required fields"}), 400
+    with globalData.lock:
+        cert = globalData.isolationCertificates.get(certId)
+    if cert is None:
+        log.warning("POST /isolation-certificates/isolate-confirm: certificate #%s not found (user='%s')", certId, user.getUsername())
+        return jsonify({"success": False, "error": "Isolation certificate not found"}), 404
+    if cert.getStatus() != IsolationCertificate.Status.ISOLATE_CONFIRMING:
+        log.warning(
+            "POST /isolation-certificates/isolate-confirm: forbidden — certificate #%s not awaiting IA confirmation (user='%s')",
+            certId, user.getUsername(),
+        )
+        return jsonify({"success": False, "error": "Certificate is not awaiting IA confirmation"}), 403
+    try:
+        action = IsolationCertificate.ApprovalActions.APPROVED if response else IsolationCertificate.ApprovalActions.RETURNED
+        certDB.updateCertificateFromDict({
+            'id': certId,
+            'isolate_issuing': user.getUsername(),
+            'isolate_issuing_timestamp': datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+            'isolate_issuing_action': action,
+        })
+        updated = certDB.getCertificateById(certId)
+        if updated:
+            with globalData.lock:
+                globalData.isolationCertificates[updated.id] = updated
+        _broadcast("isolation_certificate_isolate_confirm", {"certificate_id": certId, "action": str(action), "by": user.getUsername()})
+        log.info("Isolation certificate isolate confirmation: id=%s action='%s' by='%s'", certId, action, user.getUsername())
+        return jsonify({"success": True})
+    except Exception as e:
+        log.error("POST /isolation-certificates/isolate-confirm failed for certificate #%s: %s", certId, e, exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+@app.route("/isolation-certificates/isolate-execute", methods=["POST"])
+def executeIsolateCertificate():
+    user = getVerifiedUser(request.authorization)
+    if user is None:
+        log.warning("POST /isolation-certificates/isolate-execute unauthorized (ip=%s)", request.remote_addr)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    if user.getRole() != UserRoles.ISOLATOR:
+        log.warning("POST /isolation-certificates/isolate-execute: forbidden for role='%s' user='%s'", user.getRole(), user.getUsername())
+        return jsonify({"success": False, "error": "Forbidden"}), 403
+    payload = request.get_json(silent=True) or {}
+    certId = payload.get('certificate-id')
+    if certId is None:
+        log.warning("POST /isolation-certificates/isolate-execute: missing required fields (user='%s')", user.getUsername())
+        return jsonify({"success": False, "error": "Missing required fields"}), 400
+    with globalData.lock:
+        cert = globalData.isolationCertificates.get(certId)
+    if cert is None:
+        log.warning("POST /isolation-certificates/isolate-execute: certificate #%s not found (user='%s')", certId, user.getUsername())
+        return jsonify({"success": False, "error": "Isolation certificate not found"}), 404
+    if cert.getStatus() != IsolationCertificate.Status.PENDING:
+        log.warning(
+            "POST /isolation-certificates/isolate-execute: forbidden — certificate #%s not ready for isolator execution (user='%s')",
+            certId, user.getUsername(),
+        )
+        return jsonify({"success": False, "error": "Certificate is not ready for isolator execution"}), 403
+    try:
+        certDB.updateCertificateFromDict({
+            'id': certId,
+            'isolate_isolator': user.getUsername(),
+            'isolate_isolator_timestamp': datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+        })
+        updated = certDB.getCertificateById(certId)
+        if updated:
+            with globalData.lock:
+                globalData.isolationCertificates[updated.id] = updated
+        _broadcast("isolation_certificate_isolate_execute", {"certificate_id": certId, "by": user.getUsername()})
+        log.info("Isolation certificate isolate execution: id=%s by='%s'", certId, user.getUsername())
+        return jsonify({"success": True})
+    except Exception as e:
+        log.error("POST /isolation-certificates/isolate-execute failed for certificate #%s: %s", certId, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
 
 

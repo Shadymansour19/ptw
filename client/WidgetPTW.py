@@ -429,7 +429,7 @@ class DialogPTW(QDialog):
 
             groupedICs = self._linkedICsByType()
             for icType in IsolationCertificate.Types:
-                formLinkage.addRow(t(f"{icType}:"), self._makeReadOnlyField(', '.join(groupedICs[icType]) or '—'))
+                self._addICLinkRows(formLinkage, f"{icType}:", groupedICs[icType])
 
         for tabIdx in range(self.stack.count()):
             QShortcut(QKeySequence(f"Alt+{tabIdx + 1}"), self).activated.connect(partial(self.stack.setCurrentIndex, tabIdx))
@@ -449,6 +449,34 @@ class DialogPTW(QDialog):
         box.setReadOnly(True)
         box.setCursorPosition(0)
         return box
+
+    def _viewLinkedIC(self, icId):
+        certsById = {str(cert.id): cert for cert in globalData.isolationCertificates.values()}
+        cert = certsById.get(str(icId))
+        if cert is None:
+            QMessageBox.warning(self, t("Certificate Not Found"), t("Isolation Certificate #{0} could not be found.").format(icId))
+            return
+        from DialogIsolationCertificate import DialogIsolationCertificate
+        dlg = DialogIsolationCertificate(self, self.loggedUser, cert, False, True, f"Isolation Certificate — {cert.type}")
+        dlg.exec()
+
+    def _icLinkRow(self, icId) -> QWidget:
+        row = QWidget()
+        lyt = QHBoxLayout(row)
+        lyt.setContentsMargins(0, 0, 0, 0)
+        lyt.addWidget(self._makeReadOnlyField(str(icId)), stretch=1)
+        btnView = QPushButton(t("View"))
+        btnView.clicked.connect(partial(self._viewLinkedIC, icId))
+        lyt.addWidget(btnView)
+        return row
+
+    def _addICLinkRows(self, formLayout: QFormLayout, label: str, icIds: list):
+        ids = [i for i in icIds if i]
+        if not ids:
+            formLayout.addRow(t(label), self._makeReadOnlyField('—'))
+            return
+        for icId in ids:
+            formLayout.addRow(t(label), self._icLinkRow(icId))
 
     def _timelinePane(self, title: str, timeline: Timeline) -> QWidget:
         pane = QWidget()

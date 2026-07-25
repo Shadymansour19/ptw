@@ -26,11 +26,12 @@ class _FastTrackItem(QTableWidgetItem):
 
 class TablePTWs(QWidget):
     class MenuOption:
-        def __init__(self, lbl, fun, icn, allAtOnce : bool = False):
+        def __init__(self, lbl, fun, icn, allAtOnce : bool = False, visibleFor = None):
             self.lbl = lbl
             self.fun = fun
             self.icn = icn
             self.allAtOnce = allAtOnce
+            self.visibleFor = visibleFor
 
     def __init__(self, parent, loggedUser, label: str):
         super().__init__(parent)

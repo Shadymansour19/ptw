@@ -124,6 +124,7 @@ class IsolationCertificate:
         REQUESTED  = 'Requested'
         RETURNED   = 'Returned'
         APPROVED   = 'Approved'
+        ISOLATE_CONFIRMING = 'Isolate Confirming'
         PENDING    = 'Pending'
         ACTIVE     = 'Active'
         SANCTIONED = 'Sanctioned'
@@ -322,7 +323,10 @@ class IsolationCertificate:
         if self.isolate_isolator or self.reisolate_isolator:
             return self.Status.ACTIVE
         if self.isolate_requestor:
-            return self.Status.PENDING
+            if self.isolate_issuing_action == IsolationCertificate.ApprovalActions.APPROVED:
+                return self.Status.PENDING
+            if self.isolate_issuing_action != IsolationCertificate.ApprovalActions.RETURNED:
+                return self.Status.ISOLATE_CONFIRMING
         return self.getApprovalStatus()
 
     __backgroundColors = {

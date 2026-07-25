@@ -5,7 +5,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QComboBox, QLineEdit,
                               QTextEdit, QCheckBox, QLabel, QDialogButtonBox, QMessageBox,
-                              QWidget, QStackedWidget)
+                              QWidget, QStackedWidget, QPushButton)
 
 from PTWData import PTWData
 from Isolation import IsolationCertificate
@@ -128,10 +128,10 @@ class DialogIsolationCertificate(QDialog):
             lytHistoryPanes.addWidget(self._buildApprovalTimelinePane(), stretch=1)
             lytHistoryPanes.addWidget(self._buildIsolationTimelinePane(), stretch=1)
 
-            formLinkage.addRow(t("Primary PTW:"), self._makeReadOnlyField(cert.primary_ptw or '—'))
-            formLinkage.addRow(t("Latest PTW:"), self._makeReadOnlyField(cert.latest_ptw or '—'))
-            formLinkage.addRow(t("Linked PTWs:"), self._makeReadOnlyField(', '.join(str(p) for p in cert.linked_ptws) or '—'))
-            formLinkage.addRow(t("Held By:"), self._makeReadOnlyField(', '.join(str(p) for p in cert.held_by) or '—'))
+            self._addPTWLinkRows(formLinkage, "Primary PTW:", [cert.primary_ptw])
+            self._addPTWLinkRows(formLinkage, "Latest PTW:", [cert.latest_ptw])
+            self._addPTWLinkRows(formLinkage, "Linked PTW:", cert.linked_ptws)
+            self._addPTWLinkRows(formLinkage, "Held By:", cert.held_by)
             formLinkage.addRow(t("Physically Isolated:"), self._makeReadOnlyField(t('Yes') if cert.is_physically_isolated else t('No')))
 
         self._populate()
@@ -159,6 +159,34 @@ class DialogIsolationCertificate(QDialog):
         box.setReadOnly(True)
         box.setCursorPosition(0)
         return box
+
+    def _viewLinkedPTW(self, ptwId):
+        ptw = next((p for p in globalData.allPTWs if str(p.id) == str(ptwId)), None) or \
+              next((p for p in globalData.archivedPTWs if str(p.id) == str(ptwId)), None)
+        if ptw is None:
+            QMessageBox.warning(self, t("PTW Not Found"), t("PTW #{0} could not be found (it may be archived).").format(ptwId))
+            return
+        from WidgetPTW import DialogPTW
+        dlg = DialogPTW(self, self.loggedUser, ptw, None, False, True, f"View Mode - PTW# {ptw.id}")
+        dlg.exec()
+
+    def _ptwLinkRow(self, ptwId) -> QWidget:
+        row = QWidget()
+        lyt = QHBoxLayout(row)
+        lyt.setContentsMargins(0, 0, 0, 0)
+        lyt.addWidget(self._makeReadOnlyField(str(ptwId)), stretch=1)
+        btnView = QPushButton(t("View"))
+        btnView.clicked.connect(partial(self._viewLinkedPTW, ptwId))
+        lyt.addWidget(btnView)
+        return row
+
+    def _addPTWLinkRows(self, formLayout: QFormLayout, label: str, ptwIds: list):
+        ids = [p for p in ptwIds if p]
+        if not ids:
+            formLayout.addRow(t(label), self._makeReadOnlyField('—'))
+            return
+        for ptwId in ids:
+            formLayout.addRow(t(label), self._ptwLinkRow(ptwId))
 
     def _timelinePane(self, title: str, timeline: Timeline) -> QWidget:
         pane = QWidget()

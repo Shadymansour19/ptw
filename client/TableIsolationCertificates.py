@@ -270,8 +270,11 @@ class TableIsolationCertificates(QWidget):
         row = self.tbl.indexAt(pos)
         if not row.isValid():
             return
+        cert = self.certsData[row.row()]
         menu = QMenu(self.tbl)
         for option in self.options:
+            if option.visibleFor is not None and not option.visibleFor(cert):
+                continue
             action = QAction(option.icn, option.lbl, self.tbl)
             menu.addAction(action)
             action.triggered.connect(partial(self.optionDoForAllSelected, option.fun, option.allAtOnce))

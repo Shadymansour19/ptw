@@ -667,6 +667,48 @@ class ClientRequests:
 
         return None
 
+    @async_request
+    def confirmIsolateCertificate(loggedUser: User, certId, response: bool) -> str:
+        resp = None
+        try:
+            resp = requests.post(
+                f'{ClientRequests.SERVER_URL}/isolation-certificates/isolate-confirm',
+                json={'certificate-id': certId, 'response': response},
+                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except requests.exceptions.RequestException as e:
+            err = resp.json().get("error", resp.text) or resp.json().get("message", resp.text) if resp is not None else str(e)
+            return f"Failed to confirm isolation\n{err}"
+
+        if not data.get("success"):
+            err = resp.json().get("error", resp.text) or resp.json().get("message", resp.text) if resp is not None else str(e)
+            return f"Failed to confirm isolation\n{err}"
+
+        return None
+
+    @async_request
+    def executeIsolateCertificate(loggedUser: User, certId) -> str:
+        response = None
+        try:
+            response = requests.post(
+                f'{ClientRequests.SERVER_URL}/isolation-certificates/isolate-execute',
+                json={'certificate-id': certId},
+                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+            )
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to execute isolation\n{err}"
+
+        if not data.get("success"):
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to execute isolation\n{err}"
+
+        return None
+
 
     @async_request
     def getAllRiskAssessments(loggedUser: User) -> tuple[str, dict[str, RiskAssessment]]:
