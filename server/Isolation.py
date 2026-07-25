@@ -126,6 +126,8 @@ class IsolationCertificate:
         ISOLATE_CONFIRMING = 'Isolate Confirming'
         PENDING    = 'Pending'
         ACTIVE     = 'Active'
+        DEISOLATE_CONFIRMING = 'Deisolate Confirming'
+        CLOSING    = 'Closing'
         SANCTIONED = 'Sanctioned'
         CLOSED     = 'Closed'
 
@@ -225,6 +227,7 @@ class IsolationCertificate:
         self.deisolate_requestor_timestamp = data.get('deisolate_requestor_timestamp')
         self.deisolate_issuing = data.get('deisolate_issuing')
         self.deisolate_issuing_timestamp = data.get('deisolate_issuing_timestamp')
+        self.deisolate_issuing_action = data.get('deisolate_issuing_action', '')
         self.deisolate_isolator = data.get('deisolate_isolator')
         self.deisolate_isolator_timestamp = data.get('deisolate_isolator_timestamp')
         
@@ -320,6 +323,11 @@ class IsolationCertificate:
         if self.sanction_isolator and not self.reisolate_isolator:
             return self.Status.SANCTIONED
         if self.isolate_isolator or self.reisolate_isolator:
+            if self.deisolate_requestor:
+                if self.deisolate_issuing_action == IsolationCertificate.ApprovalActions.APPROVED:
+                    return self.Status.CLOSING
+                if self.deisolate_issuing_action != IsolationCertificate.ApprovalActions.RETURNED:
+                    return self.Status.DEISOLATE_CONFIRMING
             return self.Status.ACTIVE
         if self.isolate_requestor:
             if self.isolate_issuing_action == IsolationCertificate.ApprovalActions.APPROVED:

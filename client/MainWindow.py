@@ -20,6 +20,7 @@ from TableRisks import TableRisks
 from TableIsolations import TableIsolationsBrowser
 from TableIsolationCertificates import TableIsolationCertificates
 from DialogIsolationCertificate import DialogIsolationCertificate
+from DialogCompleteIsolation import DialogCompleteIsolation
 from Isolation import IsolationCertificate
 from TabServerLogs import TabServerLogs
 from DialogSettings import DialogSettings
@@ -92,6 +93,22 @@ class MainWindow(QMainWindow):
             'Complete Isolation', self.executeIsolateCertificate, qta.icon('fa6s.lock'),
             visibleFor=lambda cert: cert.getStatus() == IsolationCertificate.Status.PENDING,
         )
+        self.optionRequestDeisolateIC = TablePTWs.MenuOption(
+            'Request De-isolate', self.requestDeisolateCertificate, qta.icon('fa6s.unlock'),
+            visibleFor=lambda cert: cert.getStatus() == IsolationCertificate.Status.ACTIVE,
+        )
+        self.optionConfirmDeisolateIC = TablePTWs.MenuOption(
+            'Confirm De-isolate', self.confirmDeisolateCertificate, qta.icon('fa6s.check'),
+            visibleFor=lambda cert: cert.getStatus() == IsolationCertificate.Status.DEISOLATE_CONFIRMING,
+        )
+        self.optionReturnDeisolateIC = TablePTWs.MenuOption(
+            'Return De-isolate Request', self.returnDeisolateCertificate, qta.icon('fa5s.undo'),
+            visibleFor=lambda cert: cert.getStatus() == IsolationCertificate.Status.DEISOLATE_CONFIRMING,
+        )
+        self.optionExecuteDeisolateIC = TablePTWs.MenuOption(
+            'Complete De-isolation', self.executeDeisolateCertificate, qta.icon('fa6s.lock-open'),
+            visibleFor=lambda cert: cert.getStatus() == IsolationCertificate.Status.CLOSING,
+        )
 
         self.stack = QStackedWidget()
         self.stack.setAutoFillBackground(False)
@@ -118,6 +135,8 @@ class MainWindow(QMainWindow):
         self.tabIsolateConfirmingICs = TableIsolationCertificates(self.stack, self.loggedUser, "Isolate Confirming ICs")
         self.tabPendingICs = TableIsolationCertificates(self.stack, self.loggedUser, "Pending ICs")
         self.tabActiveICs = TableIsolationCertificates(self.stack, self.loggedUser, "Active ICs")
+        self.tabDeisolateConfirmingICs = TableIsolationCertificates(self.stack, self.loggedUser, "Deisolate Confirming ICs")
+        self.tabClosingICs = TableIsolationCertificates(self.stack, self.loggedUser, "Closing ICs")
         self.tabSanctionedICs = TableIsolationCertificates(self.stack, self.loggedUser, "Sanctioned ICs")
         self.tabClosedICs = TableIsolationCertificates(self.stack, self.loggedUser, "Closed ICs")
         self.tabServerLogs = TabServerLogs(self.stack, self.loggedUser, "Server Logs")
@@ -175,6 +194,8 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.tabIsolateConfirmingICs)
         self.stack.addWidget(self.tabPendingICs)
         self.stack.addWidget(self.tabActiveICs)
+        self.stack.addWidget(self.tabDeisolateConfirmingICs)
+        self.stack.addWidget(self.tabClosingICs)
         self.stack.addWidget(self.tabSanctionedICs)
         self.stack.addWidget(self.tabClosedICs)
         self.stack.addWidget(self.tabServerLogs)
@@ -224,6 +245,8 @@ class MainWindow(QMainWindow):
         self.btnCertIsolateConfirming = QPushButton(qta.icon('fa6s.clipboard-check'), "")
         self.btnCertPending = QPushButton(qta.icon('fa6.hourglass'), "")
         self.btnCertActive = QPushButton(qta.icon('fa6s.lock'), "")
+        self.btnCertDeisolateConfirming = QPushButton(qta.icon('fa6s.magnifying-glass'), "")
+        self.btnCertClosing = QPushButton(qta.icon('mdi6.lock-open-variant-outline'), "")
         self.btnCertSanctioned = QPushButton(qta.icon('fa6s.flask'), "")
         self.btnCertClosed = QPushButton(qta.icon('fa6s.lock-open'), "")
         self.btnLanguage = QPushButton(qta.icon('fa5s.language'), "")
@@ -254,6 +277,8 @@ class MainWindow(QMainWindow):
         self.btnCertIsolateConfirming.setToolTip("Isolate Confirming ICs")
         self.btnCertPending.setToolTip("Pending ICs")
         self.btnCertActive.setToolTip("Active ICs")
+        self.btnCertDeisolateConfirming.setToolTip("Deisolate Confirming ICs")
+        self.btnCertClosing.setToolTip("Closing ICs")
         self.btnCertSanctioned.setToolTip("Sanctioned ICs")
         self.btnCertClosed.setToolTip("Closed ICs")
         self.btnLanguage.setToolTip("Switch Language")
@@ -282,6 +307,8 @@ class MainWindow(QMainWindow):
             self.btnCertIsolateConfirming:      self.tabIsolateConfirmingICs,
             self.btnCertPending:                self.tabPendingICs,
             self.btnCertActive:                 self.tabActiveICs,
+            self.btnCertDeisolateConfirming:    self.tabDeisolateConfirmingICs,
+            self.btnCertClosing:                self.tabClosingICs,
             self.btnCertSanctioned:             self.tabSanctionedICs,
             self.btnCertClosed:                 self.tabClosedICs,
             self.btnServerLogs:                 self.tabServerLogs,
@@ -865,13 +892,56 @@ class MainWindow(QMainWindow):
         ClientRequests.confirmIsolateCertificate(self.loggedUser, cert.id, False, callback=self._on_request_done_generic)
 
     def executeIsolateCertificate(self, row: int, cert: IsolationCertificate):
+        if cert.items:
+            dlg = DialogCompleteIsolation(self, cert.items)
+            if dlg.exec() != QDialog.DialogCode.Accepted:
+                return
+            items = dlg.getItems()
+        else:
+            reply = QMessageBox.question(
+                self, f'Complete Isolation #{cert.id}', f"Confirm that isolation for certificate #{cert.id} has been physically carried out?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+            items = []
+        ClientRequests.executeIsolateCertificate(self.loggedUser, cert.id, items, callback=self._on_request_done_generic)
+
+    def requestDeisolateCertificate(self, row: int, cert: IsolationCertificate):
         reply = QMessageBox.question(
-            self, f'Complete Isolation #{cert.id}', f"Confirm that isolation for certificate #{cert.id} has been physically carried out?",
+            self, f'Request De-isolate #{cert.id}', f"Request de-isolation for certificate #{cert.id}? This will notify Issuing to confirm.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
-        ClientRequests.executeIsolateCertificate(self.loggedUser, cert.id, callback=self._on_request_done_generic)
+        ClientRequests.requestDeisolateCertificate(self.loggedUser, cert.id, callback=self._on_request_done_generic)
+
+    def confirmDeisolateCertificate(self, row: int, cert: IsolationCertificate):
+        reply = QMessageBox.question(
+            self, f'Confirm De-isolate #{cert.id}', f"Confirm de-isolation for certificate #{cert.id}? The isolator will then be notified to carry it out.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        ClientRequests.confirmDeisolateCertificate(self.loggedUser, cert.id, True, callback=self._on_request_done_generic)
+
+    def returnDeisolateCertificate(self, row: int, cert: IsolationCertificate):
+        reply = QMessageBox.question(
+            self, f'Return De-isolate Request #{cert.id}', f"Return the de-isolate request for certificate #{cert.id}? The requestor will need to request de-isolation again.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        ClientRequests.confirmDeisolateCertificate(self.loggedUser, cert.id, False, callback=self._on_request_done_generic)
+
+    def executeDeisolateCertificate(self, row: int, cert: IsolationCertificate):
+        reply = QMessageBox.question(
+            self, f'Complete De-isolation #{cert.id}', f"Confirm that de-isolation for certificate #{cert.id} has been physically carried out?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        ClientRequests.executeDeisolateCertificate(self.loggedUser, cert.id, callback=self._on_request_done_generic)
 
     def requestToSuctionTestPTW(self, row: int, ptw: PTWData):
         pass
@@ -1379,6 +1449,8 @@ class MainWindow(QMainWindow):
             self.tabIsolateConfirmingICs,
             self.tabPendingICs,
             self.tabActiveICs,
+            self.tabDeisolateConfirmingICs,
+            self.tabClosingICs,
             self.tabSanctionedICs,
             self.tabClosedICs,
         ]
@@ -1392,6 +1464,10 @@ class MainWindow(QMainWindow):
                 self.tabClosedICs.addCertificateToGUI(cert)
             elif status == IsolationCertificate.Status.SANCTIONED:
                 self.tabSanctionedICs.addCertificateToGUI(cert)
+            elif status == IsolationCertificate.Status.CLOSING:
+                self.tabClosingICs.addCertificateToGUI(cert)
+            elif status == IsolationCertificate.Status.DEISOLATE_CONFIRMING:
+                self.tabDeisolateConfirmingICs.addCertificateToGUI(cert)
             elif status == IsolationCertificate.Status.ACTIVE:
                 self.tabActiveICs.addCertificateToGUI(cert)
             elif status == IsolationCertificate.Status.PENDING:
@@ -1534,7 +1610,9 @@ class UserMainWindow(MainWindow):
         self.tabApprovedICs.addOptions([self.optionViewIC, self.optionRequestIsolateIC])
         self.tabIsolateConfirmingICs.addOptions([self.optionViewIC])
         self.tabPendingICs.addOptions([self.optionViewIC])
-        self.tabActiveICs.addOptions([self.optionViewIC])
+        self.tabActiveICs.addOptions([self.optionViewIC, self.optionRequestDeisolateIC])
+        self.tabDeisolateConfirmingICs.addOptions([self.optionViewIC])
+        self.tabClosingICs.addOptions([self.optionViewIC])
         self.tabSanctionedICs.addOptions([self.optionViewIC])
         self.tabClosedICs.addOptions([self.optionViewIC])
 
@@ -1544,7 +1622,8 @@ class UserMainWindow(MainWindow):
                 [self.btnRequestedPTWs, self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
                 [self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs],
                 [self.btnIsolations],
-                [self.btnCertRequested, self.btnCertApproved, self.btnCertIsolateConfirming, self.btnCertPending, self.btnCertActive, self.btnCertSanctioned, self.btnCertClosed],
+                [self.btnCertRequested, self.btnCertApproved, self.btnCertIsolateConfirming, self.btnCertPending,
+                 self.btnCertActive, self.btnCertDeisolateConfirming, self.btnCertClosing, self.btnCertSanctioned, self.btnCertClosed],
             ],
             {   # topbar: full set
                 '&PTWs': [
@@ -1554,7 +1633,8 @@ class UserMainWindow(MainWindow):
                     self.btnHeldPTWs, self.btnWaitingClsConfirmationPTWs, self.btnClosedPTWs, self.btnArchivedPTWs,
                 ],
                 '&Isolations': [self.btnIsolations],
-                '&ICs': [self.btnCertRequested, self.btnCertApproved, self.btnCertIsolateConfirming, self.btnCertPending, self.btnCertActive, self.btnCertSanctioned, self.btnCertClosed],
+                '&ICs': [self.btnCertRequested, self.btnCertApproved, self.btnCertIsolateConfirming, self.btnCertPending,
+                         self.btnCertActive, self.btnCertDeisolateConfirming, self.btnCertClosing, self.btnCertSanctioned, self.btnCertClosed],
                 '&View': [self.btnWelcome, *self._footerButtons()],
             },
         )
@@ -1665,6 +1745,8 @@ class IssuingMainWindow(MainWindow):
         self.tabIsolateConfirmingICs.addOptions([self.optionViewIC, self.optionConfirmIsolateIC, self.optionReturnIsolateIC])
         self.tabPendingICs.addOptions([self.optionViewIC])
         self.tabActiveICs.addOptions([self.optionViewIC])
+        self.tabDeisolateConfirmingICs.addOptions([self.optionViewIC, self.optionConfirmDeisolateIC, self.optionReturnDeisolateIC])
+        self.tabClosingICs.addOptions([self.optionViewIC])
         self.tabSanctionedICs.addOptions([self.optionViewIC])
         self.tabClosedICs.addOptions([self.optionViewIC])
 
@@ -1674,11 +1756,11 @@ class IssuingMainWindow(MainWindow):
         # would land there for Issuing to track — accepted gap for now, not wired up.
         self._certTabs = [
             self.btnCertUnderReview, self.btnCertApproved, self.btnCertIsolateConfirming, self.btnCertPending,
-            self.btnCertActive, self.btnCertSanctioned, self.btnCertClosed,
+            self.btnCertActive, self.btnCertDeisolateConfirming, self.btnCertClosing, self.btnCertSanctioned, self.btnCertClosed,
         ]
         self._certTabsWidgets = [
             self.tabUnderReviewICs, self.tabApprovedICs, self.tabIsolateConfirmingICs, self.tabPendingICs,
-            self.tabActiveICs, self.tabSanctionedICs, self.tabClosedICs,
+            self.tabActiveICs, self.tabDeisolateConfirmingICs, self.tabClosingICs, self.tabSanctionedICs, self.tabClosedICs,
         ]
 
         self.setAvailableTabs(
@@ -1922,15 +2004,16 @@ class IsolatorMainWindow(MainWindow):
 
         self.tabPendingICs.addOptions([self.optionViewIC, self.optionExecuteIsolateIC])
         self.tabActiveICs.addOptions([self.optionViewIC])
+        self.tabClosingICs.addOptions([self.optionViewIC, self.optionExecuteDeisolateIC])
         self.tabSanctionedICs.addOptions([self.optionViewIC])
 
         self.setAvailableTabs(
             [
                 [self.btnWelcome],
-                [self.btnCertPending, self.btnCertActive, self.btnCertSanctioned],
+                [self.btnCertPending, self.btnCertActive, self.btnCertClosing, self.btnCertSanctioned],
             ],
             {
-                '&Certificates': [self.btnCertPending, self.btnCertActive, self.btnCertSanctioned],
+                '&Certificates': [self.btnCertPending, self.btnCertActive, self.btnCertClosing, self.btnCertSanctioned],
                 '&View': [self.btnWelcome, *self._footerButtons()],
             },
         )

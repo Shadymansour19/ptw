@@ -689,12 +689,12 @@ class ClientRequests:
         return None
 
     @async_request
-    def executeIsolateCertificate(loggedUser: User, certId) -> str:
+    def executeIsolateCertificate(loggedUser: User, certId, items: list = None) -> str:
         response = None
         try:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/isolation-certificates/isolate-execute',
-                json={'certificate-id': certId},
+                json={'certificate-id': certId, 'items': objToDict(items or [])},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword())
             )
             response.raise_for_status()
@@ -706,6 +706,69 @@ class ClientRequests:
         if not data.get("success"):
             err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
             return f"Failed to execute isolation\n{err}"
+
+        return None
+
+    @async_request
+    def requestDeisolateCertificate(loggedUser: User, certId) -> str:
+        response = None
+        try:
+            response = requests.post(
+                f'{ClientRequests.SERVER_URL}/isolation-certificates/deisolate-request',
+                json={'certificate-id': certId},
+                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+            )
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to request de-isolation\n{err}"
+
+        if not data.get("success"):
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to request de-isolation\n{err}"
+
+        return None
+
+    @async_request
+    def confirmDeisolateCertificate(loggedUser: User, certId, response: bool) -> str:
+        resp = None
+        try:
+            resp = requests.post(
+                f'{ClientRequests.SERVER_URL}/isolation-certificates/deisolate-confirm',
+                json={'certificate-id': certId, 'response': response},
+                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except requests.exceptions.RequestException as e:
+            err = resp.json().get("error", resp.text) or resp.json().get("message", resp.text) if resp is not None else str(e)
+            return f"Failed to confirm de-isolation\n{err}"
+
+        if not data.get("success"):
+            err = resp.json().get("error", resp.text) or resp.json().get("message", resp.text) if resp is not None else str(e)
+            return f"Failed to confirm de-isolation\n{err}"
+
+        return None
+
+    @async_request
+    def executeDeisolateCertificate(loggedUser: User, certId) -> str:
+        response = None
+        try:
+            response = requests.post(
+                f'{ClientRequests.SERVER_URL}/isolation-certificates/deisolate-execute',
+                json={'certificate-id': certId},
+                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+            )
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to execute de-isolation\n{err}"
+
+        if not data.get("success"):
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to execute de-isolation\n{err}"
 
         return None
 
