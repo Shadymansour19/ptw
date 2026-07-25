@@ -17,11 +17,10 @@ from DialogUser import DialogUser
 from DialogSelectIsolations import DialogSelectIsolations
 from TableUsers import TableUsers
 from TableRisks import TableRisks
-from TableIsolations import TableIsolationsBrowser
-from TableIsolationCertificates import TableIsolationCertificates
-from DialogIsolationCertificate import DialogIsolationCertificate
+from TableICs import TableICs
+from DialogIC import DialogIC
 from DialogCompleteIsolation import DialogCompleteIsolation
-from Isolation import IsolationCertificate
+from Isolation import IC
 from TabServerLogs import TabServerLogs
 from DialogSettings import DialogSettings
 from clientRequests import ClientRequests
@@ -77,43 +76,43 @@ class MainWindow(QMainWindow):
         self.optionViewPerformingPTW = TablePTWs.MenuOption('View PA', self.viewPerformingPTW, qta.icon('mdi6.account-hard-hat'))
         self.viewIssuingOption = TablePTWs.MenuOption('View IA', self.viewIssuing, qta.icon('fa6s.user-tie'))
         self.optionViewIC = TablePTWs.MenuOption('View', self.viewIC, qta.icon('fa6.eye'))
-        self.optionAcceptIC = TablePTWs.MenuOption('Accept', self.acceptCertificate, qta.icon('fa6s.check'))
-        self.optionRequestEditsIC = TablePTWs.MenuOption('Request Edits', self.requestEditsCertificate, qta.icon('fa5s.undo'))
-        self.optionRequestIsolateIC = TablePTWs.MenuOption('Request Isolate', self.requestIsolateCertificate, qta.icon('fa6s.unlock-keyhole'))
+        self.optionAcceptIC = TablePTWs.MenuOption('Accept', self.acceptIC, qta.icon('fa6s.check'))
+        self.optionRequestEditsIC = TablePTWs.MenuOption('Request Edits', self.requestEditsIC, qta.icon('fa5s.undo'))
+        self.optionRequestIsolateIC = TablePTWs.MenuOption('Request Isolate', self.requestIsolateIC, qta.icon('fa6s.unlock-keyhole'))
         self.optionConfirmIsolateIC = TablePTWs.MenuOption(
-            'Confirm Isolate', self.confirmIsolateCertificate, qta.icon('fa6s.check'),
-            visibleFor=lambda cert: cert.getStatus() == IsolationCertificate.Status.ISOLATE_CONFIRMING,
+            'Confirm Isolate', self.confirmIsolateIC, qta.icon('fa6s.check'),
+            visibleFor=lambda ic: ic.getStatus() == IC.Status.ISOLATE_CONFIRMING,
         )
         self.optionReturnIsolateIC = TablePTWs.MenuOption(
-            'Return Isolate Request', self.returnIsolateCertificate, qta.icon('fa5s.undo'),
-            visibleFor=lambda cert: cert.getStatus() == IsolationCertificate.Status.ISOLATE_CONFIRMING,
+            'Return Isolate Request', self.returnIsolateIC, qta.icon('fa5s.undo'),
+            visibleFor=lambda ic: ic.getStatus() == IC.Status.ISOLATE_CONFIRMING,
         )
         self.optionExecuteIsolateIC = TablePTWs.MenuOption(
-            'Complete Isolation', self.executeIsolateCertificate, qta.icon('fa6s.lock'),
-            visibleFor=lambda cert: cert.getStatus() == IsolationCertificate.Status.PENDING,
+            'Complete Isolation', self.executeIsolateIC, qta.icon('fa6s.lock'),
+            visibleFor=lambda ic: ic.getStatus() == IC.Status.PENDING,
         )
         self.optionRequestDeisolateIC = TablePTWs.MenuOption(
-            'Request De-isolate', self.requestDeisolateCertificate, qta.icon('fa6s.unlock'),
-            visibleFor=lambda cert: cert.getStatus() == IsolationCertificate.Status.ACTIVE,
+            'Request De-isolate', self.requestDeisolateIC, qta.icon('fa6s.unlock'),
+            visibleFor=lambda ic: ic.getStatus() == IC.Status.ACTIVE,
         )
         self.optionConfirmDeisolateIC = TablePTWs.MenuOption(
-            'Confirm De-isolate', self.confirmDeisolateCertificate, qta.icon('fa6s.check'),
-            visibleFor=lambda cert: cert.getStatus() == IsolationCertificate.Status.DEISOLATE_CONFIRMING,
+            'Confirm De-isolate', self.confirmDeisolateIC, qta.icon('fa6s.check'),
+            visibleFor=lambda ic: ic.getStatus() == IC.Status.DEISOLATE_CONFIRMING,
         )
         self.optionReturnDeisolateIC = TablePTWs.MenuOption(
-            'Return De-isolate Request', self.returnDeisolateCertificate, qta.icon('fa5s.undo'),
-            visibleFor=lambda cert: cert.getStatus() == IsolationCertificate.Status.DEISOLATE_CONFIRMING,
+            'Return De-isolate Request', self.returnDeisolateIC, qta.icon('fa5s.undo'),
+            visibleFor=lambda ic: ic.getStatus() == IC.Status.DEISOLATE_CONFIRMING,
         )
         self.optionExecuteDeisolateIC = TablePTWs.MenuOption(
-            'Complete De-isolation', self.executeDeisolateCertificate, qta.icon('fa6s.lock-open'),
-            visibleFor=lambda cert: cert.getStatus() == IsolationCertificate.Status.CLOSING,
+            'Complete De-isolation', self.executeDeisolateIC, qta.icon('fa6s.lock-open'),
+            visibleFor=lambda ic: ic.getStatus() == IC.Status.CLOSING,
         )
         self.optionLinkPTWToIC = TablePTWs.MenuOption(
-            'Link to PTW', self.linkPTWToCertificate, qta.icon('mdi.link-variant'),
-            visibleFor=lambda cert: not cert.isWindingDown(),
+            'Link to PTW', self.linkPTWToIC, qta.icon('mdi.link-variant'),
+            visibleFor=lambda ic: not ic.isWindingDown(),
         )
         self.optionLinkICToPTW = TablePTWs.MenuOption(
-            'Link to IC', self.linkCertificateToPTW, qta.icon('mdi.link-variant'),
+            'Link to IC', self.linkICToPTW, qta.icon('mdi.link-variant'),
             visibleFor=lambda ptw: ptw.approval_status == PTWData.ApprovalStatus.APPROVED and ptw.running_status == PTWData.RunningStatus.NOT_RUNNING,
         )
 
@@ -135,17 +134,16 @@ class MainWindow(QMainWindow):
         self.tabArchivedPTWs = TablePTWs(self.stack, self.loggedUser, "Archived PTWs")
         self.tabAllUsers = TableUsers(self.stack, self.loggedUser, "All Users")
         self.tabRisks = TableRisks(self.stack, self.loggedUser, "All Risks", readonly=False, selectable=False)
-        self.tabIsolations = TableIsolationsBrowser(self.stack, self.loggedUser, "Isolations")
-        self.tabRequestedICs = TableIsolationCertificates(self.stack, self.loggedUser, "Requested ICs")
-        self.tabUnderReviewICs = TableIsolationCertificates(self.stack, self.loggedUser, "Under Review ICs")
-        self.tabApprovedICs = TableIsolationCertificates(self.stack, self.loggedUser, "Approved ICs")
-        self.tabIsolateConfirmingICs = TableIsolationCertificates(self.stack, self.loggedUser, "Isolate Confirming ICs")
-        self.tabPendingICs = TableIsolationCertificates(self.stack, self.loggedUser, "Pending ICs")
-        self.tabActiveICs = TableIsolationCertificates(self.stack, self.loggedUser, "Active ICs")
-        self.tabDeisolateConfirmingICs = TableIsolationCertificates(self.stack, self.loggedUser, "Deisolate Confirming ICs")
-        self.tabClosingICs = TableIsolationCertificates(self.stack, self.loggedUser, "Closing ICs")
-        self.tabSanctionedICs = TableIsolationCertificates(self.stack, self.loggedUser, "Sanctioned ICs")
-        self.tabClosedICs = TableIsolationCertificates(self.stack, self.loggedUser, "Closed ICs")
+        self.tabRequestedICs = TableICs(self.stack, self.loggedUser, "Requested ICs")
+        self.tabUnderReviewICs = TableICs(self.stack, self.loggedUser, "Under Review ICs")
+        self.tabApprovedICs = TableICs(self.stack, self.loggedUser, "Approved ICs")
+        self.tabIsolateConfirmingICs = TableICs(self.stack, self.loggedUser, "Isolate Confirming ICs")
+        self.tabPendingICs = TableICs(self.stack, self.loggedUser, "Pending ICs")
+        self.tabActiveICs = TableICs(self.stack, self.loggedUser, "Active ICs")
+        self.tabDeisolateConfirmingICs = TableICs(self.stack, self.loggedUser, "Deisolate Confirming ICs")
+        self.tabClosingICs = TableICs(self.stack, self.loggedUser, "Closing ICs")
+        self.tabSanctionedICs = TableICs(self.stack, self.loggedUser, "Sanctioned ICs")
+        self.tabClosedICs = TableICs(self.stack, self.loggedUser, "Closed ICs")
         self.tabServerLogs = TabServerLogs(self.stack, self.loggedUser, "Server Logs")
 
         self._homeApprovalChart: DonutChart | None = None
@@ -194,7 +192,6 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.tabArchivedPTWs)
         self.stack.addWidget(self.tabAllUsers)
         self.stack.addWidget(self.tabRisks)
-        self.stack.addWidget(self.tabIsolations)
         self.stack.addWidget(self.tabRequestedICs)
         self.stack.addWidget(self.tabUnderReviewICs)
         self.stack.addWidget(self.tabApprovedICs)
@@ -224,7 +221,6 @@ class MainWindow(QMainWindow):
         # self.btnLogout = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ArrowLeft), "")
         # self.btnUsers = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView), "")
         # self.btnRisks = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxCritical), "")
-        # self.btnIsolations = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolumeMuted), "")
         # self.btnLanguage = QPushButton("ع")
 
         self.btnWelcome = QPushButton(qta.icon('fa5s.home'), "")
@@ -245,7 +241,6 @@ class MainWindow(QMainWindow):
         self.btnUsers = QPushButton(qta.icon('fa6s.users-gear'), "")
         # self.btnRisks = QPushButton(qta.icon('fa5s.exclamation-triangle'), "")
         self.btnRisks = QPushButton(qta.icon('mdi.shield-check-outline'), "")
-        self.btnIsolations = QPushButton(qta.icon('fa6s.unlock-keyhole'), "")
         self.btnCertRequested = QPushButton(qta.icon('fa6s.paper-plane'), "")
         self.btnCertUnderReview = QPushButton(qta.icon('fa6s.magnifying-glass-chart'), "")
         self.btnCertApproved = QPushButton(qta.icon('fa6s.check'), "")
@@ -277,7 +272,6 @@ class MainWindow(QMainWindow):
         self.btnLogout.setToolTip("Logout [Ctrl+X]")
         self.btnUsers.setToolTip("All Users")
         self.btnRisks.setToolTip("Risks")
-        self.btnIsolations.setToolTip("Isolations")
         self.btnCertRequested.setToolTip("Requested ICs")
         self.btnCertUnderReview.setToolTip("Under Review ICs")
         self.btnCertApproved.setToolTip("Approved ICs")
@@ -307,7 +301,6 @@ class MainWindow(QMainWindow):
             self.btnArchivedPTWs:               self.tabArchivedPTWs,
             self.btnUsers:                      self.tabAllUsers,
             self.btnRisks:                      self.tabRisks,
-            self.btnIsolations:                 self.tabIsolations,
             self.btnCertRequested:              self.tabRequestedICs,
             self.btnCertUnderReview:            self.tabUnderReviewICs,
             self.btnCertApproved:                self.tabApprovedICs,
@@ -850,129 +843,129 @@ class MainWindow(QMainWindow):
         )
         dlg.exec()
 
-    def viewIC(self, row: int, cert: IsolationCertificate):
-        dlg = DialogIsolationCertificate(self, self.loggedUser, cert, False, True, f"Isolation Certificate — {cert.type}")
+    def viewIC(self, row: int, ic: IC):
+        dlg = DialogIC(self, self.loggedUser, ic, False, True, f"IC — {ic.type}")
         dlg.exec()
 
-    def acceptCertificate(self, row: int, cert: IsolationCertificate):
+    def acceptIC(self, row: int, ic: IC):
         reply = QMessageBox.question(
-            self, f'Accept Certificate #{cert.id}', f"Are you sure you want to approve isolation certificate #{cert.id}? This is irreversible",
+            self, f'Accept IC #{ic.id}', f"Are you sure you want to approve IC #{ic.id}? This is irreversible",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
-        approval = IsolationCertificate.Approval(IsolationCertificate.ApprovalActions.APPROVED, self.loggedUser.getUsername(), datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
-        ClientRequests.updateApprovalCertificate(self.loggedUser, cert.id, approval, callback=self._on_request_done_generic)
+        approval = IC.Approval(IC.ApprovalActions.APPROVED, self.loggedUser.getUsername(), datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
+        ClientRequests.updateApprovalIC(self.loggedUser, ic.id, approval, callback=self._on_request_done_generic)
 
-    def requestEditsCertificate(self, row: int, cert: IsolationCertificate):
-        comment = self.getComment(f'Return Certificate #{cert.id} to be Edited')
+    def requestEditsIC(self, row: int, ic: IC):
+        comment = self.getComment(f'Return IC #{ic.id} to be Edited')
         if not comment:
             return
-        approval = IsolationCertificate.Approval(IsolationCertificate.ApprovalActions.RETURNED, self.loggedUser.getUsername(), datetime.now().strftime('%d/%m/%Y %H:%M:%S'), comment)
-        ClientRequests.updateApprovalCertificate(self.loggedUser, cert.id, approval, callback=self._on_request_done_generic)
+        approval = IC.Approval(IC.ApprovalActions.RETURNED, self.loggedUser.getUsername(), datetime.now().strftime('%d/%m/%Y %H:%M:%S'), comment)
+        ClientRequests.updateApprovalIC(self.loggedUser, ic.id, approval, callback=self._on_request_done_generic)
 
-    def requestIsolateCertificate(self, row: int, cert: IsolationCertificate):
+    def requestIsolateIC(self, row: int, ic: IC):
         reply = QMessageBox.question(
-            self, f'Request Isolate #{cert.id}', f"Request isolation for certificate #{cert.id}? This will notify Issuing to confirm.",
+            self, f'Request Isolate #{ic.id}', f"Request isolation for IC #{ic.id}? This will notify Issuing to confirm.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
-        ClientRequests.requestIsolateCertificate(self.loggedUser, cert.id, callback=self._on_request_done_generic)
+        ClientRequests.requestIsolateIC(self.loggedUser, ic.id, callback=self._on_request_done_generic)
 
-    def confirmIsolateCertificate(self, row: int, cert: IsolationCertificate):
+    def confirmIsolateIC(self, row: int, ic: IC):
         reply = QMessageBox.question(
-            self, f'Confirm Isolate #{cert.id}', f"Confirm isolation for certificate #{cert.id}? The isolator will then be notified to carry it out.",
+            self, f'Confirm Isolate #{ic.id}', f"Confirm isolation for IC #{ic.id}? The isolator will then be notified to carry it out.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
-        ClientRequests.confirmIsolateCertificate(self.loggedUser, cert.id, True, callback=self._on_request_done_generic)
+        ClientRequests.confirmIsolateIC(self.loggedUser, ic.id, True, callback=self._on_request_done_generic)
 
-    def returnIsolateCertificate(self, row: int, cert: IsolationCertificate):
+    def returnIsolateIC(self, row: int, ic: IC):
         reply = QMessageBox.question(
-            self, f'Return Isolate Request #{cert.id}', f"Return the isolate request for certificate #{cert.id}? The requestor will need to request isolation again.",
+            self, f'Return Isolate Request #{ic.id}', f"Return the isolate request for IC #{ic.id}? The requestor will need to request isolation again.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
-        ClientRequests.confirmIsolateCertificate(self.loggedUser, cert.id, False, callback=self._on_request_done_generic)
+        ClientRequests.confirmIsolateIC(self.loggedUser, ic.id, False, callback=self._on_request_done_generic)
 
-    def executeIsolateCertificate(self, row: int, cert: IsolationCertificate):
-        if cert.items:
-            dlg = DialogCompleteIsolation(self, cert.items)
+    def executeIsolateIC(self, row: int, ic: IC):
+        if ic.items:
+            dlg = DialogCompleteIsolation(self, ic.items)
             if dlg.exec() != QDialog.DialogCode.Accepted:
                 return
             items = dlg.getItems()
         else:
             reply = QMessageBox.question(
-                self, f'Complete Isolation #{cert.id}', f"Confirm that isolation for certificate #{cert.id} has been physically carried out?",
+                self, f'Complete Isolation #{ic.id}', f"Confirm that isolation for IC #{ic.id} has been physically carried out?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
             )
             if reply != QMessageBox.StandardButton.Yes:
                 return
             items = []
-        ClientRequests.executeIsolateCertificate(self.loggedUser, cert.id, items, callback=self._on_request_done_generic)
+        ClientRequests.executeIsolateIC(self.loggedUser, ic.id, items, callback=self._on_request_done_generic)
 
-    def requestDeisolateCertificate(self, row: int, cert: IsolationCertificate):
+    def requestDeisolateIC(self, row: int, ic: IC):
         reply = QMessageBox.question(
-            self, f'Request De-isolate #{cert.id}', f"Request de-isolation for certificate #{cert.id}? This will notify Issuing to confirm.",
+            self, f'Request De-isolate #{ic.id}', f"Request de-isolation for IC #{ic.id}? This will notify Issuing to confirm.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
-        ClientRequests.requestDeisolateCertificate(self.loggedUser, cert.id, callback=self._on_request_done_generic)
+        ClientRequests.requestDeisolateIC(self.loggedUser, ic.id, callback=self._on_request_done_generic)
 
-    def confirmDeisolateCertificate(self, row: int, cert: IsolationCertificate):
+    def confirmDeisolateIC(self, row: int, ic: IC):
         reply = QMessageBox.question(
-            self, f'Confirm De-isolate #{cert.id}', f"Confirm de-isolation for certificate #{cert.id}? The isolator will then be notified to carry it out.",
+            self, f'Confirm De-isolate #{ic.id}', f"Confirm de-isolation for IC #{ic.id}? The isolator will then be notified to carry it out.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
-        ClientRequests.confirmDeisolateCertificate(self.loggedUser, cert.id, True, callback=self._on_request_done_generic)
+        ClientRequests.confirmDeisolateIC(self.loggedUser, ic.id, True, callback=self._on_request_done_generic)
 
-    def returnDeisolateCertificate(self, row: int, cert: IsolationCertificate):
+    def returnDeisolateIC(self, row: int, ic: IC):
         reply = QMessageBox.question(
-            self, f'Return De-isolate Request #{cert.id}', f"Return the de-isolate request for certificate #{cert.id}? The requestor will need to request de-isolation again.",
+            self, f'Return De-isolate Request #{ic.id}', f"Return the de-isolate request for IC #{ic.id}? The requestor will need to request de-isolation again.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
-        ClientRequests.confirmDeisolateCertificate(self.loggedUser, cert.id, False, callback=self._on_request_done_generic)
+        ClientRequests.confirmDeisolateIC(self.loggedUser, ic.id, False, callback=self._on_request_done_generic)
 
-    def executeDeisolateCertificate(self, row: int, cert: IsolationCertificate):
+    def executeDeisolateIC(self, row: int, ic: IC):
         reply = QMessageBox.question(
-            self, f'Complete De-isolation #{cert.id}', f"Confirm that de-isolation for certificate #{cert.id} has been physically carried out?",
+            self, f'Complete De-isolation #{ic.id}', f"Confirm that de-isolation for IC #{ic.id} has been physically carried out?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
-        ClientRequests.executeDeisolateCertificate(self.loggedUser, cert.id, callback=self._on_request_done_generic)
+        ClientRequests.executeDeisolateIC(self.loggedUser, ic.id, callback=self._on_request_done_generic)
 
-    def linkPTWToCertificate(self, row: int, cert: IsolationCertificate):
-        ptwId, ok = QInputDialog.getText(self, f'Link Certificate #{cert.id} to PTW', 'PTW #:')
+    def linkPTWToIC(self, row: int, ic: IC):
+        ptwId, ok = QInputDialog.getText(self, f'Link IC #{ic.id} to PTW', 'PTW #:')
         if not ok or not ptwId.strip():
             return
         ptwId = ptwId.strip()
-        if ptwId in cert.linked_ptws:
-            QMessageBox.warning(self, "Already Linked", f"PTW #{ptwId} is already linked to this certificate.")
+        if ptwId in ic.linked_ptws:
+            QMessageBox.warning(self, "Already Linked", f"PTW #{ptwId} is already linked to this IC.")
             return
-        ClientRequests.linkPTWToCertificate(self.loggedUser, cert.id, ptwId, callback=self._on_request_done_generic)
+        ClientRequests.linkPTWToIC(self.loggedUser, ic.id, ptwId, callback=self._on_request_done_generic)
 
-    def linkCertificateToPTW(self, row: int, ptw: PTWData):
-        certIdText, ok = QInputDialog.getText(self, f'Link PTW #{ptw.id} to Certificate', 'Certificate #:')
+    def linkICToPTW(self, row: int, ptw: PTWData):
+        certIdText, ok = QInputDialog.getText(self, f'Link PTW #{ptw.id} to IC', 'IC #:')
         if not ok or not certIdText.strip():
             return
         try:
-            certId = int(certIdText.strip())
+            icId = int(certIdText.strip())
         except ValueError:
-            QMessageBox.warning(self, "Invalid Certificate #", "Certificate # must be a number.")
+            QMessageBox.warning(self, "Invalid IC #", "IC # must be a number.")
             return
-        if str(certId) in ptw.linked_ics:
-            QMessageBox.warning(self, "Already Linked", f"Certificate #{certId} is already linked to this PTW.")
+        if str(icId) in ptw.linked_ics:
+            QMessageBox.warning(self, "Already Linked", f"IC #{icId} is already linked to this PTW.")
             return
-        ClientRequests.linkPTWToCertificate(self.loggedUser, certId, ptw.id, callback=self._on_request_done_generic)
+        ClientRequests.linkPTWToIC(self.loggedUser, icId, ptw.id, callback=self._on_request_done_generic)
 
     def requestToSuctionTestPTW(self, row: int, ptw: PTWData):
         pass
@@ -1393,8 +1386,8 @@ class MainWindow(QMainWindow):
             return f"PTW #{ptw_id}: {verb} (by {by})"
         if event_type == "ptw_archived":
             return f"PTWs #{ptw_ids} archived by {by}"
-        if event_type == "new_isolation_certificate":
-            return f"New isolation certificate created by {by} (type: {data.get('type', '?')})"
+        if event_type == "new_ic":
+            return f"New IC created by {by} (type: {data.get('type', '?')})"
         return f"Update: {event_type} for PTW #{ptw_id}"
 
     def refreshWelcomePage(self):
@@ -1452,9 +1445,8 @@ class MainWindow(QMainWindow):
             for tab in tabs:
                 tab.sort()
 
-            self.tabIsolations.setIsolations(globalData.isolations)
             self.tabRisks.setRiskAssessmentsInGUI(globalData.allRiskAssessments)
-            self.refreshCertificatesGUI()
+            self.refreshICsGUI()
 
             if refreshArchivedPTWs:
                 self.refreshArchivedPTWs()
@@ -1468,12 +1460,12 @@ class MainWindow(QMainWindow):
             self.loggedUser,
             self.loggedUser.getDepartment() if self.loggedUser.getRole() in (UserRoles.USER, UserRoles.GUEST) else None,
             refreshUsers=True, refreshPTWs=True, refreshRiskAssessments=True,
-            refreshMIWIs=True, refreshIsolations=True, refreshIsolationCertificates=True,
+            refreshMIWIs=True, refreshICs=True,
             callback=on_done,
         )
 
-    def refreshCertificatesGUI(self):
-        tabs: list[TableIsolationCertificates] = [
+    def refreshICsGUI(self):
+        tabs: list[TableICs] = [
             self.tabRequestedICs,
             self.tabUnderReviewICs,
             self.tabApprovedICs,
@@ -1488,29 +1480,29 @@ class MainWindow(QMainWindow):
         for tab in tabs:
             tab.clear()
 
-        for cert in globalData.isolationCertificates.values():
-            status = cert.getStatus()
-            myTurn = cert.getApprovalStatus(role=self.loggedUser.getRole(), department=self.loggedUser.getDepartment()) == IsolationCertificate.Status.REQUESTED
-            if status == IsolationCertificate.Status.CLOSED:
-                self.tabClosedICs.addCertificateToGUI(cert)
-            elif status == IsolationCertificate.Status.SANCTIONED:
-                self.tabSanctionedICs.addCertificateToGUI(cert)
-            elif status == IsolationCertificate.Status.CLOSING:
-                self.tabClosingICs.addCertificateToGUI(cert)
-            elif status == IsolationCertificate.Status.DEISOLATE_CONFIRMING:
-                self.tabDeisolateConfirmingICs.addCertificateToGUI(cert)
-            elif status == IsolationCertificate.Status.ACTIVE:
-                self.tabActiveICs.addCertificateToGUI(cert)
-            elif status == IsolationCertificate.Status.PENDING:
-                self.tabPendingICs.addCertificateToGUI(cert)
-            elif status == IsolationCertificate.Status.ISOLATE_CONFIRMING:
-                self.tabIsolateConfirmingICs.addCertificateToGUI(cert)
-            elif status == IsolationCertificate.Status.APPROVED:
-                self.tabApprovedICs.addCertificateToGUI(cert)
+        for ic in globalData.ics.values():
+            status = ic.getStatus()
+            myTurn = ic.getApprovalStatus(role=self.loggedUser.getRole(), department=self.loggedUser.getDepartment()) == IC.Status.REQUESTED
+            if status == IC.Status.CLOSED:
+                self.tabClosedICs.addICToGUI(ic)
+            elif status == IC.Status.SANCTIONED:
+                self.tabSanctionedICs.addICToGUI(ic)
+            elif status == IC.Status.CLOSING:
+                self.tabClosingICs.addICToGUI(ic)
+            elif status == IC.Status.DEISOLATE_CONFIRMING:
+                self.tabDeisolateConfirmingICs.addICToGUI(ic)
+            elif status == IC.Status.ACTIVE:
+                self.tabActiveICs.addICToGUI(ic)
+            elif status == IC.Status.PENDING:
+                self.tabPendingICs.addICToGUI(ic)
+            elif status == IC.Status.ISOLATE_CONFIRMING:
+                self.tabIsolateConfirmingICs.addICToGUI(ic)
+            elif status == IC.Status.APPROVED:
+                self.tabApprovedICs.addICToGUI(ic)
             elif myTurn:
-                self.tabUnderReviewICs.addCertificateToGUI(cert)
+                self.tabUnderReviewICs.addICToGUI(ic)
             else:
-                self.tabRequestedICs.addCertificateToGUI(cert)
+                self.tabRequestedICs.addICToGUI(ic)
 
         for tab in tabs:
             tab.sort()
@@ -1649,7 +1641,6 @@ class UserMainWindow(MainWindow):
                 [self.btnWelcome],
                 [self.btnRequestedPTWs, self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
                 [self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs],
-                [self.btnIsolations],
                 [self.btnCertRequested, self.btnCertApproved, self.btnCertIsolateConfirming, self.btnCertPending,
                  self.btnCertActive, self.btnCertDeisolateConfirming, self.btnCertClosing, self.btnCertSanctioned, self.btnCertClosed],
             ],
@@ -1660,7 +1651,6 @@ class UserMainWindow(MainWindow):
                     self.btnWaitingRunConfirmationPTWs, self.btnRunningPTWs, self.btnWaitingHldConfirmationPTWs,
                     self.btnHeldPTWs, self.btnWaitingClsConfirmationPTWs, self.btnClosedPTWs, self.btnArchivedPTWs,
                 ],
-                '&Isolations': [self.btnIsolations],
                 '&ICs': [self.btnCertRequested, self.btnCertApproved, self.btnCertIsolateConfirming, self.btnCertPending,
                          self.btnCertActive, self.btnCertDeisolateConfirming, self.btnCertClosing, self.btnCertSanctioned, self.btnCertClosed],
                 '&View': [self.btnWelcome, *self._footerButtons()],
@@ -1677,7 +1667,7 @@ class UserMainWindow(MainWindow):
         super().stackTabChanged()
         tab = self.stack.currentWidget()
         self.btnFAB.setVisible(tab in [self.tabRequestedPTWs, self.tabWelcome, self.tabRequestedICs])
-        self.btnFAB.setToolTip("New Isolation Certificate" if tab == self.tabRequestedICs else "Request New PTW [Ctrl+N]")
+        self.btnFAB.setToolTip("New IC" if tab == self.tabRequestedICs else "Request New PTW [Ctrl+N]")
         if tab == self.tabArchivedPTWs and not globalData.archivedPTWs:
             self.refreshArchivedPTWs()
 
@@ -1685,7 +1675,7 @@ class UserMainWindow(MainWindow):
         if not self.btnFAB.isVisible():
             return
         if self.stack.currentWidget() == self.tabRequestedICs:
-            self.tabRequestedICs.addNewCertificateDialog()
+            self.tabRequestedICs.addNewICDialog()
         else:
             self.addPTWDialog()
 
@@ -1715,7 +1705,6 @@ class CoordinatorMainWindow(MainWindow):
                 [self.btnWelcome],
                 [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
                 [self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs, self.btnArchivedPTWs],
-                [self.btnIsolations],
             ],
             {
                 '&PTWs': [
@@ -1723,7 +1712,6 @@ class CoordinatorMainWindow(MainWindow):
                     None,
                     self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs, self.btnArchivedPTWs,
                 ],
-                '&Isolations': [self.btnIsolations],
                 '&View': [self.btnWelcome, *self._footerButtons()],
             },
         )
@@ -1738,7 +1726,7 @@ class CoordinatorMainWindow(MainWindow):
     def stackTabChanged(self):
         super().stackTabChanged()
         tab = self.stack.currentWidget()
-        self.btnFAB.setVisible(tab != self.tabWelcome and tab != self.tabIsolations)
+        self.btnFAB.setVisible(tab != self.tabWelcome)
         if tab == self.tabArchivedPTWs and not globalData.archivedPTWs:
             self.refreshArchivedPTWs()
 
@@ -1778,15 +1766,15 @@ class IssuingMainWindow(MainWindow):
         self.tabSanctionedICs.addOptions([self.optionViewIC])
         self.tabClosedICs.addOptions([self.optionViewIC])
 
-        # no Requested button here: a single-stage (non-Protective) cert never routes to
+        # no Requested button here: a single-stage (non-Protective) ic never routes to
         # tabCertRequested for the Issuing viewer once they've acted — it goes straight to
-        # Pending. Only a rare Protective-type cert (needing PDH/PGM/SOD/DFGM after Issuing)
+        # Pending. Only a rare Protective-type ic (needing PDH/PGM/SOD/DFGM after Issuing)
         # would land there for Issuing to track — accepted gap for now, not wired up.
-        self._certTabs = [
+        self._icTabs = [
             self.btnCertUnderReview, self.btnCertApproved, self.btnCertIsolateConfirming, self.btnCertPending,
             self.btnCertActive, self.btnCertDeisolateConfirming, self.btnCertClosing, self.btnCertSanctioned, self.btnCertClosed,
         ]
-        self._certTabsWidgets = [
+        self._icTabsWidgets = [
             self.tabUnderReviewICs, self.tabApprovedICs, self.tabIsolateConfirmingICs, self.tabPendingICs,
             self.tabActiveICs, self.tabDeisolateConfirmingICs, self.tabClosingICs, self.tabSanctionedICs, self.tabClosedICs,
         ]
@@ -1796,8 +1784,7 @@ class IssuingMainWindow(MainWindow):
                 [self.btnWelcome],
                 [self.btnUnderReviewPTWs],
                 [self.btnWaitingRunConfirmationPTWs, self.btnRunningPTWs, self.btnWaitingHldConfirmationPTWs, self.btnHeldPTWs, self.btnWaitingClsConfirmationPTWs, self.btnClosedPTWs],
-                [self.btnIsolations],
-                self._certTabs,
+                self._icTabs,
             ],
             {   # topbar: full set
                 '&PTWs': [
@@ -1806,8 +1793,7 @@ class IssuingMainWindow(MainWindow):
                     self.btnWaitingRunConfirmationPTWs, self.btnRunningPTWs, self.btnWaitingHldConfirmationPTWs,
                     self.btnHeldPTWs, self.btnWaitingClsConfirmationPTWs, self.btnClosedPTWs, self.btnArchivedPTWs,
                 ],
-                '&Isolations': [self.btnIsolations],
-                '&ICs': self._certTabs,
+                '&ICs': self._icTabs,
                 '&View': [self.btnWelcome, *self._footerButtons()],
             },
         )
@@ -1819,7 +1805,7 @@ class IssuingMainWindow(MainWindow):
     def stackTabChanged(self):
         super().stackTabChanged()
         tab = self.stack.currentWidget()
-        self.btnFAB.setVisible(tab != self.tabWelcome and tab != self.tabIsolations and tab not in self._certTabsWidgets)
+        self.btnFAB.setVisible(tab != self.tabWelcome and tab not in self._icTabsWidgets)
         if tab == self.tabArchivedPTWs and not globalData.archivedPTWs:
             self.refreshArchivedPTWs()
 
@@ -1844,12 +1830,10 @@ class SafetyMainWindow(MainWindow):
             [
                 [self.btnWelcome],
                 [self.btnUnderReviewPTWs, self.btnRunningPTWs],
-                [self.btnIsolations],
                 [self.btnRisks],
             ],
             {
                 '&PTWs': [self.btnUnderReviewPTWs, self.btnRunningPTWs],
-                '&Isolations': [self.btnIsolations],
                 '&Risks': [self.btnRisks],
                 '&View': [self.btnWelcome, *self._footerButtons()],
             },
@@ -1894,8 +1878,8 @@ class ManagerMainWindow(MainWindow):
         self.tabClosedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionArchivePTW, self.optionExportPTW])
         self.tabArchivedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
 
-        # Managers are only ever involved in a Protective-type certificate's approval
-        # chain (after Issuing), so Under Review is the only certificate tab they need.
+        # Managers are only ever involved in a Protective-type IC's approval
+        # chain (after Issuing), so Under Review is the only IC tab they need.
         self.tabUnderReviewICs.addOptions([self.optionViewIC, self.optionAcceptIC, self.optionRequestEditsIC])
 
         self.setAvailableTabs(
@@ -1903,7 +1887,6 @@ class ManagerMainWindow(MainWindow):
                 [self.btnWelcome],
                 [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
                 [self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs],
-                [self.btnIsolations],
                 [self.btnCertUnderReview],
             ],
             {
@@ -1912,7 +1895,6 @@ class ManagerMainWindow(MainWindow):
                     None,
                     self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs,
                 ],
-                '&Isolations': [self.btnIsolations],
                 '&ICs': [self.btnCertUnderReview],
                 '&View': [self.btnWelcome, *self._footerButtons()],
             },
@@ -1925,7 +1907,7 @@ class ManagerMainWindow(MainWindow):
     def stackTabChanged(self):
         super().stackTabChanged()
         tab = self.stack.currentWidget()
-        self.btnFAB.setVisible(tab != self.tabWelcome and tab != self.tabIsolations and tab != self.tabUnderReviewICs)
+        self.btnFAB.setVisible(tab != self.tabWelcome and tab != self.tabUnderReviewICs)
         if tab == self.tabArchivedPTWs and not globalData.archivedPTWs:
             self.refreshArchivedPTWs()
 
@@ -2041,7 +2023,7 @@ class IsolatorMainWindow(MainWindow):
                 [self.btnCertPending, self.btnCertActive, self.btnCertClosing, self.btnCertSanctioned],
             ],
             {
-                '&Certificates': [self.btnCertPending, self.btnCertActive, self.btnCertClosing, self.btnCertSanctioned],
+                '&ICs': [self.btnCertPending, self.btnCertActive, self.btnCertClosing, self.btnCertSanctioned],
                 '&View': [self.btnWelcome, *self._footerButtons()],
             },
         )
@@ -2060,11 +2042,11 @@ class IsolatorMainWindow(MainWindow):
             if err:
                 QMessageBox.warning(self, "Error", f"Failed to refresh data: {err}")
                 return
-            self.refreshCertificatesGUI()
+            self.refreshICsGUI()
             QApplication.beep()
             self.statusBar().showMessage("GUI refreshed successfully.", 2000)
 
-        globalData.refresh(self.loggedUser, None, refreshUsers=True, refreshIsolationCertificates=True, callback=on_done)
+        globalData.refresh(self.loggedUser, None, refreshUsers=True, refreshICs=True, callback=on_done)
 
 
 

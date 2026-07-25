@@ -839,14 +839,7 @@ class PTWData:
             PTWData.Approver(UserRoles.ISSUING, UserDepartments.PROD),
             PTWData.Approver(UserRoles.SAFETY, UserDepartments.SAFETY),
         ])
-        if any(isolation.type == Isolation.Types.PROTECTIVE for isolation in self.isolations) and self.mos:
-            requiredApprovers.extend([
-                [PTWData.Approver(UserRoles.PDH, UserDepartments.PROD)],
-                [PTWData.Approver(UserRoles.PGM, UserDepartments.PROD)],
-                [PTWData.Approver(UserRoles.SOD)],
-                [PTWData.Approver(UserRoles.DFGM)],
-            ])
-        elif self.type in [PTWData.Types.HT, PTWData.Types.CS]:
+        if self.type in [PTWData.Types.HT, PTWData.Types.CS]:
             requiredApprovers.extend([
                 [PTWData.Approver(UserRoles.PGM, UserDepartments.PROD)],
                 [PTWData.Approver(UserRoles.DFGM)],

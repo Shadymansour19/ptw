@@ -17,12 +17,11 @@ from commonDb import CommonDB
 from usersDb import UsersDb
 from ptwDb import PtwsDb
 from risksDb import RisksDb
-from IsolationDb import IsolationDb
-from IsolationCertificateDb import IsolationCertificateDb
+from ICDb import ICDb
 from User import User, UserRoles, UserDepartments
 from GlobalData import globalData
 from PTWData import PTWData
-from Isolation import Isolation, IsolationCertificate
+from Isolation import IC
 from utils import objToDict
 
 # Resolve the directory that contains this file (works both as a plain script and
@@ -141,9 +140,8 @@ try:
     userDB = UsersDb()
     ptwDB = PtwsDb()
     risksDB = RisksDb()
-    isoDB = IsolationDb()
-    certDB = IsolationCertificateDb()
-    globalData.refresh(userDB, ptwDB, isoDB, certDB)
+    icDB = ICDb()
+    globalData.refresh(userDB, ptwDB, icDB)
     log.info("All databases initialized successfully")
 except Exception as e:
     log.critical("Database initialization failed: %s", e, exc_info=True)
@@ -164,7 +162,7 @@ def _periodic_refresh():
     while True:
         sleep(_DB_PERIODIC_REFRESH_INTERVAL)
         try:
-            globalData.refresh(userDB, ptwDB, isoDB, certDB)
+            globalData.refresh(userDB, ptwDB, icDB)
             log.info("Periodic DB resync completed")
         except Exception as e:
             log.error("Periodic DB resync failed: %s", e, exc_info=True)
@@ -951,16 +949,18 @@ def runPTW():
 
     try:
         if ok:
-            ptwDB.runAcceptPTW(ptwId, ia, ts, comment)
             with globalData.lock:
-                for iso in ptw.isolations:
-                    if iso.tag not in globalData.isolations:
-                        globalData.isolations[iso.tag] = Isolation(type=iso.type, tag=iso.tag, description=iso.description)
-                    globalData.isolations[iso.tag].linkPTW(ptwId)
-                    isoDB.updateIsolation(globalData.isolations[iso.tag])
+                unisolatedICs = [
+                    icId for icId in ptw.linked_ics
+                    if not (ic := globalData.ics.get(int(icId))) or ic.getStatus() != IC.Status.ACTIVE
+                ]
+            if unisolatedICs:
+                log.warning("POST /ptws/run: forbidden — PTW #%s has non-isolated linked IC(s) %s", ptwId, unisolatedICs)
+                return jsonify({"success": False, "error": f"Cannot run: IC(s) #{', '.join(unisolatedICs)} are not isolated"}), 403
+            ptwDB.runAcceptPTW(ptwId, ia, ts, comment)
             _sync_ptw(ptwId)
             _broadcast("ptw_run", {"ptw_id": ptwId, "accepted": True, "by": ia})
-            log.info("PTW run accepted: id=%s by IA='%s' isolations=%d", ptwId, ia, len(ptw.isolations))
+            log.info("PTW run accepted: id=%s by IA='%s'", ptwId, ia)
             return jsonify({"success": True})
         else:
             ptwDB.runRejectPTW(ptwId, ia, ts, comment)
@@ -1027,18 +1027,8 @@ def hldPTW():
         return jsonify({"success": False, "error": f"PTW# {ptwId} not found"}), 400
 
     try:
-        keepTags = ptw.getKeepIsolations()
         if ok:
             ptwDB.hldAcceptPTW(ptwId, ia, ts, comment)
-            with globalData.lock:
-                for iso in ptw.isolations:
-                    if iso.tag not in globalData.isolations:
-                        continue
-                    if iso.tag in keepTags:
-                        globalData.isolations[iso.tag].holdPTW(ptwId)
-                    else:
-                        globalData.isolations[iso.tag].unlinkPTW(ptwId)
-                    isoDB.updateIsolation(globalData.isolations[iso.tag])
             _sync_ptw(ptwId)
             _broadcast("ptw_hold", {"ptw_id": ptwId, "accepted": True, "by": ia})
             log.info("PTW hold accepted: id=%s by IA='%s'", ptwId, ia)
@@ -1109,13 +1099,6 @@ def clsPTW():
     try:
         if ok:
             ptwDB.clsAcceptPTW(ptwId, ia, ts, comment)
-            with globalData.lock:
-                for iso in ptw.isolations:
-                    if iso.tag in globalData.isolations:
-                        globalData.isolations[iso.tag].unlinkPTW(ptwId)
-                        isoDB.updateIsolation(globalData.isolations[iso.tag])
-                    else:
-                        log.critical("PTW close: isolation tag='%s' not in active isolations (PTW #%s) — data inconsistency", iso.tag, ptwId)
             _sync_ptw(ptwId)
             _broadcast("ptw_close", {"ptw_id": ptwId, "accepted": True, "by": ia})
             log.info("PTW closed (accepted): id=%s by IA='%s'", ptwId, ia)
@@ -1313,151 +1296,136 @@ def copyPtwAttachments():
         return jsonify({"success": False, "error": str(e)}), 400
 
 
-@app.route("/isolations", methods=["GET"])
-def getAllIsolations():
+@app.route("/ics", methods=["GET"])
+def getAllICs():
     user = getVerifiedUser(request.authorization)
     if user is None:
-        log.warning("GET /isolations unauthorized (ip=%s)", request.remote_addr)
-        return jsonify({"success": False, "error": "Unauthorized"}), 401
-    try:
-        isolations = isoDB.getAllIsolations()
-        log.debug("GET /isolations: %d isolations returned to user='%s'", len(isolations), user.getUsername())
-        return jsonify({"success": True, "isolations": objToDict([iso for iso in isolations.values()])})
-    except Exception as e:
-        log.error("GET /isolations failed: %s", e, exc_info=True)
-        return jsonify({"success": False, "error": str(e)}), 400
-
-
-@app.route("/isolation-certificates", methods=["GET"])
-def getAllIsolationCertificates():
-    user = getVerifiedUser(request.authorization)
-    if user is None:
-        log.warning("GET /isolation-certificates unauthorized (ip=%s)", request.remote_addr)
+        log.warning("GET /ics unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     try:
         data = request.get_json(silent=True) or {}
         dep = user.getDepartment() if user.getRole() == UserRoles.USER else data.get('department')
         with globalData.lock:
-            snapshot = list(globalData.isolationCertificates.values())
-        certs = [c for c in snapshot if dep is None or (c.department or '').casefold() == dep.casefold()]
-        log.debug("GET /isolation-certificates: %d certificates returned to user='%s'", len(certs), user.getUsername())
-        return jsonify({"success": True, "certificates": objToDict(certs)})
+            snapshot = list(globalData.ics.values())
+        ics = [c for c in snapshot if dep is None or (c.department or '').casefold() == dep.casefold()]
+        log.debug("GET /ics: %d ICs returned to user='%s'", len(ics), user.getUsername())
+        return jsonify({"success": True, "ics": objToDict(ics)})
     except Exception as e:
-        log.error("GET /isolation-certificates failed: %s", e, exc_info=True)
+        log.error("GET /ics failed: %s", e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
 
 
-@app.route("/isolation-certificates", methods=["POST"])
-def addIsolationCertificateRequest():
+@app.route("/ics", methods=["POST"])
+def addICRequest():
     user = getVerifiedUser(request.authorization)
     if user is None:
-        log.warning("POST /isolation-certificates unauthorized (ip=%s)", request.remote_addr)
+        log.warning("POST /ics unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     if user.getRole() == UserRoles.GUEST:
-        log.warning("POST /isolation-certificates: forbidden for guest '%s'", user.getUsername())
+        log.warning("POST /ics: forbidden for guest '%s'", user.getUsername())
         return jsonify({"success": False, "error": "Unauthorized"}), 401
-    certDict = request.get_json(silent=True) or {}
+    icDict = request.get_json(silent=True) or {}
     try:
-        cert = IsolationCertificate(certDict)
-        cert.department = user.getDepartment()
-        cert.requestor = user.getUsername()
-        cert.requestor_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-        cert_id = certDB.addCertificateFromDict(objToDict(cert))
-        new_cert = certDB.getCertificateById(cert_id)
-        if new_cert:
+        ic = IC(icDict)
+        ic.department = user.getDepartment()
+        ic.requestor = user.getUsername()
+        ic.requestor_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        ic_id = icDB.addICFromDict(objToDict(ic))
+        new_ic = icDB.getICById(ic_id)
+        if new_ic:
             with globalData.lock:
-                globalData.isolationCertificates[new_cert.id] = new_cert
+                globalData.ics[new_ic.id] = new_ic
         _broadcast(
-            "new_isolation_certificate",
-            {"certificate_id": cert_id, "type": cert.type, "by": user.getUsername()},
+            "new_ic",
+            {"ic_id": ic_id, "type": ic.type, "by": user.getUsername()},
             roles=[UserRoles.ISSUING],
         )
-        log.info("Isolation certificate created: id=%s type='%s' by='%s'", cert_id, cert.type, user.getUsername())
-        return jsonify({"success": True, "certificate-id": cert_id})
+        log.info("IC created: id=%s type='%s' by='%s'", ic_id, ic.type, user.getUsername())
+        return jsonify({"success": True, "ic-id": ic_id})
     except Exception as e:
-        log.error("POST /isolation-certificates failed: %s", e, exc_info=True)
+        log.error("POST /ics failed: %s", e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
 
 
-@app.route("/isolation-certificates/approvals", methods=["POST"])
-def updateCertificateApprovals():
+@app.route("/ics/approvals", methods=["POST"])
+def updateICApprovals():
     user = getVerifiedUser(request.authorization)
     if user is None:
-        log.warning("POST /isolation-certificates/approvals unauthorized (ip=%s)", request.remote_addr)
+        log.warning("POST /ics/approvals unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     if user.getRole() == UserRoles.GUEST:
-        log.warning("POST /isolation-certificates/approvals: forbidden for guest '%s'", user.getUsername())
+        log.warning("POST /ics/approvals: forbidden for guest '%s'", user.getUsername())
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
-    certId = payload.get('certificate-id')
+    icId = payload.get('ic-id')
     approvalData = payload.get('approval')
-    if certId is None or not approvalData:
-        log.warning("POST /isolation-certificates/approvals: missing required fields (user='%s')", user.getUsername())
+    if icId is None or not approvalData:
+        log.warning("POST /ics/approvals: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     with globalData.lock:
-        cert = globalData.isolationCertificates.get(certId)
-    if cert is None:
-        log.warning("POST /isolation-certificates/approvals: certificate #%s not found (user='%s')", certId, user.getUsername())
-        return jsonify({"success": False, "error": "Isolation certificate not found"}), 404
-    if cert.getApprovalStatus(role=user.getRole(), department=user.getDepartment()) != IsolationCertificate.Status.REQUESTED:
+        ic = globalData.ics.get(icId)
+    if ic is None:
+        log.warning("POST /ics/approvals: IC #%s not found (user='%s')", icId, user.getUsername())
+        return jsonify({"success": False, "error": "IC not found"}), 404
+    if ic.getApprovalStatus(role=user.getRole(), department=user.getDepartment()) != IC.Status.REQUESTED:
         log.warning(
-            "POST /isolation-certificates/approvals: forbidden — user '%s' (role=%s, dept=%s) not an eligible approver for certificate #%s at its current stage",
-            user.getUsername(), user.getRole(), user.getDepartment(), certId,
+            "POST /ics/approvals: forbidden — user '%s' (role=%s, dept=%s) not an eligible approver for IC #%s at its current stage",
+            user.getUsername(), user.getRole(), user.getDepartment(), icId,
         )
-        return jsonify({"success": False, "error": "You are not an eligible approver for this certificate at its current stage"}), 403
-    approval = IsolationCertificate.Approval(**approvalData)
+        return jsonify({"success": False, "error": "You are not an eligible approver for this IC at its current stage"}), 403
+    approval = IC.Approval(**approvalData)
     try:
-        certDB.updateCertificateApprovals(certId, approval)
-        updated = certDB.getCertificateById(certId)
-        if updated and updated.isolate_asap and not updated.isolate_requestor and updated.getApprovalStatus() == IsolationCertificate.Status.APPROVED:
+        icDB.updateICApprovals(icId, approval)
+        updated = icDB.getICById(icId)
+        if updated and updated.isolate_asap and not updated.isolate_requestor and updated.getApprovalStatus() == IC.Status.APPROVED:
             # Isolate ASAP skips the manual "Request Isolate" step the moment full approval
             # is reached — it still has to go through IA confirmation and isolator execution,
             # it just doesn't wait on a person to click Request Isolate first.
-            certDB.updateCertificateFromDict({
-                'id': certId,
+            icDB.updateICFromDict({
+                'id': icId,
                 'isolate_requestor': updated.requestor,
                 'isolate_requestor_timestamp': datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
             })
-            updated = certDB.getCertificateById(certId)
+            updated = icDB.getICById(icId)
         if updated:
             with globalData.lock:
-                globalData.isolationCertificates[updated.id] = updated
-        _broadcast("isolation_certificate_approval", {"certificate_id": certId, "action": str(approval.action), "by": user.getUsername()})
-        log.info("Isolation certificate approval updated: id=%s action='%s' by='%s'", certId, approval.action, user.getUsername())
+                globalData.ics[updated.id] = updated
+        _broadcast("ic_approval", {"ic_id": icId, "action": str(approval.action), "by": user.getUsername()})
+        log.info("IC approval updated: id=%s action='%s' by='%s'", icId, approval.action, user.getUsername())
         return jsonify({"success": True})
     except Exception as e:
-        log.error("POST /isolation-certificates/approvals failed for certificate #%s: %s", certId, e, exc_info=True)
+        log.error("POST /ics/approvals failed for IC #%s: %s", icId, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
 
 
-@app.route("/isolation-certificates/isolate-request", methods=["POST"])
-def requestIsolateCertificate():
+@app.route("/ics/isolate-request", methods=["POST"])
+def requestIsolateIC():
     user = getVerifiedUser(request.authorization)
     if user is None:
-        log.warning("POST /isolation-certificates/isolate-request unauthorized (ip=%s)", request.remote_addr)
+        log.warning("POST /ics/isolate-request unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     if user.getRole() == UserRoles.GUEST:
-        log.warning("POST /isolation-certificates/isolate-request: forbidden for guest '%s'", user.getUsername())
+        log.warning("POST /ics/isolate-request: forbidden for guest '%s'", user.getUsername())
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
-    certId = payload.get('certificate-id')
-    if certId is None:
-        log.warning("POST /isolation-certificates/isolate-request: missing required fields (user='%s')", user.getUsername())
+    icId = payload.get('ic-id')
+    if icId is None:
+        log.warning("POST /ics/isolate-request: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     with globalData.lock:
-        cert = globalData.isolationCertificates.get(certId)
-    if cert is None:
-        log.warning("POST /isolation-certificates/isolate-request: certificate #%s not found (user='%s')", certId, user.getUsername())
-        return jsonify({"success": False, "error": "Isolation certificate not found"}), 404
-    if cert.getStatus() != IsolationCertificate.Status.APPROVED:
+        ic = globalData.ics.get(icId)
+    if ic is None:
+        log.warning("POST /ics/isolate-request: IC #%s not found (user='%s')", icId, user.getUsername())
+        return jsonify({"success": False, "error": "IC not found"}), 404
+    if ic.getStatus() != IC.Status.APPROVED:
         log.warning(
-            "POST /isolation-certificates/isolate-request: forbidden — certificate #%s not awaiting an isolate request (user='%s')",
-            certId, user.getUsername(),
+            "POST /ics/isolate-request: forbidden — IC #%s not awaiting an isolate request (user='%s')",
+            icId, user.getUsername(),
         )
-        return jsonify({"success": False, "error": "Certificate is not awaiting an isolate request"}), 403
+        return jsonify({"success": False, "error": "IC is not awaiting an isolate request"}), 403
     try:
-        certDB.updateCertificateFromDict({
-            'id': certId,
+        icDB.updateICFromDict({
+            'id': icId,
             'isolate_requestor': user.getUsername(),
             'isolate_requestor_timestamp': datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
             # Reset any stale decision from a previous, since-returned attempt so a fresh
@@ -1466,146 +1434,146 @@ def requestIsolateCertificate():
             'isolate_issuing_timestamp': None,
             'isolate_issuing_action': '',
         })
-        updated = certDB.getCertificateById(certId)
+        updated = icDB.getICById(icId)
         if updated:
             with globalData.lock:
-                globalData.isolationCertificates[updated.id] = updated
-        _broadcast("isolation_certificate_isolate_request", {"certificate_id": certId, "by": user.getUsername()})
-        log.info("Isolation certificate isolate requested: id=%s by='%s'", certId, user.getUsername())
+                globalData.ics[updated.id] = updated
+        _broadcast("ic_isolate_request", {"ic_id": icId, "by": user.getUsername()})
+        log.info("IC isolate requested: id=%s by='%s'", icId, user.getUsername())
         return jsonify({"success": True})
     except Exception as e:
-        log.error("POST /isolation-certificates/isolate-request failed for certificate #%s: %s", certId, e, exc_info=True)
+        log.error("POST /ics/isolate-request failed for IC #%s: %s", icId, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
 
 
-@app.route("/isolation-certificates/isolate-confirm", methods=["POST"])
-def confirmIsolateCertificate():
+@app.route("/ics/isolate-confirm", methods=["POST"])
+def confirmIsolateIC():
     user = getVerifiedUser(request.authorization)
     if user is None:
-        log.warning("POST /isolation-certificates/isolate-confirm unauthorized (ip=%s)", request.remote_addr)
+        log.warning("POST /ics/isolate-confirm unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     if user.getRole() != UserRoles.ISSUING:
-        log.warning("POST /isolation-certificates/isolate-confirm: forbidden for role='%s' user='%s'", user.getRole(), user.getUsername())
+        log.warning("POST /ics/isolate-confirm: forbidden for role='%s' user='%s'", user.getRole(), user.getUsername())
         return jsonify({"success": False, "error": "Forbidden"}), 403
     payload = request.get_json(silent=True) or {}
-    certId = payload.get('certificate-id')
+    icId = payload.get('ic-id')
     response = payload.get('response')
-    if certId is None or response is None:
-        log.warning("POST /isolation-certificates/isolate-confirm: missing required fields (user='%s')", user.getUsername())
+    if icId is None or response is None:
+        log.warning("POST /ics/isolate-confirm: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     with globalData.lock:
-        cert = globalData.isolationCertificates.get(certId)
-    if cert is None:
-        log.warning("POST /isolation-certificates/isolate-confirm: certificate #%s not found (user='%s')", certId, user.getUsername())
-        return jsonify({"success": False, "error": "Isolation certificate not found"}), 404
-    if cert.getStatus() != IsolationCertificate.Status.ISOLATE_CONFIRMING:
+        ic = globalData.ics.get(icId)
+    if ic is None:
+        log.warning("POST /ics/isolate-confirm: IC #%s not found (user='%s')", icId, user.getUsername())
+        return jsonify({"success": False, "error": "IC not found"}), 404
+    if ic.getStatus() != IC.Status.ISOLATE_CONFIRMING:
         log.warning(
-            "POST /isolation-certificates/isolate-confirm: forbidden — certificate #%s not awaiting IA confirmation (user='%s')",
-            certId, user.getUsername(),
+            "POST /ics/isolate-confirm: forbidden — IC #%s not awaiting IA confirmation (user='%s')",
+            icId, user.getUsername(),
         )
-        return jsonify({"success": False, "error": "Certificate is not awaiting IA confirmation"}), 403
+        return jsonify({"success": False, "error": "IC is not awaiting IA confirmation"}), 403
     try:
-        action = IsolationCertificate.ApprovalActions.APPROVED if response else IsolationCertificate.ApprovalActions.RETURNED
-        certDB.updateCertificateFromDict({
-            'id': certId,
+        action = IC.ApprovalActions.APPROVED if response else IC.ApprovalActions.RETURNED
+        icDB.updateICFromDict({
+            'id': icId,
             'isolate_issuing': user.getUsername(),
             'isolate_issuing_timestamp': datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
             'isolate_issuing_action': action,
         })
-        updated = certDB.getCertificateById(certId)
+        updated = icDB.getICById(icId)
         if updated:
             with globalData.lock:
-                globalData.isolationCertificates[updated.id] = updated
-        _broadcast("isolation_certificate_isolate_confirm", {"certificate_id": certId, "action": str(action), "by": user.getUsername()})
-        log.info("Isolation certificate isolate confirmation: id=%s action='%s' by='%s'", certId, action, user.getUsername())
+                globalData.ics[updated.id] = updated
+        _broadcast("ic_isolate_confirm", {"ic_id": icId, "action": str(action), "by": user.getUsername()})
+        log.info("IC isolate confirmation: id=%s action='%s' by='%s'", icId, action, user.getUsername())
         return jsonify({"success": True})
     except Exception as e:
-        log.error("POST /isolation-certificates/isolate-confirm failed for certificate #%s: %s", certId, e, exc_info=True)
+        log.error("POST /ics/isolate-confirm failed for IC #%s: %s", icId, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
 
 
-@app.route("/isolation-certificates/isolate-execute", methods=["POST"])
-def executeIsolateCertificate():
+@app.route("/ics/isolate-execute", methods=["POST"])
+def executeIsolateIC():
     user = getVerifiedUser(request.authorization)
     if user is None:
-        log.warning("POST /isolation-certificates/isolate-execute unauthorized (ip=%s)", request.remote_addr)
+        log.warning("POST /ics/isolate-execute unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     if user.getRole() != UserRoles.ISOLATOR:
-        log.warning("POST /isolation-certificates/isolate-execute: forbidden for role='%s' user='%s'", user.getRole(), user.getUsername())
+        log.warning("POST /ics/isolate-execute: forbidden for role='%s' user='%s'", user.getRole(), user.getUsername())
         return jsonify({"success": False, "error": "Forbidden"}), 403
     payload = request.get_json(silent=True) or {}
-    certId = payload.get('certificate-id')
-    if certId is None:
-        log.warning("POST /isolation-certificates/isolate-execute: missing required fields (user='%s')", user.getUsername())
+    icId = payload.get('ic-id')
+    if icId is None:
+        log.warning("POST /ics/isolate-execute: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     with globalData.lock:
-        cert = globalData.isolationCertificates.get(certId)
-    if cert is None:
-        log.warning("POST /isolation-certificates/isolate-execute: certificate #%s not found (user='%s')", certId, user.getUsername())
-        return jsonify({"success": False, "error": "Isolation certificate not found"}), 404
-    if cert.getStatus() != IsolationCertificate.Status.PENDING:
+        ic = globalData.ics.get(icId)
+    if ic is None:
+        log.warning("POST /ics/isolate-execute: IC #%s not found (user='%s')", icId, user.getUsername())
+        return jsonify({"success": False, "error": "IC not found"}), 404
+    if ic.getStatus() != IC.Status.PENDING:
         log.warning(
-            "POST /isolation-certificates/isolate-execute: forbidden — certificate #%s not ready for isolator execution (user='%s')",
-            certId, user.getUsername(),
+            "POST /ics/isolate-execute: forbidden — IC #%s not ready for isolator execution (user='%s')",
+            icId, user.getUsername(),
         )
-        return jsonify({"success": False, "error": "Certificate is not ready for isolator execution"}), 403
+        return jsonify({"success": False, "error": "IC is not ready for isolator execution"}), 403
     try:
         # Merge by tag rather than trusting the submitted list wholesale — only lock_num/
         # lock_box_num are ever taken from the client, tag/description/state stay server-authoritative.
         lockUpdatesByTag = {i.get('tag'): i for i in (payload.get('items') or []) if i.get('tag')}
         updatedItems = []
-        for item in cert.items:
+        for item in ic.items:
             upd = lockUpdatesByTag.get(item.tag)
             if upd:
                 item.lock_num = upd.get('lock_num', item.lock_num)
                 item.lock_box_num = upd.get('lock_box_num', item.lock_box_num)
             updatedItems.append(objToDict(item))
-        certDB.updateCertificateFromDict({
-            'id': certId,
+        icDB.updateICFromDict({
+            'id': icId,
             'isolate_isolator': user.getUsername(),
             'isolate_isolator_timestamp': datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
             'items': updatedItems,
         })
-        updated = certDB.getCertificateById(certId)
+        updated = icDB.getICById(icId)
         if updated:
             with globalData.lock:
-                globalData.isolationCertificates[updated.id] = updated
-        _broadcast("isolation_certificate_isolate_execute", {"certificate_id": certId, "by": user.getUsername()})
-        log.info("Isolation certificate isolate execution: id=%s by='%s'", certId, user.getUsername())
+                globalData.ics[updated.id] = updated
+        _broadcast("ic_isolate_execute", {"ic_id": icId, "by": user.getUsername()})
+        log.info("IC isolate execution: id=%s by='%s'", icId, user.getUsername())
         return jsonify({"success": True})
     except Exception as e:
-        log.error("POST /isolation-certificates/isolate-execute failed for certificate #%s: %s", certId, e, exc_info=True)
+        log.error("POST /ics/isolate-execute failed for IC #%s: %s", icId, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
 
 
-@app.route("/isolation-certificates/deisolate-request", methods=["POST"])
-def requestDeisolateCertificate():
+@app.route("/ics/deisolate-request", methods=["POST"])
+def requestDeisolateIC():
     user = getVerifiedUser(request.authorization)
     if user is None:
-        log.warning("POST /isolation-certificates/deisolate-request unauthorized (ip=%s)", request.remote_addr)
+        log.warning("POST /ics/deisolate-request unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     if user.getRole() == UserRoles.GUEST:
-        log.warning("POST /isolation-certificates/deisolate-request: forbidden for guest '%s'", user.getUsername())
+        log.warning("POST /ics/deisolate-request: forbidden for guest '%s'", user.getUsername())
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
-    certId = payload.get('certificate-id')
-    if certId is None:
-        log.warning("POST /isolation-certificates/deisolate-request: missing required fields (user='%s')", user.getUsername())
+    icId = payload.get('ic-id')
+    if icId is None:
+        log.warning("POST /ics/deisolate-request: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     with globalData.lock:
-        cert = globalData.isolationCertificates.get(certId)
-    if cert is None:
-        log.warning("POST /isolation-certificates/deisolate-request: certificate #%s not found (user='%s')", certId, user.getUsername())
-        return jsonify({"success": False, "error": "Isolation certificate not found"}), 404
-    if cert.getStatus() != IsolationCertificate.Status.ACTIVE:
+        ic = globalData.ics.get(icId)
+    if ic is None:
+        log.warning("POST /ics/deisolate-request: IC #%s not found (user='%s')", icId, user.getUsername())
+        return jsonify({"success": False, "error": "IC not found"}), 404
+    if ic.getStatus() != IC.Status.ACTIVE:
         log.warning(
-            "POST /isolation-certificates/deisolate-request: forbidden — certificate #%s not awaiting a de-isolate request (user='%s')",
-            certId, user.getUsername(),
+            "POST /ics/deisolate-request: forbidden — IC #%s not awaiting a de-isolate request (user='%s')",
+            icId, user.getUsername(),
         )
-        return jsonify({"success": False, "error": "Certificate is not awaiting a de-isolate request"}), 403
+        return jsonify({"success": False, "error": "IC is not awaiting a de-isolate request"}), 403
     try:
-        certDB.updateCertificateFromDict({
-            'id': certId,
+        icDB.updateICFromDict({
+            'id': icId,
             'deisolate_requestor': user.getUsername(),
             'deisolate_requestor_timestamp': datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
             # Reset any stale decision from a previous, since-returned attempt — same reasoning
@@ -1614,205 +1582,205 @@ def requestDeisolateCertificate():
             'deisolate_issuing_timestamp': None,
             'deisolate_issuing_action': '',
         })
-        updated = certDB.getCertificateById(certId)
+        updated = icDB.getICById(icId)
         if updated:
             with globalData.lock:
-                globalData.isolationCertificates[updated.id] = updated
-        _broadcast("isolation_certificate_deisolate_request", {"certificate_id": certId, "by": user.getUsername()})
-        log.info("Isolation certificate de-isolate requested: id=%s by='%s'", certId, user.getUsername())
+                globalData.ics[updated.id] = updated
+        _broadcast("ic_deisolate_request", {"ic_id": icId, "by": user.getUsername()})
+        log.info("IC de-isolate requested: id=%s by='%s'", icId, user.getUsername())
         return jsonify({"success": True})
     except Exception as e:
-        log.error("POST /isolation-certificates/deisolate-request failed for certificate #%s: %s", certId, e, exc_info=True)
+        log.error("POST /ics/deisolate-request failed for IC #%s: %s", icId, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
 
 
-@app.route("/isolation-certificates/deisolate-confirm", methods=["POST"])
-def confirmDeisolateCertificate():
+@app.route("/ics/deisolate-confirm", methods=["POST"])
+def confirmDeisolateIC():
     user = getVerifiedUser(request.authorization)
     if user is None:
-        log.warning("POST /isolation-certificates/deisolate-confirm unauthorized (ip=%s)", request.remote_addr)
+        log.warning("POST /ics/deisolate-confirm unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     if user.getRole() != UserRoles.ISSUING:
-        log.warning("POST /isolation-certificates/deisolate-confirm: forbidden for role='%s' user='%s'", user.getRole(), user.getUsername())
+        log.warning("POST /ics/deisolate-confirm: forbidden for role='%s' user='%s'", user.getRole(), user.getUsername())
         return jsonify({"success": False, "error": "Forbidden"}), 403
     payload = request.get_json(silent=True) or {}
-    certId = payload.get('certificate-id')
+    icId = payload.get('ic-id')
     response = payload.get('response')
-    if certId is None or response is None:
-        log.warning("POST /isolation-certificates/deisolate-confirm: missing required fields (user='%s')", user.getUsername())
+    if icId is None or response is None:
+        log.warning("POST /ics/deisolate-confirm: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     with globalData.lock:
-        cert = globalData.isolationCertificates.get(certId)
-    if cert is None:
-        log.warning("POST /isolation-certificates/deisolate-confirm: certificate #%s not found (user='%s')", certId, user.getUsername())
-        return jsonify({"success": False, "error": "Isolation certificate not found"}), 404
-    if cert.getStatus() != IsolationCertificate.Status.DEISOLATE_CONFIRMING:
+        ic = globalData.ics.get(icId)
+    if ic is None:
+        log.warning("POST /ics/deisolate-confirm: IC #%s not found (user='%s')", icId, user.getUsername())
+        return jsonify({"success": False, "error": "IC not found"}), 404
+    if ic.getStatus() != IC.Status.DEISOLATE_CONFIRMING:
         log.warning(
-            "POST /isolation-certificates/deisolate-confirm: forbidden — certificate #%s not awaiting IA confirmation (user='%s')",
-            certId, user.getUsername(),
+            "POST /ics/deisolate-confirm: forbidden — IC #%s not awaiting IA confirmation (user='%s')",
+            icId, user.getUsername(),
         )
-        return jsonify({"success": False, "error": "Certificate is not awaiting IA confirmation"}), 403
+        return jsonify({"success": False, "error": "IC is not awaiting IA confirmation"}), 403
     try:
-        action = IsolationCertificate.ApprovalActions.APPROVED if response else IsolationCertificate.ApprovalActions.RETURNED
-        certDB.updateCertificateFromDict({
-            'id': certId,
+        action = IC.ApprovalActions.APPROVED if response else IC.ApprovalActions.RETURNED
+        icDB.updateICFromDict({
+            'id': icId,
             'deisolate_issuing': user.getUsername(),
             'deisolate_issuing_timestamp': datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
             'deisolate_issuing_action': action,
         })
-        updated = certDB.getCertificateById(certId)
+        updated = icDB.getICById(icId)
         if updated:
             with globalData.lock:
-                globalData.isolationCertificates[updated.id] = updated
-        _broadcast("isolation_certificate_deisolate_confirm", {"certificate_id": certId, "action": str(action), "by": user.getUsername()})
-        log.info("Isolation certificate de-isolate confirmation: id=%s action='%s' by='%s'", certId, action, user.getUsername())
+                globalData.ics[updated.id] = updated
+        _broadcast("ic_deisolate_confirm", {"ic_id": icId, "action": str(action), "by": user.getUsername()})
+        log.info("IC de-isolate confirmation: id=%s action='%s' by='%s'", icId, action, user.getUsername())
         return jsonify({"success": True})
     except Exception as e:
-        log.error("POST /isolation-certificates/deisolate-confirm failed for certificate #%s: %s", certId, e, exc_info=True)
+        log.error("POST /ics/deisolate-confirm failed for IC #%s: %s", icId, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
 
 
-@app.route("/isolation-certificates/deisolate-execute", methods=["POST"])
-def executeDeisolateCertificate():
+@app.route("/ics/deisolate-execute", methods=["POST"])
+def executeDeisolateIC():
     user = getVerifiedUser(request.authorization)
     if user is None:
-        log.warning("POST /isolation-certificates/deisolate-execute unauthorized (ip=%s)", request.remote_addr)
+        log.warning("POST /ics/deisolate-execute unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     if user.getRole() != UserRoles.ISOLATOR:
-        log.warning("POST /isolation-certificates/deisolate-execute: forbidden for role='%s' user='%s'", user.getRole(), user.getUsername())
+        log.warning("POST /ics/deisolate-execute: forbidden for role='%s' user='%s'", user.getRole(), user.getUsername())
         return jsonify({"success": False, "error": "Forbidden"}), 403
     payload = request.get_json(silent=True) or {}
-    certId = payload.get('certificate-id')
-    if certId is None:
-        log.warning("POST /isolation-certificates/deisolate-execute: missing required fields (user='%s')", user.getUsername())
+    icId = payload.get('ic-id')
+    if icId is None:
+        log.warning("POST /ics/deisolate-execute: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     with globalData.lock:
-        cert = globalData.isolationCertificates.get(certId)
-    if cert is None:
-        log.warning("POST /isolation-certificates/deisolate-execute: certificate #%s not found (user='%s')", certId, user.getUsername())
-        return jsonify({"success": False, "error": "Isolation certificate not found"}), 404
-    if cert.getStatus() != IsolationCertificate.Status.CLOSING:
+        ic = globalData.ics.get(icId)
+    if ic is None:
+        log.warning("POST /ics/deisolate-execute: IC #%s not found (user='%s')", icId, user.getUsername())
+        return jsonify({"success": False, "error": "IC not found"}), 404
+    if ic.getStatus() != IC.Status.CLOSING:
         log.warning(
-            "POST /isolation-certificates/deisolate-execute: forbidden — certificate #%s not ready for isolator de-isolation (user='%s')",
-            certId, user.getUsername(),
+            "POST /ics/deisolate-execute: forbidden — IC #%s not ready for isolator de-isolation (user='%s')",
+            icId, user.getUsername(),
         )
-        return jsonify({"success": False, "error": "Certificate is not ready for isolator de-isolation"}), 403
+        return jsonify({"success": False, "error": "IC is not ready for isolator de-isolation"}), 403
     try:
-        certDB.updateCertificateFromDict({
-            'id': certId,
+        icDB.updateICFromDict({
+            'id': icId,
             'deisolate_isolator': user.getUsername(),
             'deisolate_isolator_timestamp': datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
         })
-        updated = certDB.getCertificateById(certId)
+        updated = icDB.getICById(icId)
         if updated:
             with globalData.lock:
-                globalData.isolationCertificates[updated.id] = updated
-        _broadcast("isolation_certificate_deisolate_execute", {"certificate_id": certId, "by": user.getUsername()})
-        log.info("Isolation certificate de-isolate execution: id=%s by='%s'", certId, user.getUsername())
+                globalData.ics[updated.id] = updated
+        _broadcast("ic_deisolate_execute", {"ic_id": icId, "by": user.getUsername()})
+        log.info("IC de-isolate execution: id=%s by='%s'", icId, user.getUsername())
         return jsonify({"success": True})
     except Exception as e:
-        log.error("POST /isolation-certificates/deisolate-execute failed for certificate #%s: %s", certId, e, exc_info=True)
+        log.error("POST /ics/deisolate-execute failed for IC #%s: %s", icId, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
 
 
-@app.route("/isolation-certificates/link-ptw", methods=["POST"])
-def linkPTWToCertificate():
+@app.route("/ics/link-ptw", methods=["POST"])
+def linkPTWToIC():
     user = getVerifiedUser(request.authorization)
     if user is None:
-        log.warning("POST /isolation-certificates/link-ptw unauthorized (ip=%s)", request.remote_addr)
+        log.warning("POST /ics/link-ptw unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     if user.getRole() == UserRoles.GUEST:
-        log.warning("POST /isolation-certificates/link-ptw: forbidden for guest '%s'", user.getUsername())
+        log.warning("POST /ics/link-ptw: forbidden for guest '%s'", user.getUsername())
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
-    certId = payload.get('certificate-id')
+    icId = payload.get('ic-id')
     ptwId = payload.get('ptw-id')
-    if certId is None or not ptwId:
-        log.warning("POST /isolation-certificates/link-ptw: missing required fields (user='%s')", user.getUsername())
+    if icId is None or not ptwId:
+        log.warning("POST /ics/link-ptw: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     with globalData.lock:
-        cert = globalData.isolationCertificates.get(certId)
-    if cert is None:
-        log.warning("POST /isolation-certificates/link-ptw: certificate #%s not found (user='%s')", certId, user.getUsername())
-        return jsonify({"success": False, "error": "Isolation certificate not found"}), 404
-    if str(ptwId) in cert.linked_ptws:
-        return jsonify({"success": False, "error": f"PTW #{ptwId} is already linked to this certificate"}), 400
+        ic = globalData.ics.get(icId)
+    if ic is None:
+        log.warning("POST /ics/link-ptw: IC #%s not found (user='%s')", icId, user.getUsername())
+        return jsonify({"success": False, "error": "IC not found"}), 404
+    if str(ptwId) in ic.linked_ptws:
+        return jsonify({"success": False, "error": f"PTW #{ptwId} is already linked to this IC"}), 400
     try:
         ptw = ptwDB.getPTWById(ptwId)
         if ptw is None:
-            log.warning("POST /isolation-certificates/link-ptw: PTW #%s not found (user='%s')", ptwId, user.getUsername())
+            log.warning("POST /ics/link-ptw: PTW #%s not found (user='%s')", ptwId, user.getUsername())
             return jsonify({"success": False, "error": f"PTW #{ptwId} not found"}), 404
-        if not cert.canLinkPTW(ptw):
+        if not ic.canLinkPTW(ptw):
             log.warning(
-                "POST /isolation-certificates/link-ptw: forbidden — certificate #%s / PTW #%s not in a linkable state (cert status='%s', PTW approval='%s', PTW running='%s') (user='%s')",
-                certId, ptwId, cert.getStatus(), ptw.approval_status, ptw.running_status, user.getUsername(),
+                "POST /ics/link-ptw: forbidden — IC #%s / PTW #%s not in a linkable state (ic status='%s', PTW approval='%s', PTW running='%s') (user='%s')",
+                icId, ptwId, ic.getStatus(), ptw.approval_status, ptw.running_status, user.getUsername(),
             )
-            return jsonify({"success": False, "error": "Certificate or PTW is not in a linkable state"}), 403
-        cert.linkPTW(ptwId)
-        certDB.updateCertificateFromDict({
-            'id': certId,
-            'linked_ptws': cert.linked_ptws,
-            'held_by': cert.held_by,
+            return jsonify({"success": False, "error": "IC or PTW is not in a linkable state"}), 403
+        ic.linkPTW(ptwId)
+        icDB.updateICFromDict({
+            'id': icId,
+            'linked_ptws': ic.linked_ptws,
+            'held_by': ic.held_by,
         })
-        if str(certId) not in ptw.linked_ics:
-            ptw.linked_ics.append(str(certId))
+        if str(icId) not in ptw.linked_ics:
+            ptw.linked_ics.append(str(icId))
             ptwDB.updatePTWFromDict({'id': ptwId, 'linked_ics': ptw.linked_ics})
-        updated = certDB.getCertificateById(certId)
+        updated = icDB.getICById(icId)
         if updated:
             with globalData.lock:
-                globalData.isolationCertificates[updated.id] = updated
+                globalData.ics[updated.id] = updated
         _sync_ptw(ptwId)
-        _broadcast("isolation_certificate_link_ptw", {"certificate_id": certId, "ptw_id": ptwId, "by": user.getUsername()})
-        log.info("Isolation certificate linked to PTW: id=%s ptw=%s by='%s'", certId, ptwId, user.getUsername())
+        _broadcast("ic_link_ptw", {"ic_id": icId, "ptw_id": ptwId, "by": user.getUsername()})
+        log.info("IC linked to PTW: id=%s ptw=%s by='%s'", icId, ptwId, user.getUsername())
         return jsonify({"success": True})
     except Exception as e:
-        log.error("POST /isolation-certificates/link-ptw failed for certificate #%s: %s", certId, e, exc_info=True)
+        log.error("POST /ics/link-ptw failed for IC #%s: %s", icId, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
 
 
-@app.route("/isolation-certificates/unlink-ptw", methods=["POST"])
-def unlinkPTWFromCertificate():
+@app.route("/ics/unlink-ptw", methods=["POST"])
+def unlinkPTWFromIC():
     user = getVerifiedUser(request.authorization)
     if user is None:
-        log.warning("POST /isolation-certificates/unlink-ptw unauthorized (ip=%s)", request.remote_addr)
+        log.warning("POST /ics/unlink-ptw unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     if user.getRole() == UserRoles.GUEST:
-        log.warning("POST /isolation-certificates/unlink-ptw: forbidden for guest '%s'", user.getUsername())
+        log.warning("POST /ics/unlink-ptw: forbidden for guest '%s'", user.getUsername())
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     payload = request.get_json(silent=True) or {}
-    certId = payload.get('certificate-id')
+    icId = payload.get('ic-id')
     ptwId = payload.get('ptw-id')
-    if certId is None or not ptwId:
-        log.warning("POST /isolation-certificates/unlink-ptw: missing required fields (user='%s')", user.getUsername())
+    if icId is None or not ptwId:
+        log.warning("POST /ics/unlink-ptw: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     with globalData.lock:
-        cert = globalData.isolationCertificates.get(certId)
-    if cert is None:
-        log.warning("POST /isolation-certificates/unlink-ptw: certificate #%s not found (user='%s')", certId, user.getUsername())
-        return jsonify({"success": False, "error": "Isolation certificate not found"}), 404
-    if str(ptwId) not in cert.linked_ptws and str(ptwId) not in cert.held_by:
-        return jsonify({"success": False, "error": f"PTW #{ptwId} is not linked to this certificate"}), 400
+        ic = globalData.ics.get(icId)
+    if ic is None:
+        log.warning("POST /ics/unlink-ptw: IC #%s not found (user='%s')", icId, user.getUsername())
+        return jsonify({"success": False, "error": "IC not found"}), 404
+    if str(ptwId) not in ic.linked_ptws and str(ptwId) not in ic.held_by:
+        return jsonify({"success": False, "error": f"PTW #{ptwId} is not linked to this IC"}), 400
     try:
         ptw = ptwDB.getPTWById(ptwId)
-        cert.unlinkPTW(ptwId)
-        certDB.updateCertificateFromDict({
-            'id': certId,
-            'linked_ptws': cert.linked_ptws,
-            'held_by': cert.held_by,
+        ic.unlinkPTW(ptwId)
+        icDB.updateICFromDict({
+            'id': icId,
+            'linked_ptws': ic.linked_ptws,
+            'held_by': ic.held_by,
         })
-        if ptw is not None and str(certId) in ptw.linked_ics:
-            ptw.linked_ics.remove(str(certId))
+        if ptw is not None and str(icId) in ptw.linked_ics:
+            ptw.linked_ics.remove(str(icId))
             ptwDB.updatePTWFromDict({'id': ptwId, 'linked_ics': ptw.linked_ics})
-        updated = certDB.getCertificateById(certId)
+        updated = icDB.getICById(icId)
         if updated:
             with globalData.lock:
-                globalData.isolationCertificates[updated.id] = updated
+                globalData.ics[updated.id] = updated
         _sync_ptw(ptwId)
-        _broadcast("isolation_certificate_unlink_ptw", {"certificate_id": certId, "ptw_id": ptwId, "by": user.getUsername()})
-        log.info("Isolation certificate unlinked from PTW: id=%s ptw=%s by='%s'", certId, ptwId, user.getUsername())
+        _broadcast("ic_unlink_ptw", {"ic_id": icId, "ptw_id": ptwId, "by": user.getUsername()})
+        log.info("IC unlinked from PTW: id=%s ptw=%s by='%s'", icId, ptwId, user.getUsername())
         return jsonify({"success": True})
     except Exception as e:
-        log.error("POST /isolation-certificates/unlink-ptw failed for certificate #%s: %s", certId, e, exc_info=True)
+        log.error("POST /ics/unlink-ptw failed for IC #%s: %s", icId, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
 
 

@@ -5,19 +5,19 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QTableWidget, QTableWidgetIte
 from PyQt6.QtGui import QKeySequence, QAction, QShortcut
 import qtawesome as qta
 
-from Isolation import IsolationCertificate
+from Isolation import IC
 from DialogIsolationItem import DialogIsolationItem
 
 
 class TableIsolationItems(QWidget):
-    """Editable isolation-item list embedded inside an Isolation Certificate dialog."""
+    """Editable isolation-item list embedded inside an IC dialog."""
 
     def __init__(self, parent, items, readonly):
         super().__init__(parent)
         lyt = QVBoxLayout()
         self.tbl = QTableWidget()
         self.readonly = readonly
-        self.items: list[IsolationCertificate.IsolationItem] = items
+        self.items: list[IC.IsolationItem] = items
 
         self.summeryLabels = ['Tag', 'Description', 'State', 'Lock #', 'Lock Box #']
         self.summeryFields = ['tag', 'description', 'state', 'lock_num', 'lock_box_num']
@@ -81,14 +81,14 @@ class TableIsolationItems(QWidget):
         self.items.clear()
         self.tbl.setRowCount(0)
 
-    def __addItemToGUI(self, item: 'IsolationCertificate.IsolationItem'):
+    def __addItemToGUI(self, item: 'IC.IsolationItem'):
         self.tbl.insertRow(self.tbl.rowCount())
         data = [str(getattr(item, f)) for f in self.summeryFields]
         for i, d in enumerate(data):
             cell = QTableWidgetItem(d)
             self.tbl.setItem(self.tbl.rowCount()-1, i, cell)
 
-    def addItem(self, item: 'IsolationCertificate.IsolationItem'):
+    def addItem(self, item: 'IC.IsolationItem'):
         self.__addItemToGUI(item)
         self.items.append(item)
         self.refreshGUI()

@@ -8,6 +8,8 @@ from GlobalData import globalData
 
 
 class Isolation:
+    """Declarative record of an isolation required by a PTW — type/tag/description only.
+    No runtime linkage state; that now lives entirely on IC (see below)."""
     class Types(enum.StrEnum):
         MECHANICAL = 'Mechanical'
         ELECTRICAL = 'Electrical'
@@ -19,8 +21,6 @@ class Isolation:
         self.type = type
         self.tag = tag
         self.description = description
-        self.linked_ptws: list = []
-        self.held_by: list = []
 
     def setAll(self, data: dict = None, namespace: SimpleNamespace = None):
         if namespace:
@@ -37,31 +37,8 @@ class Isolation:
     def __str__(self):
         return f"{self.type} - {self.description if self.description else ''} {self.tag}"
 
-    def linkPTW(self, ptwId):
-        ptwId = str(ptwId)
-        try:
-            self.held_by.remove(ptwId)
-        except ValueError:
-            pass
-        if ptwId not in self.linked_ptws:
-            self.linked_ptws.append(ptwId)
 
-    def holdPTW(self, ptwId):
-        try:
-            self.linked_ptws.remove(str(ptwId))
-        except Exception:
-            pass
-        if str(ptwId) not in self.held_by:
-            self.held_by.append(str(ptwId))
-
-    def unlinkPTW(self, ptwId):
-        try:
-            self.linked_ptws.remove(str(ptwId))
-        except Exception as e:
-            print(f"couldn't remove PTW# {ptwId} from linked PTWs to isolation {self.tag}: {e}")
-
-
-class IsolationCertificate:
+class IC:
     class IsolationItem:
         class States(enum.StrEnum):
             OPEN  = enum.auto()
@@ -154,7 +131,7 @@ class IsolationCertificate:
             return user is not None and self.matchesRoleDept(user.getRole(), user.getDepartment())
 
         def __eq__(self, other):
-            return isinstance(other, IsolationCertificate.Approver) and self.role == other.role and self.department == other.department
+            return isinstance(other, IC.Approver) and self.role == other.role and self.department == other.department
 
         def __hash__(self):
             return hash((self.role, self.department))
@@ -170,11 +147,11 @@ class IsolationCertificate:
         self.department : str = data.get('department')
         self.requestor : str = data.get('requestor')
         self.requestor_timestamp : str = data.get('requestor_timestamp') or datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-        self.approvals : list['IsolationCertificate.Approval'] = [IsolationCertificate.Approval().setAll(a) for a in data.get('approvals', [])]
+        self.approvals : list['IC.Approval'] = [IC.Approval().setAll(a) for a in data.get('approvals', [])]
         self.location : str = data.get('location')
         self.equipment : str = data.get('equipment')
         self.reason : str = data.get('reason')
-        self.items : list[IsolationCertificate.IsolationItem] = [IsolationCertificate.IsolationItem().setAll(iso) for iso in data.get('items', [])]
+        self.items : list[IC.IsolationItem] = [IC.IsolationItem().setAll(iso) for iso in data.get('items', [])]
 
         # ============== isolation usernames & timestamps =================
         # isolate_requestor/timestamp are set later, when someone requests the isolation
@@ -222,16 +199,16 @@ class IsolationCertificate:
     def setAll(self, data: dict = None, namespace: SimpleNamespace = None):
         if namespace:
             self.__dict__.update(vars(namespace))
-            self.approvals = [IsolationCertificate.Approval().setAll(a.__dict__) for a in self.approvals]
-            self.items = [IsolationCertificate.IsolationItem().setAll(i.__dict__) for i in self.items]
+            self.approvals = [IC.Approval().setAll(a.__dict__) for a in self.approvals]
+            self.items = [IC.IsolationItem().setAll(i.__dict__) for i in self.items]
         elif data:
             for k, v in data.items():
                 if hasattr(self, k):
                     try:
                         if k == 'approvals':
-                            self.approvals = [IsolationCertificate.Approval().setAll(a) for a in v]
+                            self.approvals = [IC.Approval().setAll(a) for a in v]
                         elif k == 'items':
-                            self.items = [IsolationCertificate.IsolationItem().setAll(i) for i in v]
+                            self.items = [IC.IsolationItem().setAll(i) for i in v]
                         else:
                             setattr(self, k, v)
                     except Exception:
@@ -241,19 +218,19 @@ class IsolationCertificate:
     def __str__(self):
         return f"{self.id} - {self.type} {self.reason if self.reason else ''}"
 
-    def requiredApprovers(self) -> list[list['IsolationCertificate.Approver']]:
-        stages = [[IsolationCertificate.Approver(UserRoles.ISSUING)]]
-        if self.type == IsolationCertificate.Types.PROTECTIVE:
+    def requiredApprovers(self) -> list[list['IC.Approver']]:
+        stages = [[IC.Approver(UserRoles.ISSUING)]]
+        if self.type == IC.Types.PROTECTIVE:
             stages.extend([
-                [IsolationCertificate.Approver(UserRoles.PDH)],
-                [IsolationCertificate.Approver(UserRoles.PGM)],
-                [IsolationCertificate.Approver(UserRoles.SOD)],
-                [IsolationCertificate.Approver(UserRoles.DFGM)],
+                [IC.Approver(UserRoles.PDH)],
+                [IC.Approver(UserRoles.PGM)],
+                [IC.Approver(UserRoles.SOD)],
+                [IC.Approver(UserRoles.DFGM)],
             ])
         return stages
 
-    def _stageSatisfied(self, stage: list['IsolationCertificate.Approver']) -> bool:
-        approvedBy = [globalData.allUsers.get(a.username) for a in self.approvals if a.action == IsolationCertificate.ApprovalActions.APPROVED]
+    def _stageSatisfied(self, stage: list['IC.Approver']) -> bool:
+        approvedBy = [globalData.allUsers.get(a.username) for a in self.approvals if a.action == IC.ApprovalActions.APPROVED]
         return all(any(approver.matchesUser(user) for user in approvedBy) for approver in stage)
 
     def _pendingStageIndex(self) -> int:
@@ -264,9 +241,9 @@ class IsolationCertificate:
                 return i
         return len(stages)
 
-    def pendingApprovers(self) -> list['IsolationCertificate.Approver']:
+    def pendingApprovers(self) -> list['IC.Approver']:
         """Flattened Approvers still needed, across the current and any later stage."""
-        approvedBy = [globalData.allUsers.get(a.username) for a in self.approvals if a.action == IsolationCertificate.ApprovalActions.APPROVED]
+        approvedBy = [globalData.allUsers.get(a.username) for a in self.approvals if a.action == IC.ApprovalActions.APPROVED]
         stages = self.requiredApprovers()
         return [
             approver
@@ -280,11 +257,11 @@ class IsolationCertificate:
         viewer's status: the action they already took, 'Requested' if it's their
         turn right now, or None if they're not an approver for this certificate."""
         if role is None:
-            if any(a.action == IsolationCertificate.ApprovalActions.RETURNED for a in self.approvals):
-                return IsolationCertificate.Status.RETURNED
+            if any(a.action == IC.ApprovalActions.RETURNED for a in self.approvals):
+                return IC.Status.RETURNED
             if self._pendingStageIndex() >= len(self.requiredApprovers()):
-                return IsolationCertificate.Status.APPROVED
-            return IsolationCertificate.Status.REQUESTED
+                return IC.Status.APPROVED
+            return IC.Status.REQUESTED
 
         for approval in self.approvals[::-1]:
             user = globalData.allUsers.get(approval.username)
@@ -294,25 +271,25 @@ class IsolationCertificate:
         stages = self.requiredApprovers()
         pending = self._pendingStageIndex()
         if pending < len(stages) and any(approver.matchesRoleDept(role, department) for approver in stages[pending]):
-            return IsolationCertificate.Status.REQUESTED
+            return IC.Status.REQUESTED
         return None
 
-    def getStatus(self) -> 'IsolationCertificate.Status':
+    def getStatus(self) -> 'IC.Status':
         if self.deisolate_isolator:
             return self.Status.CLOSED
         if self.sanction_isolator and not self.reisolate_isolator:
             return self.Status.SANCTIONED
         if self.isolate_isolator or self.reisolate_isolator:
             if self.deisolate_requestor:
-                if self.deisolate_issuing_action == IsolationCertificate.ApprovalActions.APPROVED:
+                if self.deisolate_issuing_action == IC.ApprovalActions.APPROVED:
                     return self.Status.CLOSING
-                if self.deisolate_issuing_action != IsolationCertificate.ApprovalActions.RETURNED:
+                if self.deisolate_issuing_action != IC.ApprovalActions.RETURNED:
                     return self.Status.DEISOLATE_CONFIRMING
             return self.Status.ACTIVE
         if self.isolate_requestor:
-            if self.isolate_issuing_action == IsolationCertificate.ApprovalActions.APPROVED:
+            if self.isolate_issuing_action == IC.ApprovalActions.APPROVED:
                 return self.Status.PENDING
-            if self.isolate_issuing_action != IsolationCertificate.ApprovalActions.RETURNED:
+            if self.isolate_issuing_action != IC.ApprovalActions.RETURNED:
                 return self.Status.ISOLATE_CONFIRMING
         return self.getApprovalStatus()
 
@@ -334,30 +311,30 @@ class IsolationCertificate:
 
     @staticmethod
     def backgroundColorForType(certType: Types):
-        return IsolationCertificate.__backgroundColors.get(certType) or IsolationCertificate.__backgroundColors.get(IsolationCertificate.Types.OTHER)
+        return IC.__backgroundColors.get(certType) or IC.__backgroundColors.get(IC.Types.OTHER)
 
     @staticmethod
     def foregroundColorForType(certType: Types):
-        return IsolationCertificate.__foregroundColors.get(certType) or IsolationCertificate.__foregroundColors.get(IsolationCertificate.Types.OTHER)
+        return IC.__foregroundColors.get(certType) or IC.__foregroundColors.get(IC.Types.OTHER)
 
     def backgroundColor(self):
-        return IsolationCertificate.__backgroundColors.get(self.type) or IsolationCertificate.__backgroundColors.get(IsolationCertificate.Types.OTHER)
+        return IC.__backgroundColors.get(self.type) or IC.__backgroundColors.get(IC.Types.OTHER)
 
     def foregroundColor(self):
-        return IsolationCertificate.__foregroundColors.get(self.type) or IsolationCertificate.__foregroundColors.get(IsolationCertificate.Types.OTHER)
+        return IC.__foregroundColors.get(self.type) or IC.__foregroundColors.get(IC.Types.OTHER)
 
     def isWindingDown(self) -> bool:
         """True once a sanction-for-test or de-isolate cycle is underway, or once closed —
         the certificate is past the point where new PTWs should be linked to it."""
         return self.getStatus() in (
-            IsolationCertificate.Status.SANCTIONED,
-            IsolationCertificate.Status.DEISOLATE_CONFIRMING,
-            IsolationCertificate.Status.CLOSING,
-            IsolationCertificate.Status.CLOSED,
+            IC.Status.SANCTIONED,
+            IC.Status.DEISOLATE_CONFIRMING,
+            IC.Status.CLOSING,
+            IC.Status.CLOSED,
         )
 
     def canLinkPTW(self, ptw) -> bool:
-        """Certificate must not be winding down, and the target PTW must be in the window
+        """IC must not be winding down, and the target PTW must be in the window
         between its own approval and it actually starting work — approved, but not yet
         run/held/closed (or requested to be)."""
         if self.isWindingDown():

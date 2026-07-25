@@ -8,8 +8,8 @@ from functools import partial
 import qtawesome as qta
 
 from clientRequests import ClientRequests
-from Isolation import IsolationCertificate
-from DialogIsolationCertificate import DialogIsolationCertificate
+from Isolation import IC
+from DialogIC import DialogIC
 from CheckableComboBox import CheckableComboBox
 from GlobalData import globalData
 
@@ -25,8 +25,8 @@ class _LongTermItem(QTableWidgetItem):
         return super().__lt__(other)
 
 
-class TableIsolationCertificates(QWidget):
-    """Reusable per-tab browsing widget for Isolation Certificates, mirroring TablePTWs."""
+class TableICs(QWidget):
+    """Reusable per-tab browsing widget for ICs, mirroring TablePTWs."""
 
     def __init__(self, parent, loggedUser, label: str):
         super().__init__(parent)
@@ -34,7 +34,7 @@ class TableIsolationCertificates(QWidget):
         lyt.setContentsMargins(0, 0, 0, 0)
         lyt.setSpacing(4)
         self.tbl = QTableWidget()
-        self.certsData: list[IsolationCertificate] = []
+        self.icsData: list[IC] = []
         self.loggedUser = loggedUser
         self.options = []
 
@@ -164,19 +164,19 @@ class TableIsolationCertificates(QWidget):
         self._filterCombos[col].setCheckedOnly(values)
 
     def _onSorted(self):
-        self._syncCertsData()
+        self._syncICsData()
         if self._filterBar.isVisible():
             self._applyFilters()
 
-    def certToRecord(self, cert: IsolationCertificate):
+    def icToRecord(self, ic: IC):
         record = []
         for field in self.summeryFields:
             if field == 'status':
-                value = cert.getStatus().value
+                value = ic.getStatus().value
             elif field == 'long_term':
-                value = 'Yes' if cert.long_term else 'No'
+                value = 'Yes' if ic.long_term else 'No'
             else:
-                value = getattr(cert, field)
+                value = getattr(ic, field)
                 if field == 'requestor' and value:
                     user = globalData.allUsers.get(value)
                     if user:
@@ -207,23 +207,23 @@ class TableIsolationCertificates(QWidget):
             layout.addWidget(badge)
         return container
 
-    def addCertificateToGUI(self, cert: IsolationCertificate):
-        self.certsData.append(cert)
-        data = self.certToRecord(cert)
+    def addICToGUI(self, ic: IC):
+        self.icsData.append(ic)
+        data = self.icToRecord(ic)
         self.tbl.setSortingEnabled(False)
         row = self.tbl.rowCount()
         self.tbl.insertRow(row)
         for i, d in enumerate(data):
             cell = self._makeCell(i, d)
             if i == 0:
-                cell.setData(Qt.ItemDataRole.UserRole, cert.id)
-            cell.setBackground(QBrush(cert.backgroundColor()))
-            cell.setForeground(QBrush(cert.foregroundColor()))
+                cell.setData(Qt.ItemDataRole.UserRole, ic.id)
+            cell.setBackground(QBrush(ic.backgroundColor()))
+            cell.setForeground(QBrush(ic.foregroundColor()))
             self.tbl.setItem(row, i, cell)
             if i == self._ltCol:
-                self.tbl.setCellWidget(row, i, self._longTermIconWidget(cert.long_term))
+                self.tbl.setCellWidget(row, i, self._longTermIconWidget(ic.long_term))
         self.tbl.setSortingEnabled(True)
-        self._syncCertsData()
+        self._syncICsData()
         if self._filterBar.isVisible():
             self._populateFilters()
             self._applyFilters()
@@ -236,7 +236,7 @@ class TableIsolationCertificates(QWidget):
 
     def clear(self):
         self.tbl.clearContents()
-        self.certsData.clear()
+        self.icsData.clear()
         self.tbl.setRowCount(0)
         for combo in self._filterCombos:
             combo._model.clear()
@@ -245,54 +245,54 @@ class TableIsolationCertificates(QWidget):
 
     def sort(self):
         self.tbl.sortItems(0, Qt.SortOrder.AscendingOrder)
-        self._syncCertsData()
+        self._syncICsData()
 
-    def _syncCertsData(self):
-        id_to_cert = {str(c.id): c for c in self.certsData}
-        self.certsData = [
+    def _syncICsData(self):
+        id_to_cert = {str(c.id): c for c in self.icsData}
+        self.icsData = [
             id_to_cert[str(self.tbl.item(r, 0).data(Qt.ItemDataRole.UserRole))]
             for r in range(self.tbl.rowCount())
         ]
 
     def doubleClickHandler(self, row, col):
         if len(self.options) > 0:
-            self.options[0].fun(row, self.certsData[row])
+            self.options[0].fun(row, self.icsData[row])
 
     def optionDoForAllSelected(self, fun, allAtOnce: bool):
         selectedRows = list(set(row.row() for row in self.tbl.selectedIndexes() if row.isValid()))
         if allAtOnce:
-            fun(selectedRows, [self.certsData[row] for row in selectedRows])
+            fun(selectedRows, [self.icsData[row] for row in selectedRows])
         else:
             for row in selectedRows[::-1]:
-                fun(row, self.certsData[row])
+                fun(row, self.icsData[row])
 
     def showContextMenu(self, pos: QPoint):
         row = self.tbl.indexAt(pos)
         if not row.isValid():
             return
-        cert = self.certsData[row.row()]
+        ic = self.icsData[row.row()]
         menu = QMenu(self.tbl)
         for option in self.options:
-            if option.visibleFor is not None and not option.visibleFor(cert):
+            if option.visibleFor is not None and not option.visibleFor(ic):
                 continue
             action = QAction(option.icn, option.lbl, self.tbl)
             menu.addAction(action)
             action.triggered.connect(partial(self.optionDoForAllSelected, option.fun, option.allAtOnce))
         menu.exec(self.tbl.mapToGlobal(pos))
 
-    def addNewCertificateDialog(self):
-        cert = IsolationCertificate()
-        dlg = DialogIsolationCertificate(self, self.loggedUser, cert, True, False, "New Isolation Certificate")
+    def addNewICDialog(self):
+        ic = IC()
+        dlg = DialogIC(self, self.loggedUser, ic, True, False, "New IC")
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
-        cert = dlg.getCertificate()
+        ic = dlg.getIC()
 
-        def on_done(err, certId):
+        def on_done(err, icId):
             if err:
                 QMessageBox.warning(self, "Fail", err)
                 return
-            cert.id = certId
-            globalData.isolationCertificates[cert.id] = cert
-            self.addCertificateToGUI(cert)
+            ic.id = icId
+            globalData.ics[ic.id] = ic
+            self.addICToGUI(ic)
 
-        ClientRequests.addIsolationCertificate(self.loggedUser, cert, callback=on_done)
+        ClientRequests.addIC(self.loggedUser, ic, callback=on_done)

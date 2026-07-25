@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QCo
 
 from User import UserRoles
 from PTWData import PTWData
-from Isolation import IsolationCertificate
+from Isolation import IC
 from TableIsolationItems import TableIsolationItems
 from UiUtils import TabButton, lightenColor, Timeline
 from GlobalData import globalData
@@ -17,22 +17,22 @@ from clientRequests import ClientRequests
 from i18n import t
 
 
-class DialogIsolationCertificate(QDialog):
+class DialogIC(QDialog):
     def displayNameForUsername(username: str):
         if not username:
             return ''
         user = globalData.allUsers.get(username)
         return user.getName() if user else username
 
-    def __init__(self, parent, loggedUser, cert: IsolationCertificate, new: bool, readOnly: bool, title: str):
+    def __init__(self, parent, loggedUser, ic: IC, new: bool, readOnly: bool, title: str):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setModal(True)
         self.loggedUser = loggedUser
-        self.cert = cert
+        self.ic = ic
         self.new = new
         self.readonly = readOnly
-        self._requestorUsername = self.loggedUser.getUsername() if new else cert.requestor
+        self._requestorUsername = self.loggedUser.getUsername() if new else ic.requestor
 
         lyt = QVBoxLayout(self)
         lyt.setContentsMargins(0, 0, 0, 0)
@@ -63,7 +63,7 @@ class DialogIsolationCertificate(QDialog):
         }
 
         # History and PTW Linkage are only meaningful once there's something to show,
-        # so both are only offered in readonly mode (a brand-new certificate has
+        # so both are only offered in readonly mode (a brand-new IC has
         # neither approvals nor any linked PTW yet).
         formLinkage = None
         if readOnly:
@@ -86,7 +86,7 @@ class DialogIsolationCertificate(QDialog):
         self.boxId = QLineEdit()
         self.boxId.setReadOnly(True)
         self.typeCombo = QComboBox()
-        self.typeCombo.addItems([ty.value for ty in IsolationCertificate.Types])
+        self.typeCombo.addItems([ty.value for ty in IC.Types])
         self.boxDepartment = QLineEdit()
         self.boxDepartment.setReadOnly(True)
         self.boxRequestor = QLineEdit()
@@ -122,7 +122,7 @@ class DialogIsolationCertificate(QDialog):
         formBasicInfo.addRow(self.boxLongTerm)
         formBasicInfo.addRow(t("Long Term Reason:"), self.boxLongTermReason)
 
-        self.itemsTable = TableIsolationItems(self.tabItems, cert.items, readOnly)
+        self.itemsTable = TableIsolationItems(self.tabItems, ic.items, readOnly)
         self.itemsTable.setMinimumHeight(300)
         lytItems.addWidget(self.itemsTable, stretch=1)
 
@@ -130,8 +130,8 @@ class DialogIsolationCertificate(QDialog):
             lytHistoryPanes.addWidget(self._buildApprovalTimelinePane(), stretch=1)
             lytHistoryPanes.addWidget(self._buildIsolationTimelinePane(), stretch=1)
 
-            self._addPTWLinkRows(formLinkage, "Linked PTW:", cert.linked_ptws)
-            self._addPTWLinkRows(formLinkage, "Held By:", cert.held_by)
+            self._addPTWLinkRows(formLinkage, "Linked PTW:", ic.linked_ptws)
+            self._addPTWLinkRows(formLinkage, "Held By:", ic.held_by)
 
         self._populate()
         self._applyReadOnly()
@@ -171,7 +171,7 @@ class DialogIsolationCertificate(QDialog):
 
     def _unlinkPTW(self, ptwId):
         reply = QMessageBox.question(
-            self, t("Unlink PTW"), t("Unlink PTW #{0} from this certificate?").format(ptwId),
+            self, t("Unlink PTW"), t("Unlink PTW #{0} from this IC?").format(ptwId),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -181,9 +181,9 @@ class DialogIsolationCertificate(QDialog):
             if err:
                 QMessageBox.warning(self, t("Unlink Failed"), err)
                 return
-            QMessageBox.information(self, t("Unlinked"), t("PTW #{0} has been unlinked. Reopen this certificate to see the updated linkage.").format(ptwId))
+            QMessageBox.information(self, t("Unlinked"), t("PTW #{0} has been unlinked. Reopen this IC to see the updated linkage.").format(ptwId))
             self.reject()
-        ClientRequests.unlinkPTWFromCertificate(self.loggedUser, self.cert.id, ptwId, callback=on_done)
+        ClientRequests.unlinkPTWFromIC(self.loggedUser, self.ic.id, ptwId, callback=on_done)
 
     def _ptwLinkRow(self, ptwId) -> QWidget:
         row = QWidget()
@@ -217,17 +217,17 @@ class DialogIsolationCertificate(QDialog):
 
     def _buildApprovalTimelinePane(self) -> QWidget:
         entries = []
-        if self.cert.requestor:
+        if self.ic.requestor:
             color = QColor('green')
-            text = f"<b>Requested</b> by {DialogIsolationCertificate.displayNameForUsername(self.cert.requestor)} at {self.cert.requestor_timestamp}"
+            text = f"<b>Requested</b> by {DialogIC.displayNameForUsername(self.ic.requestor)} at {self.ic.requestor_timestamp}"
             content = QLabel(text)
             content.setWordWrap(True)
             content.setFont(QFont("Helvetica", 13))
             content.setStyleSheet(f"color: {color.name()};")
             entries.append((color, content))
 
-        for approval in self.cert.approvals:
-            color = QColor('green') if approval.action == IsolationCertificate.ApprovalActions.APPROVED else QColor('orange')
+        for approval in self.ic.approvals:
+            color = QColor('green') if approval.action == IC.ApprovalActions.APPROVED else QColor('orange')
             firstWord, _, rest = str(approval).partition(' ')
             text = f"<b>{firstWord}</b> {rest}"
             if approval.comment:
@@ -238,7 +238,7 @@ class DialogIsolationCertificate(QDialog):
             content.setStyleSheet(f"color: {color.name()};")
             entries.append((color, content))
 
-        for approver in self.cert.pendingApprovers():
+        for approver in self.ic.pendingApprovers():
             color = QColor('gray')
             content = QLabel('<b>Pending</b> ' + str(approver))
             content.setFont(QFont("Helvetica", 13))
@@ -250,7 +250,7 @@ class DialogIsolationCertificate(QDialog):
 
     def _isolationStageEntry(self, label: str, username: str, timestamp: str, doneColor: QColor = None):
         if username:
-            text = f"<b>{label}</b> by {DialogIsolationCertificate.displayNameForUsername(username)}"
+            text = f"<b>{label}</b> by {DialogIC.displayNameForUsername(username)}"
             if timestamp:
                 text += f" at {timestamp}"
             color = doneColor or QColor('green')
@@ -264,43 +264,43 @@ class DialogIsolationCertificate(QDialog):
         return (color, content)
 
     def _buildIsolationTimelinePane(self) -> QWidget:
-        cert = self.cert
+        ic = self.ic
         entries = []
 
         # Isolate and De-isolate always happen — shown as fixed stages, gray/"Pending"
         # until reached. Sanction-for-test and Re-isolate are optional excursions that
         # may not happen at all, so each of their rows only appears once it's set.
-        issuingColor = QColor('orange') if cert.isolate_issuing_action == IsolationCertificate.ApprovalActions.RETURNED else QColor('green')
-        issuingLabel = f"Isolate {cert.isolate_issuing_action}" if cert.isolate_issuing_action else "Isolate Confirmed"
-        entries.append(self._isolationStageEntry("Isolate Requested", cert.isolate_requestor, cert.isolate_requestor_timestamp))
-        entries.append(self._isolationStageEntry(issuingLabel, cert.isolate_issuing, cert.isolate_issuing_timestamp, doneColor=issuingColor))
-        entries.append(self._isolationStageEntry("Isolate Carried Out", cert.isolate_isolator, cert.isolate_isolator_timestamp))
+        issuingColor = QColor('orange') if ic.isolate_issuing_action == IC.ApprovalActions.RETURNED else QColor('green')
+        issuingLabel = f"Isolate {ic.isolate_issuing_action}" if ic.isolate_issuing_action else "Isolate Confirmed"
+        entries.append(self._isolationStageEntry("Isolate Requested", ic.isolate_requestor, ic.isolate_requestor_timestamp))
+        entries.append(self._isolationStageEntry(issuingLabel, ic.isolate_issuing, ic.isolate_issuing_timestamp, doneColor=issuingColor))
+        entries.append(self._isolationStageEntry("Isolate Carried Out", ic.isolate_isolator, ic.isolate_isolator_timestamp))
 
-        if cert.sanction_requestor:
-            entries.append(self._isolationStageEntry("Sanction Requested", cert.sanction_requestor, cert.sanction_requestor_timestamp))
-        if cert.sanction_issuing:
-            entries.append(self._isolationStageEntry("Sanction Confirmed", cert.sanction_issuing, cert.sanction_issuing_timestamp))
-        if cert.sanction_isolator:
-            entries.append(self._isolationStageEntry("Sanction Carried Out", cert.sanction_isolator, cert.sanction_isolator_timestamp))
+        if ic.sanction_requestor:
+            entries.append(self._isolationStageEntry("Sanction Requested", ic.sanction_requestor, ic.sanction_requestor_timestamp))
+        if ic.sanction_issuing:
+            entries.append(self._isolationStageEntry("Sanction Confirmed", ic.sanction_issuing, ic.sanction_issuing_timestamp))
+        if ic.sanction_isolator:
+            entries.append(self._isolationStageEntry("Sanction Carried Out", ic.sanction_isolator, ic.sanction_isolator_timestamp))
 
-        if cert.reisolate_requestor:
-            entries.append(self._isolationStageEntry("Re-isolate Requested", cert.reisolate_requestor, cert.reisolate_requestor_timestamp))
-        if cert.reisolate_issuing:
-            entries.append(self._isolationStageEntry("Re-isolate Confirmed", cert.reisolate_issuing, cert.reisolate_issuing_timestamp))
-        if cert.reisolate_isolator:
-            entries.append(self._isolationStageEntry("Re-isolate Carried Out", cert.reisolate_isolator, cert.reisolate_isolator_timestamp))
+        if ic.reisolate_requestor:
+            entries.append(self._isolationStageEntry("Re-isolate Requested", ic.reisolate_requestor, ic.reisolate_requestor_timestamp))
+        if ic.reisolate_issuing:
+            entries.append(self._isolationStageEntry("Re-isolate Confirmed", ic.reisolate_issuing, ic.reisolate_issuing_timestamp))
+        if ic.reisolate_isolator:
+            entries.append(self._isolationStageEntry("Re-isolate Carried Out", ic.reisolate_isolator, ic.reisolate_isolator_timestamp))
 
-        entries.append(self._isolationStageEntry("De-isolate Requested", cert.deisolate_requestor, cert.deisolate_requestor_timestamp))
-        entries.append(self._isolationStageEntry("De-isolate Confirmed", cert.deisolate_issuing, cert.deisolate_issuing_timestamp))
-        entries.append(self._isolationStageEntry("De-isolate Carried Out", cert.deisolate_isolator, cert.deisolate_isolator_timestamp))
+        entries.append(self._isolationStageEntry("De-isolate Requested", ic.deisolate_requestor, ic.deisolate_requestor_timestamp))
+        entries.append(self._isolationStageEntry("De-isolate Confirmed", ic.deisolate_issuing, ic.deisolate_issuing_timestamp))
+        entries.append(self._isolationStageEntry("De-isolate Carried Out", ic.deisolate_isolator, ic.deisolate_isolator_timestamp))
 
         timeline = Timeline(entries, t("No isolation activity yet"))
         return self._timelinePane(t("Isolation Timeline"), timeline)
 
     def _certTypeChanged(self, _=None):
-        color = IsolationCertificate.backgroundColorForType(self.typeCombo.currentText())
+        color = IC.backgroundColorForType(self.typeCombo.currentText())
         accentColor = lightenColor(color)
-        textColor = IsolationCertificate.foregroundColorForType(self.typeCombo.currentText())
+        textColor = IC.foregroundColorForType(self.typeCombo.currentText())
         self.tabsContainer.setStyleSheet(f"""
             QWidget {{
                 background: {color.name()};
@@ -322,19 +322,19 @@ class DialogIsolationCertificate(QDialog):
             btn.update()
 
     def _populate(self):
-        self.boxId.setText(str(self.cert.id) if self.cert.id else '')
-        if self.cert.type:
-            self.typeCombo.setCurrentText(self.cert.type)
-        self.boxDepartment.setText(self.cert.department or (self.loggedUser.getDepartment() if self.new else ''))
-        self.boxRequestor.setText(DialogIsolationCertificate.displayNameForUsername(self._requestorUsername))
-        self.boxRequestTime.setText(self.cert.requestor_timestamp or '')
-        if self.cert.location:
-            self.boxLocation.setCurrentIndex(max(0, self.boxLocation.findData(self.cert.location)))
-        self.boxEquipment.setText(self.cert.equipment or '')
-        self.boxReason.setText(self.cert.reason or '')
-        self.boxIsolateAsap.setChecked(bool(self.cert.isolate_asap))
-        self.boxLongTerm.setChecked(bool(self.cert.long_term))
-        self.boxLongTermReason.setText(self.cert.long_term_reason or '')
+        self.boxId.setText(str(self.ic.id) if self.ic.id else '')
+        if self.ic.type:
+            self.typeCombo.setCurrentText(self.ic.type)
+        self.boxDepartment.setText(self.ic.department or (self.loggedUser.getDepartment() if self.new else ''))
+        self.boxRequestor.setText(DialogIC.displayNameForUsername(self._requestorUsername))
+        self.boxRequestTime.setText(self.ic.requestor_timestamp or '')
+        if self.ic.location:
+            self.boxLocation.setCurrentIndex(max(0, self.boxLocation.findData(self.ic.location)))
+        self.boxEquipment.setText(self.ic.equipment or '')
+        self.boxReason.setText(self.ic.reason or '')
+        self.boxIsolateAsap.setChecked(bool(self.ic.isolate_asap))
+        self.boxLongTerm.setChecked(bool(self.ic.long_term))
+        self.boxLongTermReason.setText(self.ic.long_term_reason or '')
         self.boxLongTermReason.setEnabled(self.boxLongTerm.isChecked())
 
     def _applyReadOnly(self):
@@ -348,8 +348,8 @@ class DialogIsolationCertificate(QDialog):
         if self.readonly:
             self.boxLongTermReason.setEnabled(self.boxLongTerm.isChecked())
 
-    def getCertificate(self):
-        return self.cert
+    def getIC(self):
+        return self.ic
 
     def accept(self):
         if self.readonly:
@@ -372,17 +372,17 @@ class DialogIsolationCertificate(QDialog):
             QMessageBox.warning(self, "Invalid Input", "Please add at least one isolation item.")
             return
 
-        self.cert.type = self.typeCombo.currentText()
-        self.cert.location = self.boxLocation.currentData()
-        self.cert.equipment = equipment
-        self.cert.reason = reason
-        self.cert.isolate_asap = self.boxIsolateAsap.isChecked()
-        self.cert.long_term = self.boxLongTerm.isChecked()
-        self.cert.long_term_reason = long_term_reason
+        self.ic.type = self.typeCombo.currentText()
+        self.ic.location = self.boxLocation.currentData()
+        self.ic.equipment = equipment
+        self.ic.reason = reason
+        self.ic.isolate_asap = self.boxIsolateAsap.isChecked()
+        self.ic.long_term = self.boxLongTerm.isChecked()
+        self.ic.long_term_reason = long_term_reason
 
         if self.new:
-            self.cert.department = self.loggedUser.getDepartment()
-            self.cert.requestor = self.loggedUser.getUsername()
-            self.cert.requestor_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+            self.ic.department = self.loggedUser.getDepartment()
+            self.ic.requestor = self.loggedUser.getUsername()
+            self.ic.requestor_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
         super().accept()

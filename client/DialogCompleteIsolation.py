@@ -2,7 +2,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QTableWidget, QTableWidgetItem,
                               QAbstractItemView, QHeaderView, QDialogButtonBox)
 
-from Isolation import IsolationCertificate
+from Isolation import IC
 from i18n import t
 
 
@@ -11,12 +11,12 @@ class DialogCompleteIsolation(QDialog):
     record Lock #/Lock Box # per item. Tag/Description/State stay read-only here;
     only the lock fields are editable."""
 
-    def __init__(self, parent, items: list['IsolationCertificate.IsolationItem']):
+    def __init__(self, parent, items: list['IC.IsolationItem']):
         super().__init__(parent)
         self.setWindowTitle(t("Complete Isolation"))
         self.setModal(True)
         self._items = [
-            IsolationCertificate.IsolationItem(tag=i.tag, description=i.description, state=i.state)
+            IC.IsolationItem(tag=i.tag, description=i.description, state=i.state)
                 .setLockNum(i.lock_num).setLockBoxNum(i.lock_box_num)
             for i in items
         ]
@@ -54,7 +54,7 @@ class DialogCompleteIsolation(QDialog):
 
         self.setMinimumSize(600, 300)
 
-    def getItems(self) -> list['IsolationCertificate.IsolationItem']:
+    def getItems(self) -> list['IC.IsolationItem']:
         for row in range(self.tbl.rowCount()):
             self._items[row].lock_num = self.tbl.item(row, 3).text()
             self._items[row].lock_box_num = self.tbl.item(row, 4).text()

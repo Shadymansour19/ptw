@@ -31,8 +31,8 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 - **Home dashboard** — live donut charts summarizing PTWs in the approval cycle and Running PTWs by location (Users by Department for Admins); click a segment to jump straight to that tab, filtered where relevant
 - **Multi-stage approval workflow** — Coordinator → Issuing → Safety → Management chain (PDH → PGM → SOD → DFGM)
 - **Full running lifecycle** — Run / Hold / Close with two-party confirmation (Performing Authority + Issuing Authority)
-- **Equipment isolation management** — Tracks shared isolation points across multiple concurrent PTWs; enforces primary/latest ownership rules
-- **Isolation Certificates** — formal isolation request documents (type, location, equipment, reason, isolation items) with a staged approval chain (Issuing, plus PDH→PGM→SOD→DFGM for Protective-type certificates, mirroring the PTW approval-chain pattern) and their own Requested/Under Review/Pending/Active/Sanctioned/Closed lifecycle, color-coded by isolation type (Mechanical=gray, Electrical=yellow, Self=green, Protective System=red, Other=neutral gray), a two-pane approval/isolation history timeline, and a dedicated Isolator role window *(isolator-confirm, sanction-for-test, and de-isolate execution not yet implemented)*
+- **Equipment isolation management** — a PTW declares what isolations it needs (type/tag/description); an **IC (Isolation Certificate)** is the actual approval + physical-execution document, linked to the PTW — a PTW can't run unless every linked IC is confirmed isolated
+- **Isolation Certificates (ICs)** — formal isolation request documents (type, location, equipment, reason, isolation items) with their own staged approval chain (Issuing, plus PDH→PGM→SOD→DFGM for Protective-type ICs — this manager approval lives only here, not duplicated on the PTW), a full isolate/de-isolate execution cycle (request → Issuing confirms → Isolator carries out, both directions), their own Requested/Under Review/Pending/Active/Sanctioned/Closed lifecycle, color-coded by isolation type (Mechanical=gray, Electrical=yellow, Self=green, Protective System=red, Other=neutral gray), a two-pane approval/isolation history timeline, bidirectional PTW↔IC linking (link and unlink from either side), and a dedicated Isolator role window *(sanction-for-test and re-isolate cycles not yet implemented)*
 - **Color-coded permit types** — Cold Work (blue), Spark (yellow), Hot Work (red), HydroCarbon (black), Excavation (gray), Confined Space (green)
 - **Risk assessment library** — Safety team maintains a reusable generic risk assessment library; each PTW gets its own editable, deduplicated risk item table — built by adding items manually, pulling from the generic library, or importing an Excel/CSV file — that becomes its permanent risk record, carried over automatically on re-request
 - **PDF permit reports** — Printable PDF generation for each PTW
@@ -171,27 +171,18 @@ WAITING_RUN_CONFIRM
 
 ## Isolation Management
 
-Isolations are safety locks placed on equipment to prevent accidental energization during active work.
+Isolations are safety locks placed on equipment to prevent accidental energization during active work. `Isolation` (type/tag/description) is a purely declarative record of what a PTW needs — it carries no runtime state and there's no global registry of it. All actual isolation execution, approval, and PTW linkage happens via **IC (Isolation Certificate)**, below.
 
 **Types:** Mechanical · Electrical · Self · Protective System · Other
 
-**Shared isolation rule:** A single physical isolation point may be required by multiple concurrent PTWs. The system tracks:
-- `primary_ptw` — the first PTW that linked the isolation (responsible for *applying* it)
-- `latest_ptw` — the most recently linked PTW (responsible for *removing* it)
-- `linked_ptws` — all PTWs currently depending on this isolation point
+### Isolation Certificates (IC)
 
-**Lifecycle:**
-- PTW → `RUNNING`: all its isolations are linked
-- PTW → `HELD`: only `keep_isolations` tags remain linked; others are released
-- PTW → `CLOSED`: all its isolations are unlinked
+A separate, formal request workflow for isolation work — an IC's `items` are isolation tags/points, and the IC itself is the approval document around them, plus the sole place PTW↔isolation linkage state lives (`linked_ptws`/`held_by`).
 
-### Isolation Certificates
-
-A separate, formal request workflow for isolation work — complementary to the shared isolation-point tracking above, not a replacement (a certificate's `items` are isolation tags/points, but the certificate itself is the approval document around them).
-
-- **Lifecycle:** `Requested` → (staged approval — Issuing, plus PDH→PGM→SOD→DFGM for a Protective-type certificate) → `Approved` → (isolate request → Issuing confirms → Isolator carries out & confirms — *not yet implemented*) → `Active` → … → `Sanctioned` (for-test) / `Closed` (de-isolated)
-- **Roles:** requestor (User) creates a certificate; Issuing (and PDH/PGM/SOD/DFGM for Protective-type certificates) approve/reject in sequence; Isolator will physically carry it out and confirm once that part is built
-- **Implemented:** data model, dialogs, the create/list round trip, and the full staged approval chain (approve/reject, mirroring the PTW approval-chain pattern). **Not yet implemented:** isolator-confirm, hold/sanction-for-test, de-isolate, and PTW linkage — the tabs for those stages exist in the UI but stay empty until those actions are built.
+- **Lifecycle:** `Requested` → (staged approval — Issuing, plus PDH→PGM→SOD→DFGM for a Protective-type IC) → `Approved` → (isolate request → Issuing confirms → Isolator carries out) → `Active` → (de-isolate request → Issuing confirms → Isolator carries out) → `Closed`, with a `Sanctioned` (for-test) side branch
+- **Roles:** requestor (User) creates an IC; Issuing (and PDH/PGM/SOD/DFGM for Protective-type ICs) approve/reject in sequence; Isolator physically carries out both the isolate and de-isolate steps
+- **PTW linkage:** either side can link/unlink — a "Link to IC" action on the PTW, a "Link to PTW" action on the IC, and an Unlink button on both sides' linkage tabs. **A PTW can't be accepted into `RUNNING` unless every IC it's linked to is `Active`** (confirmed isolated) — enforced server-side at run-accept.
+- **Implemented:** data model, dialogs, create/list round trip, full staged approval chain, the complete isolate and de-isolate execution cycles, and bidirectional PTW↔IC linking. **Not yet implemented:** sanction-for-test and re-isolate cycles (tabs exist in the UI but stay empty), and PTW reports printing linked ICs.
 
 ---
 
@@ -210,13 +201,13 @@ ptw/
 │   ├── RequestWorker.py         # @async_request decorator — runs requests off the GUI thread
 │   ├── SSEListener.py           # Real-time event listener (QThread)
 │   ├── PTWData.py               # Client-side data models
-│   ├── Isolation.py             # Client-side isolation model (Isolation + IsolationCertificate)
+│   ├── Isolation.py             # Client-side model (declarative Isolation + IC)
 │   ├── utils.py                 # Shared helpers (resource_path, objToDict, dictToObj)
 │   ├── WidgetPTW.py             # Full PTW form (create/view/edit)
 │   ├── TablePTWs.py             # PTW list with filters + Excel export
-│   ├── TableIsolationCertificates.py  # Isolation Certificate list (one instance per tab, mirrors TablePTWs)
-│   ├── DialogIsolationCertificate.py  # Isolation Certificate create/view dialog (new/readOnly modes)
-│   ├── TableIsolationItems.py   # Embedded editable isolation-item list inside the certificate dialog
+│   ├── TableICs.py              # IC list (one instance per tab, mirrors TablePTWs)
+│   ├── DialogIC.py              # IC create/view dialog (new/readOnly modes)
+│   ├── TableIsolationItems.py   # Embedded editable isolation-item list inside the IC dialog
 │   ├── DialogIsolationItem.py   # Single isolation-item add dialog (tag/description/state/lock)
 │   ├── TabServerLogs.py         # Admin log viewer tab (collapsible, color-coded, filterable)
 │   ├── CheckableComboBox.py     # Reusable multi-select checkbox combo box
@@ -230,14 +221,13 @@ ptw/
 └── server/                      # Flask REST API
     ├── app.py                   # All route handlers + SSE broadcast
     ├── PTWData.py               # Core data models & enums
-    ├── Isolation.py             # Server-side isolation model (Isolation + IsolationCertificate)
+    ├── Isolation.py             # Server-side model (declarative Isolation + IC)
     ├── User.py                  # User model (UserRoles enum, SecuredUser, User classes)
     ├── utils.py                 # Shared helpers (objToDict, dictToObj)
     ├── commonDb.py              # Shared DB base class (ThreadedConnectionPool, generic CRUD)
     ├── ptwDb.py                 # PTW database operations
     ├── usersDb.py               # User database operations
-    ├── IsolationDb.py           # Isolation database operations
-    ├── IsolationCertificateDb.py # Isolation Certificate database operations
+    ├── ICDb.py                  # IC database operations (table `ics`)
     ├── risksDb.py               # Risk assessment DB operations
     ├── GlobalData.py            # Server-side in-memory cache
     ├── miwi/                    # MIWI PDFs, one subfolder per department (e.g. miwi/Turbo/)
@@ -262,7 +252,7 @@ Create the PostgreSQL database:
 CREATE DATABASE ptw_database;
 ```
 
-Then create the required tables (`users`, `ptws`, `active_isolations`, `risks`) — see [PROJECT.md](PROJECT.md) for the full schema.
+Tables (`users`, `ptws`, `ics`, `risks`) are auto-created on first server start — see [PROJECT.md](PROJECT.md) for the full schema.
 
 ### Server
 
@@ -314,8 +304,7 @@ On first launch, open **Settings** and point the client at your server URL.
 | Hold cycle | `POST /ptws/hold-request` · `POST /ptws/hold` |
 | Close cycle | `POST /ptws/close-request` · `POST /ptws/close` |
 | Attachments | `GET/POST/DELETE /ptws/attachments` · `POST /ptws/attachments/copy` |
-| Isolations | `GET /isolations` |
-| Isolation Certificates | `GET/POST /isolation-certificates` |
+| ICs | `GET/POST /ics` · `POST /ics/approvals` · `POST /ics/isolate-request` · `POST /ics/isolate-confirm` · `POST /ics/isolate-execute` · `POST /ics/deisolate-request` · `POST /ics/deisolate-confirm` · `POST /ics/deisolate-execute` · `POST /ics/link-ptw` · `POST /ics/unlink-ptw` |
 | Risks | `GET/POST/PUT/DELETE /risks` |
 | MIWI docs | `GET /miwi` · `GET /miwis` · `POST /miwi` |
 | Archive | `GET /ptws/archive` · `POST /ptws/archive` |

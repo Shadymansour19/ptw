@@ -2,7 +2,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QDialog, QFormLayout, QComboBox, QLineEdit, QTextEdit, QDialogButtonBox, QMessageBox
 
 from PTWData import PTWData
-from Isolation import IsolationCertificate
+from Isolation import IC
 from SearchableComboBox import SearchableComboBox
 
 
@@ -22,7 +22,7 @@ class DialogIsolationItem(QDialog):
         self.boxDescription = QTextEdit()
         self.boxDescription.setFixedHeight(self.boxDescription.fontMetrics().lineSpacing() * 3 + 10)
         self.stateCombo = QComboBox()
-        self.stateCombo.addItems([s.value for s in IsolationCertificate.IsolationItem.States])
+        self.stateCombo.addItems([s.value for s in IC.IsolationItem.States])
         self.boxLockNum = QLineEdit()
         self.boxLockNum.setReadOnly(True)
         self.boxLockNum.setPlaceholderText("Set by isolator on confirmation")
@@ -61,6 +61,6 @@ class DialogIsolationItem(QDialog):
             QMessageBox.warning(self, "Invalid Input", "Please enter a description.")
             return
 
-        self.item = IsolationCertificate.IsolationItem(tag=tag, description=description, state=self.stateCombo.currentText())
+        self.item = IC.IsolationItem(tag=tag, description=description, state=self.stateCombo.currentText())
         self.item.setLockNum(self.boxLockNum.text()).setLockBoxNum(self.boxLockBoxNum.text())
         super().accept()

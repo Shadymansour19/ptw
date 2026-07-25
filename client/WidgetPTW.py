@@ -11,7 +11,7 @@ import re
 
 from User import UserRoles
 from PTWData import PTWData, Attachment, RiskAssessment
-from Isolation import IsolationCertificate
+from Isolation import IC
 from TableRisks import TableRisks
 from TableAttachments import TableAttachments
 from GlobalData import globalData
@@ -429,7 +429,7 @@ class DialogPTW(QDialog):
             lytHistoryPanes.addWidget(self._buildRunningTimelinePane(), stretch=1)
 
             groupedICs = self._linkedICsByType()
-            for icType in IsolationCertificate.Types:
+            for icType in IC.Types:
                 self._addICLinkRows(formLinkage, f"{icType}:", groupedICs[icType])
 
         for tabIdx in range(self.stack.count()):
@@ -452,18 +452,18 @@ class DialogPTW(QDialog):
         return box
 
     def _viewLinkedIC(self, icId):
-        certsById = {str(cert.id): cert for cert in globalData.isolationCertificates.values()}
-        cert = certsById.get(str(icId))
-        if cert is None:
-            QMessageBox.warning(self, t("Certificate Not Found"), t("Isolation Certificate #{0} could not be found.").format(icId))
+        icsById = {str(ic.id): ic for ic in globalData.ics.values()}
+        ic = icsById.get(str(icId))
+        if ic is None:
+            QMessageBox.warning(self, t("IC Not Found"), t("IC #{0} could not be found.").format(icId))
             return
-        from DialogIsolationCertificate import DialogIsolationCertificate
-        dlg = DialogIsolationCertificate(self, self.loggedUser, cert, False, True, f"Isolation Certificate — {cert.type}")
+        from DialogIC import DialogIC
+        dlg = DialogIC(self, self.loggedUser, ic, False, True, f"IC — {ic.type}")
         dlg.exec()
 
     def _unlinkIC(self, icId):
         reply = QMessageBox.question(
-            self, t("Unlink Certificate"), t("Unlink Certificate #{0} from this PTW?").format(icId),
+            self, t("Unlink IC"), t("Unlink IC #{0} from this PTW?").format(icId),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -473,9 +473,9 @@ class DialogPTW(QDialog):
             if err:
                 QMessageBox.warning(self, t("Unlink Failed"), err)
                 return
-            QMessageBox.information(self, t("Unlinked"), t("Certificate #{0} has been unlinked. Reopen this PTW to see the updated linkage.").format(icId))
+            QMessageBox.information(self, t("Unlinked"), t("IC #{0} has been unlinked. Reopen this PTW to see the updated linkage.").format(icId))
             self.reject()
-        ClientRequests.unlinkPTWFromCertificate(self.loggedUser, int(icId), self.ptw.id, callback=on_done)
+        ClientRequests.unlinkPTWFromIC(self.loggedUser, int(icId), self.ptw.id, callback=on_done)
 
     def _icLinkRow(self, icId) -> QWidget:
         row = QWidget()
@@ -600,12 +600,12 @@ class DialogPTW(QDialog):
         return self._timelinePane(t("Running Timeline"), timeline)
 
     def _linkedICsByType(self) -> dict:
-        certsById = {str(cert.id): cert for cert in globalData.isolationCertificates.values()}
-        grouped = {icType: [] for icType in IsolationCertificate.Types}
+        icsById = {str(ic.id): ic for ic in globalData.ics.values()}
+        grouped = {icType: [] for icType in IC.Types}
         for icId in self.ptw.linked_ics:
-            cert = certsById.get(str(icId))
-            if cert and cert.type in grouped:
-                grouped[cert.type].append(str(icId))
+            ic = icsById.get(str(icId))
+            if ic and ic.type in grouped:
+                grouped[ic.type].append(str(icId))
         return grouped
 
     def ptwTypeChanged(self):

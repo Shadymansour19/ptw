@@ -1,7 +1,7 @@
 import requests
 from User import User, SecuredUser, UserDepartments
 from PTWData import PTWData, RiskAssessment, Attachment
-from Isolation import Isolation, IsolationCertificate
+from Isolation import IC
 from utils import dictToObj, objToDict
 from typing import Iterable
 import tempfile
@@ -565,31 +565,11 @@ class ClientRequests:
 
 
     @async_request
-    def getAllIsolations(loggedUser: User):
+    def getAllICs(loggedUser: User, department: UserDepartments = None):
         response = None
         try:
             response = requests.get(
-                f'{ClientRequests.SERVER_URL}/isolations',
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
-            )
-            response.raise_for_status()
-            data = response.json()
-        except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
-            return f"Failed to get active isolations\n{err}", None
-
-        if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
-            return f"Failed to get active isolations\n{err}", None
-
-        return None, {iso['tag']: Isolation().setAll(namespace=dictToObj(iso)) for iso in data.get("isolations", [])}
-
-    @async_request
-    def getAllIsolationCertificates(loggedUser: User, department: UserDepartments = None):
-        response = None
-        try:
-            response = requests.get(
-                f'{ClientRequests.SERVER_URL}/isolation-certificates',
+                f'{ClientRequests.SERVER_URL}/ics',
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
                 json={'department': department}
             )
@@ -597,62 +577,62 @@ class ClientRequests:
             data = response.json()
         except requests.exceptions.RequestException as e:
             err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
-            return f"Failed to get isolation certificates\n{err}", None
+            return f"Failed to get ICs\n{err}", None
 
         if not data.get("success"):
             err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
-            return f"Failed to get isolation certificates\n{err}", None
+            return f"Failed to get ICs\n{err}", None
 
-        return None, {cert['id']: IsolationCertificate().setAll(namespace=dictToObj(cert)) for cert in data.get("certificates", [])}
+        return None, {ic['id']: IC().setAll(namespace=dictToObj(ic)) for ic in data.get("ics", [])}
 
     @async_request
-    def addIsolationCertificate(loggedUser: User, cert: IsolationCertificate) -> tuple[str, str]:
+    def addIC(loggedUser: User, ic: IC) -> tuple[str, str]:
         response = None
         try:
             response = requests.post(
-                f'{ClientRequests.SERVER_URL}/isolation-certificates',
-                json=objToDict(cert),
+                f'{ClientRequests.SERVER_URL}/ics',
+                json=objToDict(ic),
                 auth=(loggedUser.getUsername(), loggedUser.getPassword())
             )
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
             err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
-            return f"Failed to add isolation certificate\n{err}", None
+            return f"Failed to add IC\n{err}", None
 
         if not data.get("success"):
             err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
-            return f"Failed to add isolation certificate\n{err}", None
-        return None, data.get('certificate-id')
+            return f"Failed to add IC\n{err}", None
+        return None, data.get('ic-id')
 
     @async_request
-    def updateApprovalCertificate(loggedUser: User, certId, approval: IsolationCertificate.Approval) -> str:
+    def updateApprovalIC(loggedUser: User, icId, approval: IC.Approval) -> str:
         response = None
         try:
             response = requests.post(
-                f'{ClientRequests.SERVER_URL}/isolation-certificates/approvals',
-                json={'certificate-id': certId, 'approval': approval.__dict__},
+                f'{ClientRequests.SERVER_URL}/ics/approvals',
+                json={'ic-id': icId, 'approval': approval.__dict__},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword())
             )
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
             err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
-            return f"Failed to update isolation certificate approvals\n{err}"
+            return f"Failed to update IC approvals\n{err}"
 
         if not data.get("success"):
             err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
-            return f"Failed to update isolation certificate approvals\n{err}"
+            return f"Failed to update IC approvals\n{err}"
 
         return None
 
     @async_request
-    def requestIsolateCertificate(loggedUser: User, certId) -> str:
+    def requestIsolateIC(loggedUser: User, icId) -> str:
         response = None
         try:
             response = requests.post(
-                f'{ClientRequests.SERVER_URL}/isolation-certificates/isolate-request',
-                json={'certificate-id': certId},
+                f'{ClientRequests.SERVER_URL}/ics/isolate-request',
+                json={'ic-id': icId},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword())
             )
             response.raise_for_status()
@@ -668,12 +648,12 @@ class ClientRequests:
         return None
 
     @async_request
-    def confirmIsolateCertificate(loggedUser: User, certId, response: bool) -> str:
+    def confirmIsolateIC(loggedUser: User, icId, response: bool) -> str:
         resp = None
         try:
             resp = requests.post(
-                f'{ClientRequests.SERVER_URL}/isolation-certificates/isolate-confirm',
-                json={'certificate-id': certId, 'response': response},
+                f'{ClientRequests.SERVER_URL}/ics/isolate-confirm',
+                json={'ic-id': icId, 'response': response},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword())
             )
             resp.raise_for_status()
@@ -689,12 +669,12 @@ class ClientRequests:
         return None
 
     @async_request
-    def executeIsolateCertificate(loggedUser: User, certId, items: list = None) -> str:
+    def executeIsolateIC(loggedUser: User, icId, items: list = None) -> str:
         response = None
         try:
             response = requests.post(
-                f'{ClientRequests.SERVER_URL}/isolation-certificates/isolate-execute',
-                json={'certificate-id': certId, 'items': objToDict(items or [])},
+                f'{ClientRequests.SERVER_URL}/ics/isolate-execute',
+                json={'ic-id': icId, 'items': objToDict(items or [])},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword())
             )
             response.raise_for_status()
@@ -710,12 +690,12 @@ class ClientRequests:
         return None
 
     @async_request
-    def requestDeisolateCertificate(loggedUser: User, certId) -> str:
+    def requestDeisolateIC(loggedUser: User, icId) -> str:
         response = None
         try:
             response = requests.post(
-                f'{ClientRequests.SERVER_URL}/isolation-certificates/deisolate-request',
-                json={'certificate-id': certId},
+                f'{ClientRequests.SERVER_URL}/ics/deisolate-request',
+                json={'ic-id': icId},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword())
             )
             response.raise_for_status()
@@ -731,12 +711,12 @@ class ClientRequests:
         return None
 
     @async_request
-    def confirmDeisolateCertificate(loggedUser: User, certId, response: bool) -> str:
+    def confirmDeisolateIC(loggedUser: User, icId, response: bool) -> str:
         resp = None
         try:
             resp = requests.post(
-                f'{ClientRequests.SERVER_URL}/isolation-certificates/deisolate-confirm',
-                json={'certificate-id': certId, 'response': response},
+                f'{ClientRequests.SERVER_URL}/ics/deisolate-confirm',
+                json={'ic-id': icId, 'response': response},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword())
             )
             resp.raise_for_status()
@@ -752,12 +732,12 @@ class ClientRequests:
         return None
 
     @async_request
-    def executeDeisolateCertificate(loggedUser: User, certId) -> str:
+    def executeDeisolateIC(loggedUser: User, icId) -> str:
         response = None
         try:
             response = requests.post(
-                f'{ClientRequests.SERVER_URL}/isolation-certificates/deisolate-execute',
-                json={'certificate-id': certId},
+                f'{ClientRequests.SERVER_URL}/ics/deisolate-execute',
+                json={'ic-id': icId},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword())
             )
             response.raise_for_status()
@@ -773,12 +753,12 @@ class ClientRequests:
         return None
 
     @async_request
-    def linkPTWToCertificate(loggedUser: User, certId, ptwId) -> str:
+    def linkPTWToIC(loggedUser: User, icId, ptwId) -> str:
         response = None
         try:
             response = requests.post(
-                f'{ClientRequests.SERVER_URL}/isolation-certificates/link-ptw',
-                json={'certificate-id': certId, 'ptw-id': ptwId},
+                f'{ClientRequests.SERVER_URL}/ics/link-ptw',
+                json={'ic-id': icId, 'ptw-id': ptwId},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword())
             )
             response.raise_for_status()
@@ -794,12 +774,12 @@ class ClientRequests:
         return None
 
     @async_request
-    def unlinkPTWFromCertificate(loggedUser: User, certId, ptwId) -> str:
+    def unlinkPTWFromIC(loggedUser: User, icId, ptwId) -> str:
         response = None
         try:
             response = requests.post(
-                f'{ClientRequests.SERVER_URL}/isolation-certificates/unlink-ptw',
-                json={'certificate-id': certId, 'ptw-id': ptwId},
+                f'{ClientRequests.SERVER_URL}/ics/unlink-ptw',
+                json={'ic-id': icId, 'ptw-id': ptwId},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword())
             )
             response.raise_for_status()

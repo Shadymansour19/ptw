@@ -7,8 +7,7 @@ class GlobalData:
         self.allPTWs: list = []                 # list[PTWData] - non-archived PTWs
         self.archivedPTWs: list = []            # list[PTWData]
         self.allMIWIs: list = []                # list[str]
-        self.isolations: dict = {}        # dict[str, Isolation]
-        self.isolationCertificates: dict = {}   # dict[int, IsolationCertificate]
+        self.ics: dict = {}                     # dict[int, IC]
 
     @async_request
     def refresh(
@@ -20,12 +19,11 @@ class GlobalData:
         refreshPTWs: bool = False,
         refreshArchivedPTWs: bool = False,
         refreshMIWIs: bool = False,
-        refreshIsolations: bool = False,
-        refreshIsolationCertificates: bool = False,
+        refreshICs: bool = False,
         refreshAll: bool = False,
     ) -> str:
         from clientRequests import ClientRequests
-    
+
         if refreshUsers or refreshAll:
             err, allUsers = ClientRequests.getAllUsers(loggedUser)
             if err:
@@ -50,17 +48,11 @@ class GlobalData:
                 return err
             self.archivedPTWs = archivedPTWs
 
-        if refreshIsolations or refreshAll:
-            err, allIsolations = ClientRequests.getAllIsolations(loggedUser)
+        if refreshICs or refreshAll:
+            err, allICs = ClientRequests.getAllICs(loggedUser, department=department)
             if err:
                 return err
-            self.isolations = allIsolations
-
-        if refreshIsolationCertificates or refreshAll:
-            err, allIsolationCertificates = ClientRequests.getAllIsolationCertificates(loggedUser, department=department)
-            if err:
-                return err
-            self.isolationCertificates = allIsolationCertificates
+            self.ics = allICs
 
         if refreshMIWIs or refreshAll:
             err, allMIWIs = ClientRequests.getAllMIWIs(loggedUser, department=department)
