@@ -1715,6 +1715,59 @@ def executeDeisolateCertificate():
         return jsonify({"success": False, "error": str(e)}), 400
 
 
+@app.route("/isolation-certificates/link-ptw", methods=["POST"])
+def linkPTWToCertificate():
+    user = getVerifiedUser(request.authorization)
+    if user is None:
+        log.warning("POST /isolation-certificates/link-ptw unauthorized (ip=%s)", request.remote_addr)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    if user.getRole() == UserRoles.GUEST:
+        log.warning("POST /isolation-certificates/link-ptw: forbidden for guest '%s'", user.getUsername())
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    payload = request.get_json(silent=True) or {}
+    certId = payload.get('certificate-id')
+    ptwId = payload.get('ptw-id')
+    if certId is None or not ptwId:
+        log.warning("POST /isolation-certificates/link-ptw: missing required fields (user='%s')", user.getUsername())
+        return jsonify({"success": False, "error": "Missing required fields"}), 400
+    with globalData.lock:
+        cert = globalData.isolationCertificates.get(certId)
+    if cert is None:
+        log.warning("POST /isolation-certificates/link-ptw: certificate #%s not found (user='%s')", certId, user.getUsername())
+        return jsonify({"success": False, "error": "Isolation certificate not found"}), 404
+    if str(ptwId) in cert.linked_ptws:
+        return jsonify({"success": False, "error": f"PTW #{ptwId} is already linked to this certificate"}), 400
+    try:
+        ptw = ptwDB.getPTWById(ptwId)
+        if ptw is None:
+            log.warning("POST /isolation-certificates/link-ptw: PTW #%s not found (user='%s')", ptwId, user.getUsername())
+            return jsonify({"success": False, "error": f"PTW #{ptwId} not found"}), 404
+        if not cert.canLinkPTW(ptw):
+            log.warning(
+                "POST /isolation-certificates/link-ptw: forbidden — certificate #%s / PTW #%s not in a linkable state (cert status='%s', PTW approval='%s', PTW running='%s') (user='%s')",
+                certId, ptwId, cert.getStatus(), ptw.approval_status, ptw.running_status, user.getUsername(),
+            )
+            return jsonify({"success": False, "error": "Certificate or PTW is not in a linkable state"}), 403
+        cert.linkPTW(ptwId)
+        certDB.updateCertificateFromDict({
+            'id': certId,
+            'linked_ptws': cert.linked_ptws,
+            'primary_ptw': cert.primary_ptw,
+            'latest_ptw': cert.latest_ptw,
+            'is_physically_isolated': cert.is_physically_isolated,
+        })
+        updated = certDB.getCertificateById(certId)
+        if updated:
+            with globalData.lock:
+                globalData.isolationCertificates[updated.id] = updated
+        _broadcast("isolation_certificate_link_ptw", {"certificate_id": certId, "ptw_id": ptwId, "by": user.getUsername()})
+        log.info("Isolation certificate linked to PTW: id=%s ptw=%s by='%s'", certId, ptwId, user.getUsername())
+        return jsonify({"success": True})
+    except Exception as e:
+        log.error("POST /isolation-certificates/link-ptw failed for certificate #%s: %s", certId, e, exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
 @app.route("/risks", methods=["GET"])
 def getAllRiskAssessments():
     user = getVerifiedUser(request.authorization)

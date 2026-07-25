@@ -109,6 +109,10 @@ class MainWindow(QMainWindow):
             'Complete De-isolation', self.executeDeisolateCertificate, qta.icon('fa6s.lock-open'),
             visibleFor=lambda cert: cert.getStatus() == IsolationCertificate.Status.CLOSING,
         )
+        self.optionLinkPTWToIC = TablePTWs.MenuOption(
+            'Link to PTW', self.linkPTWToCertificate, qta.icon('mdi.link-variant'),
+            visibleFor=lambda cert: not cert.isWindingDown(),
+        )
 
         self.stack = QStackedWidget()
         self.stack.setAutoFillBackground(False)
@@ -943,6 +947,16 @@ class MainWindow(QMainWindow):
             return
         ClientRequests.executeDeisolateCertificate(self.loggedUser, cert.id, callback=self._on_request_done_generic)
 
+    def linkPTWToCertificate(self, row: int, cert: IsolationCertificate):
+        ptwId, ok = QInputDialog.getText(self, f'Link Certificate #{cert.id} to PTW', 'PTW #:')
+        if not ok or not ptwId.strip():
+            return
+        ptwId = ptwId.strip()
+        if ptwId in cert.linked_ptws:
+            QMessageBox.warning(self, "Already Linked", f"PTW #{ptwId} is already linked to this certificate.")
+            return
+        ClientRequests.linkPTWToCertificate(self.loggedUser, cert.id, ptwId, callback=self._on_request_done_generic)
+
     def requestToSuctionTestPTW(self, row: int, ptw: PTWData):
         pass
 
@@ -1606,11 +1620,11 @@ class UserMainWindow(MainWindow):
         self.tabClosedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.printDeIsolationOption, self.optionPrintPTW, self.optionArchivePTW, self.optionExportPTW])
         self.tabArchivedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
 
-        self.tabRequestedICs.addOptions([self.optionViewIC])
-        self.tabApprovedICs.addOptions([self.optionViewIC, self.optionRequestIsolateIC])
-        self.tabIsolateConfirmingICs.addOptions([self.optionViewIC])
-        self.tabPendingICs.addOptions([self.optionViewIC])
-        self.tabActiveICs.addOptions([self.optionViewIC, self.optionRequestDeisolateIC])
+        self.tabRequestedICs.addOptions([self.optionViewIC, self.optionLinkPTWToIC])
+        self.tabApprovedICs.addOptions([self.optionViewIC, self.optionRequestIsolateIC, self.optionLinkPTWToIC])
+        self.tabIsolateConfirmingICs.addOptions([self.optionViewIC, self.optionLinkPTWToIC])
+        self.tabPendingICs.addOptions([self.optionViewIC, self.optionLinkPTWToIC])
+        self.tabActiveICs.addOptions([self.optionViewIC, self.optionRequestDeisolateIC, self.optionLinkPTWToIC])
         self.tabDeisolateConfirmingICs.addOptions([self.optionViewIC])
         self.tabClosingICs.addOptions([self.optionViewIC])
         self.tabSanctionedICs.addOptions([self.optionViewIC])
@@ -1740,11 +1754,11 @@ class IssuingMainWindow(MainWindow):
         self.tabClosedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.printDeIsolationOption, self.optionPrintPTW, self.optionArchivePTW, self.optionExportPTW])
         self.tabArchivedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
 
-        self.tabUnderReviewICs.addOptions([self.optionViewIC, self.optionAcceptIC, self.optionRequestEditsIC])
-        self.tabApprovedICs.addOptions([self.optionViewIC])
-        self.tabIsolateConfirmingICs.addOptions([self.optionViewIC, self.optionConfirmIsolateIC, self.optionReturnIsolateIC])
-        self.tabPendingICs.addOptions([self.optionViewIC])
-        self.tabActiveICs.addOptions([self.optionViewIC])
+        self.tabUnderReviewICs.addOptions([self.optionViewIC, self.optionAcceptIC, self.optionRequestEditsIC, self.optionLinkPTWToIC])
+        self.tabApprovedICs.addOptions([self.optionViewIC, self.optionLinkPTWToIC])
+        self.tabIsolateConfirmingICs.addOptions([self.optionViewIC, self.optionConfirmIsolateIC, self.optionReturnIsolateIC, self.optionLinkPTWToIC])
+        self.tabPendingICs.addOptions([self.optionViewIC, self.optionLinkPTWToIC])
+        self.tabActiveICs.addOptions([self.optionViewIC, self.optionLinkPTWToIC])
         self.tabDeisolateConfirmingICs.addOptions([self.optionViewIC, self.optionConfirmDeisolateIC, self.optionReturnDeisolateIC])
         self.tabClosingICs.addOptions([self.optionViewIC])
         self.tabSanctionedICs.addOptions([self.optionViewIC])

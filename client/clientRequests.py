@@ -772,6 +772,27 @@ class ClientRequests:
 
         return None
 
+    @async_request
+    def linkPTWToCertificate(loggedUser: User, certId, ptwId) -> str:
+        response = None
+        try:
+            response = requests.post(
+                f'{ClientRequests.SERVER_URL}/isolation-certificates/link-ptw',
+                json={'certificate-id': certId, 'ptw-id': ptwId},
+                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+            )
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to link PTW\n{err}"
+
+        if not data.get("success"):
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to link PTW\n{err}"
+
+        return None
+
 
     @async_request
     def getAllRiskAssessments(loggedUser: User) -> tuple[str, dict[str, RiskAssessment]]:

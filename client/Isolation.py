@@ -367,17 +367,37 @@ class IsolationCertificate:
     def foregroundColor(self):
         return IsolationCertificate.__foregroundColors.get(self.type) or IsolationCertificate.__foregroundColors.get(IsolationCertificate.Types.OTHER)
 
-    # def linkPTW(self, ptwId):
-    #     ptwId = str(ptwId)
-    #     try:
-    #         self.held_by.remove(ptwId)
-    #     except ValueError:
-    #         pass
-    #     if not self.linked_ptws and not self.held_by:
-    #         self.primary_ptw = ptwId
-    #     if ptwId not in self.linked_ptws:
-    #         self.linked_ptws.append(ptwId)
-    #         self.latest_ptw = ptwId
+    def isWindingDown(self) -> bool:
+        """True once a sanction-for-test or de-isolate cycle is underway, or once closed —
+        the certificate is past the point where new PTWs should be linked to it."""
+        return self.getStatus() in (
+            IsolationCertificate.Status.SANCTIONED,
+            IsolationCertificate.Status.DEISOLATE_CONFIRMING,
+            IsolationCertificate.Status.CLOSING,
+            IsolationCertificate.Status.CLOSED,
+        )
+
+    def canLinkPTW(self, ptw) -> bool:
+        """Certificate must not be winding down, and the target PTW must be in the window
+        between its own approval and it actually starting work — approved, but not yet
+        run/held/closed (or requested to be)."""
+        if self.isWindingDown():
+            return False
+        from PTWData import PTWData
+        return ptw is not None and ptw.approval_status == PTWData.ApprovalStatus.APPROVED and ptw.running_status == PTWData.RunningStatus.NOT_RUNNING
+
+    def linkPTW(self, ptwId):
+        ptwId = str(ptwId)
+        try:
+            self.held_by.remove(ptwId)
+        except ValueError:
+            pass
+        if not self.linked_ptws and not self.held_by:
+            self.primary_ptw = ptwId
+        if ptwId not in self.linked_ptws:
+            self.linked_ptws.append(ptwId)
+            self.latest_ptw = ptwId
+        self.is_physically_isolated = True
 
     # def holdPTW(self, ptwId):
     #     try:
