@@ -9,12 +9,14 @@ from RequestWorker import async_request
 
 class ClientRequests:
     SERVER_URL = 'http://localhost:5000'
+    TIMEOUT = 15        # seconds; generic request timeout
+    FILE_TIMEOUT = 60   # seconds; upload/download endpoints transferring file content
 
     @async_request
     def login(username, password) -> tuple[str, User]:
         response = None
         try:
-            response = requests.post(f'{ClientRequests.SERVER_URL}/login', auth=(username, password))
+            response = requests.post(f'{ClientRequests.SERVER_URL}/login', auth=(username, password), timeout=ClientRequests.TIMEOUT)
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
@@ -35,7 +37,8 @@ class ClientRequests:
         try:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/reset-password-request',
-                json={'username': username}
+                json={'username': username},
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -55,7 +58,8 @@ class ClientRequests:
         try:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/reset-password',
-                json={'username': username, 'new-password': newPassword, 'verification-code': verificationCode}
+                json={'username': username, 'new-password': newPassword, 'verification-code': verificationCode},
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -72,7 +76,7 @@ class ClientRequests:
     def getAllUsers(loggedUser: User) -> tuple[str, dict[str, SecuredUser]]:
         response = None
         try:
-            response = requests.get(f'{ClientRequests.SERVER_URL}/users', auth=(loggedUser.getUsername(), loggedUser.getPassword()))
+            response = requests.get(f'{ClientRequests.SERVER_URL}/users', auth=(loggedUser.getUsername(), loggedUser.getPassword()), timeout=ClientRequests.TIMEOUT)
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
@@ -93,7 +97,7 @@ class ClientRequests:
     def addNewUser(loggedUser: User, newUser: User):
         response = None
         try:
-            response = requests.post(f'{ClientRequests.SERVER_URL}/users', json=newUser.__dict__, auth=(loggedUser.getUsername(), loggedUser.getPassword()))
+            response = requests.post(f'{ClientRequests.SERVER_URL}/users', json=newUser.__dict__, auth=(loggedUser.getUsername(), loggedUser.getPassword()), timeout=ClientRequests.TIMEOUT)
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
@@ -109,7 +113,7 @@ class ClientRequests:
         response = None
         try:
             user_dict = {k: v for k, v in user.__dict__.items() if not (k == 'password' and not v)}
-            response = requests.put(f'{ClientRequests.SERVER_URL}/users', json=user_dict, auth=(loggedUser.getUsername(), loggedUser.getPassword()))
+            response = requests.put(f'{ClientRequests.SERVER_URL}/users', json=user_dict, auth=(loggedUser.getUsername(), loggedUser.getPassword()), timeout=ClientRequests.TIMEOUT)
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
@@ -124,7 +128,7 @@ class ClientRequests:
     def updateTheme(loggedUser: User, theme: str | None):
         response = None
         try:
-            response = requests.patch(f'{ClientRequests.SERVER_URL}/users/theme', json={'username': loggedUser.getUsername(), 'theme': theme}, auth=(loggedUser.getUsername(), loggedUser.getPassword()))
+            response = requests.patch(f'{ClientRequests.SERVER_URL}/users/theme', json={'username': loggedUser.getUsername(), 'theme': theme}, auth=(loggedUser.getUsername(), loggedUser.getPassword()), timeout=ClientRequests.TIMEOUT)
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
@@ -137,7 +141,7 @@ class ClientRequests:
     def setUserActive(loggedUser: User, username: str, is_active: bool):
         response = None
         try:
-            response = requests.patch(f'{ClientRequests.SERVER_URL}/users/active', json={'username': username, 'is_active': is_active}, auth=(loggedUser.getUsername(), loggedUser.getPassword()))
+            response = requests.patch(f'{ClientRequests.SERVER_URL}/users/active', json={'username': username, 'is_active': is_active}, auth=(loggedUser.getUsername(), loggedUser.getPassword()), timeout=ClientRequests.TIMEOUT)
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
@@ -150,7 +154,7 @@ class ClientRequests:
     def deleteUser(loggedUser: User, username: str):
         response = None
         try:
-            response = requests.delete(f'{ClientRequests.SERVER_URL}/users', json={'username': username}, auth=(loggedUser.getUsername(), loggedUser.getPassword()))
+            response = requests.delete(f'{ClientRequests.SERVER_URL}/users', json={'username': username}, auth=(loggedUser.getUsername(), loggedUser.getPassword()), timeout=ClientRequests.TIMEOUT)
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
@@ -168,7 +172,8 @@ class ClientRequests:
             response = requests.get(
                 f'{ClientRequests.SERVER_URL}/ptws',
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                json={'department': department, 'requestor': requestorUsername}
+                json={'department': department, 'requestor': requestorUsername},
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -189,7 +194,8 @@ class ClientRequests:
             response = requests.get(
                 f'{ClientRequests.SERVER_URL}/ptws/archive',
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                json={'department': department}
+                json={'department': department},
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -210,7 +216,8 @@ class ClientRequests:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/ptws',
                 json=objToDict(ptw),
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -227,7 +234,7 @@ class ClientRequests:
     def updatePTW(loggedUser: User, ptw: PTWData) -> str:
         response = None
         try:
-            response = requests.put(f'{ClientRequests.SERVER_URL}/ptws', json=objToDict(ptw), auth=(loggedUser.getUsername(), loggedUser.getPassword()))
+            response = requests.put(f'{ClientRequests.SERVER_URL}/ptws', json=objToDict(ptw), auth=(loggedUser.getUsername(), loggedUser.getPassword()), timeout=ClientRequests.TIMEOUT)
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
@@ -259,6 +266,7 @@ class ClientRequests:
                 data={'ptw-id': ptwId},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
                 files=files,
+                timeout=ClientRequests.FILE_TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -283,7 +291,8 @@ class ClientRequests:
             response = requests.get(
                 f'{ClientRequests.SERVER_URL}/ptws/attachments',
                 json={'ptw-id': ptwId},
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -305,6 +314,7 @@ class ClientRequests:
                 f'{ClientRequests.SERVER_URL}/ptws/attachments',
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
                 json={'ptw-id': ptwId, 'filename': filename},
+                timeout=ClientRequests.FILE_TIMEOUT
             )
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
@@ -326,7 +336,8 @@ class ClientRequests:
             response = requests.delete(
                 f'{ClientRequests.SERVER_URL}/ptws/attachments',
                 json={'ptw-id': ptwId, 'keep-filenames': keepFilenames},
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -346,7 +357,8 @@ class ClientRequests:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/ptws/attachments/copy',
                 json={'source-ptw-id': sourcePtwId, 'target-ptw-id': targetPtwId},
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.FILE_TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -364,7 +376,7 @@ class ClientRequests:
     def deletePTW(loggedUser: User, ptwId: str) -> str:
         response = None
         try:
-            response = requests.delete(f'{ClientRequests.SERVER_URL}/ptws', json={'ptw-id': ptwId}, auth=(loggedUser.getUsername(), loggedUser.getPassword()))
+            response = requests.delete(f'{ClientRequests.SERVER_URL}/ptws', json={'ptw-id': ptwId}, auth=(loggedUser.getUsername(), loggedUser.getPassword()), timeout=ClientRequests.TIMEOUT)
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
@@ -384,7 +396,8 @@ class ClientRequests:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/ptws/return',
                 json={'ptw-id': ptwId, 'comment': comment},
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -405,7 +418,8 @@ class ClientRequests:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/ptws/approvals',
                 json={'ptw-id': ptwId, 'approval': approval.__dict__},
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -423,7 +437,7 @@ class ClientRequests:
     def archivePTWs(loggedUser: User, ptwIds: list[str]) -> str:
         response = None
         try:
-            response = requests.post(f'{ClientRequests.SERVER_URL}/ptws/archive', json={'ptw-ids': ptwIds}, auth=(loggedUser.getUsername(), loggedUser.getPassword()))
+            response = requests.post(f'{ClientRequests.SERVER_URL}/ptws/archive', json={'ptw-ids': ptwIds}, auth=(loggedUser.getUsername(), loggedUser.getPassword()), timeout=ClientRequests.TIMEOUT)
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
@@ -444,7 +458,8 @@ class ClientRequests:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/ptws/run-request',
                 json={'ptw-id': ptwId, 'pa': pa, 'timestamp': ts},
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -465,7 +480,8 @@ class ClientRequests:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/ptws/run',
                 json={'ptw-id': ptwId, 'ia': ia, 'timestamp': ts, 'response': accepted, 'comment': comment},
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -486,7 +502,8 @@ class ClientRequests:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/ptws/hold-request',
                 json={'ptw-id': ptwId, 'pa': pa, 'timestamp': ts, 'comment': comment, 'keep-tags': keepTags},
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -507,7 +524,8 @@ class ClientRequests:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/ptws/hold',
                 json={'ptw-id': ptwId, 'ia': ia, 'timestamp': ts, 'response': accepted, 'comment': comment},
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -528,7 +546,8 @@ class ClientRequests:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/ptws/close-request',
                 json={'ptw-id': ptwId, 'pa': pa, 'timestamp': ts, 'comment': comment},
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -549,7 +568,8 @@ class ClientRequests:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/ptws/close',
                 json={'ptw-id': ptwId, 'ia': ia, 'timestamp': ts, 'response': accepted, 'comment': comment},
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -571,7 +591,8 @@ class ClientRequests:
             response = requests.get(
                 f'{ClientRequests.SERVER_URL}/ics',
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                json={'department': department}
+                json={'department': department},
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -592,7 +613,8 @@ class ClientRequests:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/ics',
                 json=objToDict(ic),
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -612,7 +634,8 @@ class ClientRequests:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/ics/approvals',
                 json={'ic-id': icId, 'approval': approval.__dict__},
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -633,7 +656,8 @@ class ClientRequests:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/ics/isolate-request',
                 json={'ic-id': icId},
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -654,7 +678,8 @@ class ClientRequests:
             resp = requests.post(
                 f'{ClientRequests.SERVER_URL}/ics/isolate-confirm',
                 json={'ic-id': icId, 'response': response},
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
             )
             resp.raise_for_status()
             data = resp.json()
@@ -675,7 +700,8 @@ class ClientRequests:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/ics/isolate-execute',
                 json={'ic-id': icId, 'items': objToDict(items or [])},
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -696,7 +722,8 @@ class ClientRequests:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/ics/deisolate-request',
                 json={'ic-id': icId},
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -717,7 +744,8 @@ class ClientRequests:
             resp = requests.post(
                 f'{ClientRequests.SERVER_URL}/ics/deisolate-confirm',
                 json={'ic-id': icId, 'response': response},
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
             )
             resp.raise_for_status()
             data = resp.json()
@@ -738,7 +766,8 @@ class ClientRequests:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/ics/deisolate-execute',
                 json={'ic-id': icId},
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -759,7 +788,8 @@ class ClientRequests:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/ics/link-ptw',
                 json={'ic-id': icId, 'ptw-id': ptwId},
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -780,7 +810,8 @@ class ClientRequests:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/ics/unlink-ptw',
                 json={'ic-id': icId, 'ptw-id': ptwId},
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -801,7 +832,8 @@ class ClientRequests:
         try:
             response = requests.get(
                 f'{ClientRequests.SERVER_URL}/risks',
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -822,7 +854,8 @@ class ClientRequests:
             response = requests.get(
                 f'{ClientRequests.SERVER_URL}/risks/ptw',
                 json={'ptw_id': ptw_id},
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -843,7 +876,8 @@ class ClientRequests:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/risks',
                 json=objToDict(riskAssessment),
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -863,7 +897,8 @@ class ClientRequests:
             response = requests.put(
                 f'{ClientRequests.SERVER_URL}/risks',
                 json=objToDict(riskAssessment),
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -884,7 +919,8 @@ class ClientRequests:
             response = requests.delete(
                 f'{ClientRequests.SERVER_URL}/risks',
                 json={'title': riskTitle, 'ptw_id': ptw_id},
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -905,7 +941,8 @@ class ClientRequests:
             response = requests.get(
                 f'{ClientRequests.SERVER_URL}/miwi',
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                json={'filename': filename, 'department': department}
+                json={'filename': filename, 'department': department},
+                timeout=ClientRequests.FILE_TIMEOUT
             )
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
@@ -928,7 +965,8 @@ class ClientRequests:
             response = requests.get(
                 f'{ClientRequests.SERVER_URL}/miwis',
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                json={'department': department}
+                json={'department': department},
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -954,6 +992,7 @@ class ClientRequests:
                     auth=(loggedUser.getUsername(), loggedUser.getPassword()),
                     files=files,
                     data={'department': loggedUser.getDepartment()},
+                    timeout=ClientRequests.FILE_TIMEOUT
                 )
                 response.raise_for_status()
                 data = response.json()
@@ -976,7 +1015,8 @@ class ClientRequests:
         try:
             response = requests.get(
                 f'{ClientRequests.SERVER_URL}/logs',
-                auth=(loggedUser.getUsername(), loggedUser.getPassword())
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -997,7 +1037,8 @@ class ClientRequests:
             response = requests.get(
                 f'{ClientRequests.SERVER_URL}/logs',
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                json={'filename': filename}
+                json={'filename': filename},
+                timeout=ClientRequests.TIMEOUT
             )
             response.raise_for_status()
         except requests.exceptions.RequestException as e:

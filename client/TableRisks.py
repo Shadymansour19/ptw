@@ -125,11 +125,13 @@ class TableRisks(QWidget):
 
     def addRiskAssessment(self, riskAssessment: RiskAssessment):
         def on_done(err, _):
+            self.window()._refreshOverlay.hideBusy()
             if err:
                 QMessageBox.warning(self, "Fail", err)
                 return
             self.risks[riskAssessment.title] = riskAssessment
             self.addRiskToGUI(riskAssessment.title)
+        self.window()._refreshOverlay.showBusy()
         ClientRequests.addNewRiskAssessment(self.loggedUser, riskAssessment, callback=on_done)
     
     def itemDoubleClicked(self, item: QListWidgetItem):
@@ -164,10 +166,12 @@ class TableRisks(QWidget):
             return
 
         def on_done(err, _):
+            self.window()._refreshOverlay.hideBusy()
             if err:
                 QMessageBox.warning(self, "Fail", err)
                 return
             self.risks[riskTitle] = riskAssessment
+        self.window()._refreshOverlay.showBusy()
         ClientRequests.updateRiskAssessment(self.loggedUser, riskAssessment, callback=on_done)
     
     def deleteRiskAssessment(self, riskTitle: str):
@@ -176,12 +180,14 @@ class TableRisks(QWidget):
             return
 
         def on_done(err, _):
+            self.window()._refreshOverlay.hideBusy()
             if err:
                 QMessageBox.warning(self, "Fail", err)
                 return
             self.risks.pop(riskTitle)
             self.refreshGUI()
         ptw_id = self.risks[riskTitle].ptw_id if riskTitle in self.risks else None
+        self.window()._refreshOverlay.showBusy()
         ClientRequests.deleteRiskAssessment(self.loggedUser, riskTitle, ptw_id, callback=on_done)
     
     def addNewRiskAssessmentDialog(self):

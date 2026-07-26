@@ -8,6 +8,7 @@ from keyring.errors import KeyringError
 import qtawesome as qta
 
 from SearchableComboBox import SearchableComboBox
+from RefreshOverlay import RefreshOverlay
 
 
 SERVICE_NAME = "PTW-login-credentials"
@@ -291,6 +292,8 @@ class LoginWindow(QMainWindow):
         frame.moveCenter(self.screen().availableGeometry().center())
         self.move(frame.topLeft())
 
+        self._refreshOverlay = RefreshOverlay(self)
+
     def showHidePassword(self):
         self.boxPassword.setEchoMode(QLineEdit.EchoMode.Normal if self.btnShowPassword.isChecked() else QLineEdit.EchoMode.Password)
 
@@ -358,11 +361,15 @@ class LoginWindow(QMainWindow):
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
 
-        err = ClientRequests.resetPassword(username, dlg.newPassword, dlg.verificationCode)
-        if err:
-            QMessageBox.warning(self, "Error", err)
-        else:
-            QMessageBox.information(self, "Success", "Your password has been reset successfully. You can now log in with your new password.")
+        def on_done(err, _):
+            self._refreshOverlay.hideBusy()
+            if err:
+                QMessageBox.warning(self, "Error", err)
+            else:
+                QMessageBox.information(self, "Success", "Your password has been reset successfully. You can now log in with your new password.")
+
+        self._refreshOverlay.showBusy()
+        ClientRequests.resetPassword(username, dlg.newPassword, dlg.verificationCode, callback=on_done)
     
     def reset(self):
         self._populateRememberedUsers()
@@ -373,25 +380,29 @@ class LoginWindow(QMainWindow):
 
         username = self.boxUsername.currentText()
         password : str = self.boxPassword.text()
-        err, user = ClientRequests.login(username, password)
 
-        if err is not None:
-            QMessageBox.warning(self, "Error", err)
-            return
+        def on_done(err, user):
+            self._refreshOverlay.hideBusy()
+            if err is not None:
+                QMessageBox.warning(self, "Error", err)
+                return
 
-        if self.btnRememberMe.isChecked():
-            try:
-                self.storeLoginCredentials(username, password)
-            except KeyringError as e:
-                QMessageBox.warning(self, "Error", str(e))
+            if self.btnRememberMe.isChecked():
+                try:
+                    self.storeLoginCredentials(username, password)
+                except KeyringError as e:
+                    QMessageBox.warning(self, "Error", str(e))
 
-        theme = user.getTheme()
-        if theme == 'dark':
-            QApplication.styleHints().setColorScheme(Qt.ColorScheme.Dark)
-        elif theme == 'light':
-            QApplication.styleHints().setColorScheme(Qt.ColorScheme.Light)
+            theme = user.getTheme()
+            if theme == 'dark':
+                QApplication.styleHints().setColorScheme(Qt.ColorScheme.Dark)
+            elif theme == 'light':
+                QApplication.styleHints().setColorScheme(Qt.ColorScheme.Light)
 
-        self.on_login_success.emit(user)
+            self.on_login_success.emit(user)
+
+        self._refreshOverlay.showBusy()
+        ClientRequests.login(username, password, callback=on_done)
 
     def loginAsGuest(self):
         from User import User, UserRoles, UserDepartments

@@ -23,6 +23,7 @@ from DialogCompleteIsolation import DialogCompleteIsolation
 from Isolation import IC
 from TabServerLogs import TabServerLogs
 from DialogSettings import DialogSettings
+from RefreshOverlay import RefreshOverlay
 from clientRequests import ClientRequests
 from GlobalData import globalData
 from ReportGenerator import ReportGenerator
@@ -439,6 +440,9 @@ class MainWindow(QMainWindow):
         self.btnFAB.setToolTip("")
         self.btnFAB.clicked.connect(self.btnFABHandler)
         self.btnFABUpdatePosition()
+
+        self._refreshOverlay = RefreshOverlay(self)
+
         self.stackTabChanged()
         self.refreshGUI()
 
@@ -665,7 +669,9 @@ class MainWindow(QMainWindow):
         self.close()
     
     def viewPTW(self, row: int, ptw: PTWData):
+        self._refreshOverlay.showBusy()
         viewPTWDialog = DialogPTW(self, self.loggedUser, ptw, None, False, True, f'View Mode - PTW# {ptw.id}')
+        self._refreshOverlay.hideBusy()
         viewPTWDialog.exec()
 
     def _savePTWRiskAssessment(self, ptwId: int, risk: RiskAssessment, callback=None):
@@ -677,7 +683,9 @@ class MainWindow(QMainWindow):
     def editPTW(self, row: int, ptw: PTWData):
         toEditPtw = copy.deepcopy(ptw)
         wasReturned = toEditPtw.approval_status == PTWData.ApprovalStatus.RETURNED
+        self._refreshOverlay.showBusy()
         editPTWDialog = DialogPTW(self, self.loggedUser, toEditPtw, None, False, False, f'Edit Mode - PTW# {ptw.id}')
+        self._refreshOverlay.hideBusy()
         if editPTWDialog.exec() == QDialog.DialogCode.Accepted:
             if wasReturned:
                 toEditPtw.clearApprovals()
@@ -696,7 +704,9 @@ class MainWindow(QMainWindow):
         if ptw:
             newPTW.setId(None).clearApprovals()
         title = "Re-request PTW" if ptw else "New PTW"
+        self._refreshOverlay.showBusy()
         dlg = DialogPTW(self, self.loggedUser, newPTW, ptw, True, False, title)
+        self._refreshOverlay.hideBusy()
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
 
@@ -1392,10 +1402,12 @@ class MainWindow(QMainWindow):
 
     def refreshWelcomePage(self):
         def on_done(err, _):
+            self._refreshOverlay.hideBusy()
             if err:
                 QMessageBox.warning(self, "Error", f"Failed to refresh data: {err}")
                 return
             self.btnWelcomeName.setText(self.loggedUser.getRole() + ' ' + self.loggedUser.getName().upper() + '!')
+        self._refreshOverlay.showBusy()
         globalData.refresh(self.loggedUser, self.loggedUser.getDepartment() if self.loggedUser.getRole() in (UserRoles.USER, UserRoles.GUEST, UserRoles.ISOLATOR) else None, refreshUsers=True, callback=on_done)
 
     def refreshPtwUserGUI(self, refreshArchivedPTWs: bool = False):
@@ -1455,7 +1467,9 @@ class MainWindow(QMainWindow):
 
             QApplication.beep()
             self.statusBar().showMessage("GUI refreshed successfully.", 2000)
+            self._refreshOverlay.hideBusy()
 
+        self._refreshOverlay.showBusy()
         globalData.refresh(
             self.loggedUser,
             self.loggedUser.getDepartment() if self.loggedUser.getRole() in (UserRoles.USER, UserRoles.GUEST) else None,
@@ -1517,14 +1531,23 @@ class MainWindow(QMainWindow):
 
     def refreshArchivedPTWs(self):
         self.tabArchivedPTWs.clear()
+
+        def on_done(err, _):
+            self._refreshOverlay.hideBusy()
+            if err:
+                QMessageBox.warning(self, "Error", f"Failed to refresh archived PTWs: {err}")
+                return
+            for ptw in globalData.archivedPTWs:
+                self.tabArchivedPTWs.addPTWToGUI(ptw)
+            self.tabArchivedPTWs.sort()
+
+        self._refreshOverlay.showBusy()
         globalData.refresh(
-            self.loggedUser, 
-            self.loggedUser.getDepartment() if self.loggedUser.getRole() in (UserRoles.USER, UserRoles.GUEST) else None, 
-            refreshArchivedPTWs=True
+            self.loggedUser,
+            self.loggedUser.getDepartment() if self.loggedUser.getRole() in (UserRoles.USER, UserRoles.GUEST) else None,
+            refreshArchivedPTWs=True,
+            callback=on_done,
         )
-        for ptw in globalData.archivedPTWs:
-            self.tabArchivedPTWs.addPTWToGUI(ptw)
-        self.tabArchivedPTWs.sort()
 
     def acceptPTW(self, row: int, ptw: PTWData):
         reply = QMessageBox.question(
@@ -1567,12 +1590,20 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Export Failed", err)
 
     def printPTW(self, row: int, ptw: PTWData):
-        ReportGenerator.ptwReport(self.loggedUser, ptw)
+        self._refreshOverlay.showBusy()
+        try:
+            ReportGenerator.ptwReport(self.loggedUser, ptw)
+        finally:
+            self._refreshOverlay.hideBusy()
 
     def printPTWs(self):
         tab: TablePTWs = self.stack.currentWidget()
-        for i,ptw in enumerate(tab.ptwsData):
-            self.printPTW(i, ptw)
+        self._refreshOverlay.showBusy()
+        try:
+            for i,ptw in enumerate(tab.ptwsData):
+                self.printPTW(i, ptw)
+        finally:
+            self._refreshOverlay.hideBusy()
 
 
 
@@ -2034,7 +2065,9 @@ class AdminMainWindow(MainWindow):
 
             QApplication.beep()
             self.statusBar().showMessage("GUI refreshed successfully.", 2000)
+            self._refreshOverlay.hideBusy()
 
+        self._refreshOverlay.showBusy()
         globalData.refresh(self.loggedUser, None, refreshUsers=True, callback=on_done)
         self.tabServerLogs.refresh()
 
@@ -2071,6 +2104,7 @@ class IsolatorMainWindow(MainWindow):
 
     def refreshGUI(self, refreshArchivedPTWs: bool = False):
         def on_done(err, _):
+            self._refreshOverlay.hideBusy()
             if err:
                 QMessageBox.warning(self, "Error", f"Failed to refresh data: {err}")
                 return
@@ -2078,6 +2112,7 @@ class IsolatorMainWindow(MainWindow):
             QApplication.beep()
             self.statusBar().showMessage("GUI refreshed successfully.", 2000)
 
+        self._refreshOverlay.showBusy()
         globalData.refresh(self.loggedUser, None, refreshUsers=True, refreshICs=True, callback=on_done)
 
 

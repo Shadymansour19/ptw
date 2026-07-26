@@ -16,6 +16,7 @@ from UiUtils import TabButton, lightenColor, Timeline
 from GlobalData import globalData
 from clientRequests import ClientRequests
 from i18n import t
+from RefreshOverlay import RefreshOverlay
 
 
 class DialogIC(QDialog):
@@ -142,6 +143,7 @@ class DialogIC(QDialog):
             lytLinkage.addWidget(self.btnLinkNewPTW)
             lytLinkage.addStretch(1)
 
+        self._refreshOverlay = RefreshOverlay(self)
         self._populate()
         self._applyReadOnly()
 
@@ -175,7 +177,9 @@ class DialogIC(QDialog):
             QMessageBox.warning(self, t("PTW Not Found"), t("PTW #{0} could not be found (it may be archived).").format(ptwId))
             return
         from WidgetPTW import DialogPTW
+        self._refreshOverlay.showBusy()
         dlg = DialogPTW(self, self.loggedUser, ptw, None, False, True, f"View Mode - PTW# {ptw.id}")
+        self._refreshOverlay.hideBusy()
         dlg.exec()
 
     def _unlinkPTW(self, ptwId):
@@ -187,11 +191,13 @@ class DialogIC(QDialog):
             return
 
         def on_done(err, _):
+            self._refreshOverlay.hideBusy()
             if err:
                 QMessageBox.warning(self, t("Unlink Failed"), err)
                 return
             QMessageBox.information(self, t("Unlinked"), t("PTW #{0} has been unlinked. Reopen this IC to see the updated linkage.").format(ptwId))
             self.reject()
+        self._refreshOverlay.showBusy()
         ClientRequests.unlinkPTWFromIC(self.loggedUser, self.ic.id, ptwId, callback=on_done)
 
     def _linkNewPTW(self):
@@ -204,11 +210,13 @@ class DialogIC(QDialog):
             return
 
         def on_done(err, _):
+            self._refreshOverlay.hideBusy()
             if err:
                 QMessageBox.warning(self, t("Link Failed"), err)
                 return
             QMessageBox.information(self, t("Linked"), t("PTW #{0} has been linked. Reopen this IC to see the updated linkage.").format(ptwId))
             self.reject()
+        self._refreshOverlay.showBusy()
         ClientRequests.linkPTWToIC(self.loggedUser, self.ic.id, ptwId, callback=on_done)
 
     def _ptwLinkRow(self, ptwId) -> QWidget:

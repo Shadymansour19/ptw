@@ -288,6 +288,7 @@ class TableICs(QWidget):
         ic = dlg.getIC()
 
         def on_done(err, icId):
+            self.window()._refreshOverlay.hideBusy()
             if err:
                 QMessageBox.warning(self, "Fail", err)
                 return
@@ -295,4 +296,5 @@ class TableICs(QWidget):
             globalData.ics[ic.id] = ic
             self.addICToGUI(ic)
 
+        self.window()._refreshOverlay.showBusy()
         ClientRequests.addIC(self.loggedUser, ic, callback=on_done)

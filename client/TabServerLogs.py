@@ -120,16 +120,19 @@ class TabServerLogs(QWidget):
         self._contentEdits.clear()
         self._statusLabel.setText("")
 
-        err, filenames = ClientRequests.getLogFiles(self.loggedUser)
-        if err:
-            self._statusLabel.setText(err)
-            return
-        if not filenames:
-            self._statusLabel.setText("No log files found.")
-            return
+        def on_done(err, filenames):
+            self.window()._refreshOverlay.hideBusy()
+            if err:
+                self._statusLabel.setText(err)
+                return
+            if not filenames:
+                self._statusLabel.setText("No log files found.")
+                return
+            for filename in filenames:
+                self._addLogEntry(filename)
 
-        for filename in filenames:
-            self._addLogEntry(filename)
+        self.window()._refreshOverlay.showBusy()
+        ClientRequests.getLogFiles(self.loggedUser, callback=on_done)
 
     def _applyFilter(self):
         levels = self._levelFilter.checkedItems()
@@ -187,13 +190,19 @@ class TabServerLogs(QWidget):
                 edit.setVisible(True)
                 if fn not in self._rawContent:
                     edit.setPlainText("Loading…")
-                    err, content = ClientRequests.getLog(self.loggedUser, fn)
-                    if err:
-                        edit.setPlainText(f"Error: {err}")
-                        return
-                    self._rawContent[fn] = content or ""
-                levels = self._levelFilter.checkedItems()
-                _setColoredText(edit, self._rawContent[fn], levels)
+
+                    def on_done(err, content):
+                        self.window()._refreshOverlay.hideBusy()
+                        if err:
+                            edit.setPlainText(f"Error: {err}")
+                            return
+                        self._rawContent[fn] = content or ""
+                        _setColoredText(edit, self._rawContent[fn], self._levelFilter.checkedItems())
+
+                    self.window()._refreshOverlay.showBusy()
+                    ClientRequests.getLog(self.loggedUser, fn, callback=on_done)
+                else:
+                    _setColoredText(edit, self._rawContent[fn], self._levelFilter.checkedItems())
             else:
                 toggleBtn.setIcon(qta.icon('fa6s.chevron-right'))
                 edit.setVisible(False)

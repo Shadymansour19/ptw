@@ -193,10 +193,12 @@ class TableUsers(QWidget):
 
     def addUser(self, newUser):
         def on_done(err, _):
+            self.window()._refreshOverlay.hideBusy()
             if err:
                 QMessageBox.warning(self, "Fail", err)
                 return
             self.addUserToGUI(newUser)
+        self.window()._refreshOverlay.showBusy()
         ClientRequests.addNewUser(self.loggedUser, newUser, callback=on_done)
     
     def addUsers(self, users: Iterable):
@@ -247,6 +249,7 @@ class TableUsers(QWidget):
             return
 
         def on_done(err, _):
+            self.window()._refreshOverlay.hideBusy()
             if err:
                 QMessageBox.warning(self, "Fail", err)
                 return
@@ -261,6 +264,7 @@ class TableUsers(QWidget):
             if self._filterBar.isVisible():
                 self._populateFilters()
                 self._applyFilters()
+        self.window()._refreshOverlay.showBusy()
         ClientRequests.updateUser(self.loggedUser, user, callback=on_done)
 
     def deleteUser(self, row: int):
@@ -270,6 +274,7 @@ class TableUsers(QWidget):
             return
         
         def on_done(err, _):
+            self.window()._refreshOverlay.hideBusy()
             if err:
                 QMessageBox.warning(self, "Fail", err)
                 return
@@ -278,6 +283,7 @@ class TableUsers(QWidget):
             if self._filterBar.isVisible():
                 self._populateFilters()
 
+        self.window()._refreshOverlay.showBusy()
         ClientRequests.deleteUser(self.loggedUser, self.users[row].getUsername(), callback=on_done)
     
     def toggleActive(self, row: int):
@@ -292,6 +298,7 @@ class TableUsers(QWidget):
             return
 
         def on_done(err, _):
+            self.window()._refreshOverlay.hideBusy()
             if err:
                 QMessageBox.warning(self, "Fail", err)
                 return
@@ -306,6 +313,7 @@ class TableUsers(QWidget):
             if self._filterBar.isVisible():
                 self._populateFilters()
                 self._applyFilters()
+        self.window()._refreshOverlay.showBusy()
         ClientRequests.setUserActive(self.loggedUser, user.getUsername(), activate, callback=on_done)
 
     def addNewUserDialog(self):
@@ -352,9 +360,11 @@ class TableUsers(QWidget):
                     self.addUserToGUI(row.user)
                 remaining -= 1
                 if remaining == 0:
+                    self.window()._refreshOverlay.hideBusy()
                     self.finishImport(rows)
             return on_done
 
+        self.window()._refreshOverlay.showBusy()
         for row in toImport:
             ClientRequests.addNewUser(self.loggedUser, row.user, callback=makeHandler(row))
 

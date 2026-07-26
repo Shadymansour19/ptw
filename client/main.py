@@ -1,4 +1,7 @@
+import sys
+import logging
 import tempfile
+import traceback
 import qtawesome as qta
 from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtCore import QLocale, Qt
@@ -9,7 +12,25 @@ from User import UserRoles
 from utils import resource_path
 from qdarktheme import load_palette, load_stylesheet
 import i18n
-    
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+log = logging.getLogger("client")
+
+
+def _excepthook(exc_type, exc_value, exc_tb):
+    """PyQt6 aborts the process by default when a slot raises - log and warn instead so the app stays up."""
+    log.error("Unhandled exception:\n%s", "".join(traceback.format_exception(exc_type, exc_value, exc_tb)))
+    if QApplication.instance() is not None:
+        QMessageBox.critical(
+            None,
+            "Unexpected Error",
+            f"An unexpected error occurred and was logged:\n\n{exc_value}\n\n"
+            "The application will keep running, but please save your work and consider restarting.",
+        )
+
+
+sys.excepthook = _excepthook
+
 def on_login_success(user):
     mainWindow = None
     if user.getRole() == UserRoles.GUEST:

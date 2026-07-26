@@ -20,6 +20,7 @@ from clientRequests import ClientRequests
 from TableIsolations import TablePTWIsolations
 from RiskPreview import RiskAssessmentPreview
 from UiUtils import TabButton, lightenColor, Timeline
+from RefreshOverlay import RefreshOverlay
 from functools import partial
 import qtawesome as qta
 from i18n import t
@@ -448,6 +449,8 @@ class DialogPTW(QDialog):
         self.miwiMosSwitch()
         self.ptwTypeChanged()
 
+        self._refreshOverlay = RefreshOverlay(self)
+
     def _makeReadOnlyField(self, text: str) -> QLineEdit:
         box = QLineEdit(text)
         box.setReadOnly(True)
@@ -473,11 +476,13 @@ class DialogPTW(QDialog):
             return
 
         def on_done(err, _):
+            self._refreshOverlay.hideBusy()
             if err:
                 QMessageBox.warning(self, t("Unlink Failed"), err)
                 return
             QMessageBox.information(self, t("Unlinked"), t("IC #{0} has been unlinked. Reopen this PTW to see the updated linkage.").format(icId))
             self.reject()
+        self._refreshOverlay.showBusy()
         ClientRequests.unlinkPTWFromIC(self.loggedUser, int(icId), self.ptw.id, callback=on_done)
 
     def _requestIsolateIC(self, icId):
@@ -489,11 +494,13 @@ class DialogPTW(QDialog):
             return
 
         def on_done(err, _):
+            self._refreshOverlay.hideBusy()
             if err:
                 QMessageBox.warning(self, t("Request Failed"), err)
                 return
             QMessageBox.information(self, t("Requested"), t("Isolation requested for IC #{0}. Reopen this PTW to see the updated status.").format(icId))
             self.reject()
+        self._refreshOverlay.showBusy()
         ClientRequests.requestIsolateIC(self.loggedUser, int(icId), callback=on_done)
 
     def _linkNewIC(self):
@@ -506,11 +513,13 @@ class DialogPTW(QDialog):
             return
 
         def on_done(err, _):
+            self._refreshOverlay.hideBusy()
             if err:
                 QMessageBox.warning(self, t("Link Failed"), err)
                 return
             QMessageBox.information(self, t("Linked"), t("IC #{0} has been linked. Reopen this PTW to see the updated linkage.").format(icId))
             self.reject()
+        self._refreshOverlay.showBusy()
         ClientRequests.linkPTWToIC(self.loggedUser, icId, self.ptw.id, callback=on_done)
 
     def _icLinkRow(self, icId) -> QWidget:
@@ -739,6 +748,7 @@ class DialogPTW(QDialog):
 
     def openMIWI(self):
         def on_done(err, filepath):
+            self._refreshOverlay.hideBusy()
             if err:
                 QMessageBox.warning(self, t("Error"), err)
             else:
@@ -746,6 +756,7 @@ class DialogPTW(QDialog):
         miwiName = self.boxMiwi.currentText()
         if miwiName:
             department = self.ptw.department or self.loggedUser.department
+            self._refreshOverlay.showBusy()
             ClientRequests.getMIWI(self.loggedUser, miwiName, department=department, callback=on_done)
 
     class SaveAsDialog(QDialog):
@@ -797,13 +808,17 @@ class DialogPTW(QDialog):
         elif resp == QDialog.DialogCode.Rejected:
             return
 
-        err = ClientRequests.uploadMIWI(self.loggedUser, filepath, miwiName)
-        if err:
-            QMessageBox.warning(self, t("Error"), err)
-            return
-        globalData.allMIWIs.append(miwiName)
-        self.boxMiwi.addItem(miwiName)
-        self.boxMiwi.setCurrentText(miwiName)
+        def on_done(err, _):
+            self._refreshOverlay.hideBusy()
+            if err:
+                QMessageBox.warning(self, t("Error"), err)
+                return
+            globalData.allMIWIs.append(miwiName)
+            self.boxMiwi.addItem(miwiName)
+            self.boxMiwi.setCurrentText(miwiName)
+
+        self._refreshOverlay.showBusy()
+        ClientRequests.uploadMIWI(self.loggedUser, filepath, miwiName, callback=on_done)
     
     def newAttachment(self):
         filepath, _ = QFileDialog.getOpenFileName(self, t("Select File"), QDir.homePath(), "PDFs (*.pdf);;All Files (*)")
