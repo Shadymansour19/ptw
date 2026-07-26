@@ -384,8 +384,6 @@ class LoginWindow(QMainWindow):
                 self.storeLoginCredentials(username, password)
             except KeyringError as e:
                 QMessageBox.warning(self, "Error", str(e))
-        elif username in self._rememberedUsernames():
-            self.forgetLoginCredentials(username)
 
         theme = user.getTheme()
         if theme == 'dark':
