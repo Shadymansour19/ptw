@@ -21,7 +21,7 @@ class _BouncingLogo(QWidget):
         self.setFixedSize(_FRAME_W, _FRAME_H)
 
         self._anim = QPropertyAnimation(self, b"progress", self)
-        self._anim.setDuration(2000)
+        self._anim.setDuration(2500)
         self._anim.setStartValue(0.0)
         self._anim.setEndValue(1.0)
         self._anim.setEasingCurve(QEasingCurve.Type.Linear)
