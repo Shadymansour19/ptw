@@ -113,7 +113,7 @@ class MainWindow(QMainWindow):
         )
         self.optionLinkICToPTW = TablePTWs.MenuOption(
             'Link to IC', self.linkICToPTW, qta.icon('mdi.link-variant'),
-            visibleFor=lambda ptw: ptw.approval_status == PTWData.ApprovalStatus.APPROVED and ptw.running_status == PTWData.RunningStatus.NOT_RUNNING,
+            visibleFor=lambda ptw: ptw.canLinkIC(),
         )
 
         self.stack = QStackedWidget()
@@ -1480,20 +1480,28 @@ class MainWindow(QMainWindow):
         for tab in tabs:
             tab.clear()
 
+        isIsolator = self.loggedUser.getRole() == UserRoles.ISOLATOR
         for ic in globalData.ics.values():
             status = ic.getStatus()
             myTurn = ic.getApprovalStatus(role=self.loggedUser.getRole(), department=self.loggedUser.getDepartment()) == IC.Status.REQUESTED
+            # Physical isolate/de-isolate work is routed to isolators of the IC's own
+            # execution department only — an isolator elsewhere doesn't see it queued at all.
+            notMyExecutionDept = isIsolator and (ic.execution_department or '').casefold() != (self.loggedUser.getDepartment() or '').casefold()
             if status == IC.Status.CLOSED:
                 self.tabClosedICs.addICToGUI(ic)
             elif status == IC.Status.SANCTIONED:
                 self.tabSanctionedICs.addICToGUI(ic)
             elif status == IC.Status.CLOSING:
+                if notMyExecutionDept:
+                    continue
                 self.tabClosingICs.addICToGUI(ic)
             elif status == IC.Status.DEISOLATE_CONFIRMING:
                 self.tabDeisolateConfirmingICs.addICToGUI(ic)
             elif status == IC.Status.ACTIVE:
                 self.tabActiveICs.addICToGUI(ic)
             elif status == IC.Status.PENDING:
+                if notMyExecutionDept:
+                    continue
                 self.tabPendingICs.addICToGUI(ic)
             elif status == IC.Status.ISOLATE_CONFIRMING:
                 self.tabIsolateConfirmingICs.addICToGUI(ic)

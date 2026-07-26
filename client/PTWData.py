@@ -1997,3 +1997,8 @@ class PTWData:
         if pending < len(stages) and any(approver.matchesRoleDept(role, department) for approver in stages[pending]):
             return PTWData.ApprovalStatus.UNDER_REVIEW
         return None
+
+    def canLinkIC(self) -> bool:
+        """The PTW-side half of IC.canLinkPTW(ptw): this PTW must be approved, and not
+        yet running/held/closed (or requested to be)."""
+        return self.approval_status == PTWData.ApprovalStatus.APPROVED and self.running_status == PTWData.RunningStatus.NOT_RUNNING

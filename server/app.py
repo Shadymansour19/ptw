@@ -912,6 +912,21 @@ def requestToRunPTW():
     if ptwId is None or pa is None or ts is None:
         log.warning("POST /ptws/run-request: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
+
+    ptw = globalData.allPTWs.get(ptwId)
+    if ptw is None:
+        log.warning("POST /ptws/run-request: PTW #%s not found in active PTWs", ptwId)
+        return jsonify({"success": False, "error": f"PTW# {ptwId} not found"}), 400
+
+    with globalData.lock:
+        unisolatedICs = [
+            icId for icId in ptw.linked_ics
+            if not (ic := globalData.ics.get(int(icId))) or ic.getStatus() != IC.Status.ACTIVE
+        ]
+    if unisolatedICs:
+        log.warning("POST /ptws/run-request: forbidden — PTW #%s has non-isolated linked IC(s) %s", ptwId, unisolatedICs)
+        return jsonify({"success": False, "error": f"Cannot request run: IC(s) #{', '.join(unisolatedICs)} are not isolated"}), 403
+
     try:
         result = ptwDB.requestToRunPTW(ptwId, pa, ts)
         _sync_ptw(ptwId)
@@ -1307,7 +1322,7 @@ def getAllICs():
         dep = user.getDepartment() if user.getRole() == UserRoles.USER else data.get('department')
         with globalData.lock:
             snapshot = list(globalData.ics.values())
-        ics = [c for c in snapshot if dep is None or (c.department or '').casefold() == dep.casefold()]
+        ics = [c for c in snapshot if dep is None or (c.requestor_department or '').casefold() == dep.casefold()]
         log.debug("GET /ics: %d ICs returned to user='%s'", len(ics), user.getUsername())
         return jsonify({"success": True, "ics": objToDict(ics)})
     except Exception as e:
@@ -1325,9 +1340,18 @@ def addICRequest():
         log.warning("POST /ics: forbidden for guest '%s'", user.getUsername())
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     icDict = request.get_json(silent=True) or {}
+    ic = IC(icDict)
+    ic.requestor_department = user.getDepartment()
+    if not ic.execution_department:
+        log.warning("POST /ics: missing execution_department (user='%s')", user.getUsername())
+        return jsonify({"success": False, "error": "Execution department is required"}), 400
+    if ic.type == IC.Types.SELF and ic.execution_department != ic.requestor_department:
+        log.warning(
+            "POST /ics: forbidden — self-isolation execution_department '%s' must match requestor_department '%s' (user='%s')",
+            ic.execution_department, ic.requestor_department, user.getUsername(),
+        )
+        return jsonify({"success": False, "error": "Self-isolation must be executed by the requestor's own department"}), 400
     try:
-        ic = IC(icDict)
-        ic.department = user.getDepartment()
         ic.requestor = user.getUsername()
         ic.requestor_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         ic_id = icDB.addICFromDict(objToDict(ic))
@@ -1517,6 +1541,12 @@ def executeIsolateIC():
             icId, user.getUsername(),
         )
         return jsonify({"success": False, "error": "IC is not ready for isolator execution"}), 403
+    if (user.getDepartment() or '').casefold() != (ic.execution_department or '').casefold():
+        log.warning(
+            "POST /ics/isolate-execute: forbidden — IC #%s execution department '%s' does not match user department '%s' (user='%s')",
+            icId, ic.execution_department, user.getDepartment(), user.getUsername(),
+        )
+        return jsonify({"success": False, "error": "This IC is routed to a different execution department"}), 403
     try:
         # Merge by tag rather than trusting the submitted list wholesale — only lock_num/
         # lock_box_num are ever taken from the client, tag/description/state stay server-authoritative.
@@ -1665,6 +1695,12 @@ def executeDeisolateIC():
             icId, user.getUsername(),
         )
         return jsonify({"success": False, "error": "IC is not ready for isolator de-isolation"}), 403
+    if (user.getDepartment() or '').casefold() != (ic.execution_department or '').casefold():
+        log.warning(
+            "POST /ics/deisolate-execute: forbidden — IC #%s execution department '%s' does not match user department '%s' (user='%s')",
+            icId, ic.execution_department, user.getDepartment(), user.getUsername(),
+        )
+        return jsonify({"success": False, "error": "This IC is routed to a different execution department"}), 403
     try:
         icDB.updateICFromDict({
             'id': icId,

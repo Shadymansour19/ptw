@@ -143,7 +143,8 @@ class IC:
     def __init__(self, data: dict = {}):
         self.id : str = data.get('id')
         self.type : str = data.get('type')
-        self.department : str = data.get('department')
+        self.requestor_department : str = data.get('requestor_department')
+        self.execution_department : str = data.get('execution_department')
         self.requestor : str = data.get('requestor')
         self.requestor_timestamp : str = data.get('requestor_timestamp') or datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         self.approvals : list['IC.Approval'] = [IC.Approval().setAll(a) for a in data.get('approvals', [])]

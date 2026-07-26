@@ -38,8 +38,8 @@ class TableICs(QWidget):
         self.loggedUser = loggedUser
         self.options = []
 
-        self.summeryLabels = ['IC#', 'Status', 'Type', 'L.T.',      'Requestor', 'Request Time',        'Department', 'Location', 'Equipment', 'Reason']
-        self.summeryFields = ['id',  'status', 'type', 'long_term', 'requestor', 'requestor_timestamp', 'department', 'location', 'equipment', 'reason']
+        self.summeryLabels = ['IC#', 'Status', 'Type', 'L.T.',      'Requestor', 'Request Time',        'Requestor Dept.',      'Execution Dept.',      'Location', 'Equipment', 'Reason']
+        self.summeryFields = ['id',  'status', 'type', 'long_term', 'requestor', 'requestor_timestamp', 'requestor_department', 'execution_department', 'location', 'equipment', 'reason']
         self._ltCol = self.summeryFields.index('long_term')
 
         lblLyt = QHBoxLayout()

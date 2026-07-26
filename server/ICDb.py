@@ -28,6 +28,11 @@ class ICDb:
                     cursor.execute("ALTER TABLE ics DROP COLUMN IF EXISTS primary_ptw")
                     cursor.execute("ALTER TABLE ics DROP COLUMN IF EXISTS latest_ptw")
                     cursor.execute("ALTER TABLE ics DROP COLUMN IF EXISTS is_physically_isolated")
+                    cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'ics'")
+                    existingCols = {row['column_name'] for row in cursor.fetchall()}
+                    if 'department' in existingCols and 'requestor_department' not in existingCols:
+                        cursor.execute("ALTER TABLE ics RENAME COLUMN department TO requestor_department")
+                    cursor.execute("ALTER TABLE ics ADD COLUMN IF NOT EXISTS execution_department VARCHAR(100)")
                 conn.commit()
             except Exception as e:
                 raise Exception("Error initializing ics database: " + str(e))
@@ -62,7 +67,7 @@ class ICDb:
             with CommonDB.get_conn() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                     cursor.execute(
-                        'SELECT * FROM ics WHERE (%s IS NULL OR department ILIKE %s)',
+                        'SELECT * FROM ics WHERE (%s IS NULL OR requestor_department ILIKE %s)',
                         (department, department)
                     )
                     rows = cursor.fetchall()

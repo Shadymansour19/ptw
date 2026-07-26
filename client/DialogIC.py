@@ -5,9 +5,10 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QComboBox, QLineEdit,
                               QTextEdit, QCheckBox, QLabel, QDialogButtonBox, QMessageBox,
-                              QWidget, QStackedWidget, QPushButton)
+                              QWidget, QStackedWidget, QPushButton, QInputDialog)
+import qtawesome as qta
 
-from User import UserRoles
+from User import UserRoles, UserDepartments
 from PTWData import PTWData
 from Isolation import IC
 from TableIsolationItems import TableIsolationItems
@@ -65,7 +66,7 @@ class DialogIC(QDialog):
         # History and PTW Linkage are only meaningful once there's something to show,
         # so both are only offered in readonly mode (a brand-new IC has
         # neither approvals nor any linked PTW yet).
-        formLinkage = None
+        lytLinkage = None
         if readOnly:
             self.tabHistory = QWidget(self.stack)
             lytHistoryPanes = QHBoxLayout(self.tabHistory)
@@ -73,8 +74,8 @@ class DialogIC(QDialog):
             self.tabsBtnsMap[self.btnHistory] = self.tabHistory
 
             self.tabLinkage = QWidget(self.stack)
-            formLinkage = QFormLayout(self.tabLinkage)
-            formLinkage.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+            lytLinkage = QVBoxLayout(self.tabLinkage)
+            lytLinkage.addWidget(QLabel(f"<b>{t('Linked PTWs')}</b>", font=QFont("Helvetica", 14)))
             self.btnLinkage = TabButton(self.stack, t("PTW Linkage"), "mdi.link-variant")
             self.tabsBtnsMap[self.btnLinkage] = self.tabLinkage
 
@@ -87,8 +88,11 @@ class DialogIC(QDialog):
         self.boxId.setReadOnly(True)
         self.typeCombo = QComboBox()
         self.typeCombo.addItems([ty.value for ty in IC.Types])
-        self.boxDepartment = QLineEdit()
-        self.boxDepartment.setReadOnly(True)
+        self.boxRequestorDepartment = QLineEdit()
+        self.boxRequestorDepartment.setReadOnly(True)
+        self.boxExecutionDepartment = QComboBox()
+        for dept in UserDepartments:
+            self.boxExecutionDepartment.addItem(t(dept), dept.value)
         self.boxRequestor = QLineEdit()
         self.boxRequestor.setReadOnly(True)
         self.boxRequestTime = QLineEdit()
@@ -104,7 +108,8 @@ class DialogIC(QDialog):
 
         formBasicInfo.addRow(t("IC#:"), self.boxId)
         formBasicInfo.addRow(t("Type:"), self.typeCombo)
-        formBasicInfo.addRow(t("Department:"), self.boxDepartment)
+        formBasicInfo.addRow(t("Requestor Department:"), self.boxRequestorDepartment)
+        formBasicInfo.addRow(t("Execution Department:"), self.boxExecutionDepartment)
         formBasicInfo.addRow(t("Requestor:"), self.boxRequestor)
         formBasicInfo.addRow(t("Request Time:"), self.boxRequestTime)
         formBasicInfo.addRow(t("Location:"), self.boxLocation)
@@ -130,8 +135,12 @@ class DialogIC(QDialog):
             lytHistoryPanes.addWidget(self._buildApprovalTimelinePane(), stretch=1)
             lytHistoryPanes.addWidget(self._buildIsolationTimelinePane(), stretch=1)
 
-            self._addPTWLinkRows(formLinkage, "Linked PTW:", ic.linked_ptws)
-            self._addPTWLinkRows(formLinkage, "Held By:", ic.held_by)
+            self._addPTWLinkRows(lytLinkage, ic.linked_ptws)
+            self.btnLinkNewPTW = QPushButton(qta.icon("mdi.link-variant"), t("Link to PTW"))
+            self.btnLinkNewPTW.clicked.connect(self._linkNewPTW)
+            self.btnLinkNewPTW.setVisible(not self.ic.isWindingDown())
+            lytLinkage.addWidget(self.btnLinkNewPTW)
+            lytLinkage.addStretch(1)
 
         self._populate()
         self._applyReadOnly()
@@ -185,27 +194,48 @@ class DialogIC(QDialog):
             self.reject()
         ClientRequests.unlinkPTWFromIC(self.loggedUser, self.ic.id, ptwId, callback=on_done)
 
+    def _linkNewPTW(self):
+        ptwId, ok = QInputDialog.getText(self, t('Link PTW to IC #{0}').format(self.ic.id), t('PTW #:'))
+        if not ok or not ptwId.strip():
+            return
+        ptwId = ptwId.strip()
+        if ptwId in self.ic.linked_ptws:
+            QMessageBox.warning(self, t("Already Linked"), t("PTW #{0} is already linked to this IC.").format(ptwId))
+            return
+
+        def on_done(err, _):
+            if err:
+                QMessageBox.warning(self, t("Link Failed"), err)
+                return
+            QMessageBox.information(self, t("Linked"), t("PTW #{0} has been linked. Reopen this IC to see the updated linkage.").format(ptwId))
+            self.reject()
+        ClientRequests.linkPTWToIC(self.loggedUser, self.ic.id, ptwId, callback=on_done)
+
     def _ptwLinkRow(self, ptwId) -> QWidget:
+        ptw = next((p for p in globalData.allPTWs if str(p.id) == str(ptwId)), None) or \
+              next((p for p in globalData.archivedPTWs if str(p.id) == str(ptwId)), None)
+        label = f"PTW #{ptwId} — {ptw.running_status}" if ptw else f"PTW #{ptwId}"
+
         row = QWidget()
         lyt = QHBoxLayout(row)
         lyt.setContentsMargins(0, 0, 0, 0)
-        lyt.addWidget(self._makeReadOnlyField(str(ptwId)), stretch=1)
-        btnView = QPushButton(t("View"))
+        lyt.addWidget(self._makeReadOnlyField(label), stretch=1)
+        btnView = QPushButton(qta.icon("fa6.eye"), t("View"))
         btnView.clicked.connect(partial(self._viewLinkedPTW, ptwId))
         lyt.addWidget(btnView)
         if self.loggedUser.getRole() != UserRoles.GUEST:
-            btnUnlink = QPushButton(t("Unlink"))
+            btnUnlink = QPushButton(qta.icon("mdi.link-variant-off"), t("Unlink"))
             btnUnlink.clicked.connect(partial(self._unlinkPTW, ptwId))
             lyt.addWidget(btnUnlink)
         return row
 
-    def _addPTWLinkRows(self, formLayout: QFormLayout, label: str, ptwIds: list):
+    def _addPTWLinkRows(self, container: QVBoxLayout, ptwIds: list):
         ids = [p for p in ptwIds if p]
         if not ids:
-            formLayout.addRow(t(label), self._makeReadOnlyField('—'))
+            container.addWidget(QLabel(t("No linked PTWs.")))
             return
         for ptwId in ids:
-            formLayout.addRow(t(label), self._ptwLinkRow(ptwId))
+            container.addWidget(self._ptwLinkRow(ptwId))
 
     def _timelinePane(self, title: str, timeline: Timeline) -> QWidget:
         pane = QWidget()
@@ -312,6 +342,14 @@ class DialogIC(QDialog):
         for btn in self.tabsBtnsMap:
             btn.setHighlightColor(accentColor, textColor)
 
+        if self.typeCombo.currentText() == IC.Types.SELF:
+            idx = self.boxExecutionDepartment.findData(self.boxRequestorDepartment.text())
+            if idx >= 0:
+                self.boxExecutionDepartment.setCurrentIndex(idx)
+                self.boxExecutionDepartment.setEnabled(False)
+        else:
+            self.boxExecutionDepartment.setEnabled(not self.readonly)
+
     def stackTabChanged(self):
         tabIdx = self.stack.currentIndex()
         for i, btn in enumerate(self.tabsBtnsMap.keys()):
@@ -325,7 +363,12 @@ class DialogIC(QDialog):
         self.boxId.setText(str(self.ic.id) if self.ic.id else '')
         if self.ic.type:
             self.typeCombo.setCurrentText(self.ic.type)
-        self.boxDepartment.setText(self.ic.department or (self.loggedUser.getDepartment() if self.new else ''))
+        self.boxRequestorDepartment.setText(self.ic.requestor_department or (self.loggedUser.getDepartment() if self.new else ''))
+        executionDept = self.ic.execution_department or (self.loggedUser.getDepartment() if self.new else '')
+        if executionDept:
+            idx = self.boxExecutionDepartment.findData(executionDept)
+            if idx >= 0:
+                self.boxExecutionDepartment.setCurrentIndex(idx)
         self.boxRequestor.setText(DialogIC.displayNameForUsername(self._requestorUsername))
         self.boxRequestTime.setText(self.ic.requestor_timestamp or '')
         if self.ic.location:
@@ -372,6 +415,14 @@ class DialogIC(QDialog):
             QMessageBox.warning(self, "Invalid Input", "Please add at least one isolation item.")
             return
 
+        executionDept = self.boxExecutionDepartment.currentData()
+        if not executionDept:
+            QMessageBox.warning(self, "Invalid Input", "Please select an execution department.")
+            return
+        if self.typeCombo.currentText() == IC.Types.SELF and executionDept != self.loggedUser.getDepartment():
+            QMessageBox.warning(self, "Invalid Input", "Self-isolation must be executed by your own department.")
+            return
+
         self.ic.type = self.typeCombo.currentText()
         self.ic.location = self.boxLocation.currentData()
         self.ic.equipment = equipment
@@ -381,7 +432,8 @@ class DialogIC(QDialog):
         self.ic.long_term_reason = long_term_reason
 
         if self.new:
-            self.ic.department = self.loggedUser.getDepartment()
+            self.ic.requestor_department = self.loggedUser.getDepartment()
+            self.ic.execution_department = executionDept
             self.ic.requestor = self.loggedUser.getUsername()
             self.ic.requestor_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 

@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
                               QGridLayout, QStackedWidget, QWidget, QLineEdit, QComboBox,
                               QTextEdit, QPushButton, QCheckBox, QRadioButton, QButtonGroup,
                               QDialogButtonBox, QMessageBox, QApplication, QStyle,
-                              QFileDialog, QSizePolicy, QFrame, QLabel)
+                              QFileDialog, QSizePolicy, QFrame, QLabel, QInputDialog)
 from PyQt6.QtGui import QFont, QKeySequence, QShortcut, QColor
 import re
 
@@ -172,7 +172,7 @@ class DialogPTW(QDialog):
         # so both are only offered in readonly mode (a brand-new PTW has neither
         # approvals nor any linked IC yet).
         lytHistoryPanes = None
-        formLinkage = None
+        lytLinkage = None
         if readOnly:
             self.tabHistory = QWidget(self.stack)
             lytHistoryPanes = QHBoxLayout(self.tabHistory)
@@ -180,8 +180,8 @@ class DialogPTW(QDialog):
             self.tabsBtnsMap[self.btnHistory] = self.tabHistory
 
             self.tabLinkage = QWidget(self.stack)
-            formLinkage = QFormLayout(self.tabLinkage)
-            formLinkage.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+            lytLinkage = QVBoxLayout(self.tabLinkage)
+            lytLinkage.addWidget(QLabel(f"<b>{t('Linked ICs')}</b>", font=QFont("Helvetica", 14)))
             self.btnLinkage = TabButton(self.stack, t("IC Linkage"), "mdi.link-variant")
             self.tabsBtnsMap[self.btnLinkage] = self.tabLinkage
 
@@ -428,9 +428,12 @@ class DialogPTW(QDialog):
             lytHistoryPanes.addWidget(self._buildApprovalTimelinePane(), stretch=1)
             lytHistoryPanes.addWidget(self._buildRunningTimelinePane(), stretch=1)
 
-            groupedICs = self._linkedICsByType()
-            for icType in IC.Types:
-                self._addICLinkRows(formLinkage, f"{icType}:", groupedICs[icType])
+            self._addICLinkRows(lytLinkage, self.ptw.linked_ics)
+            self.btnLinkNewIC = QPushButton(qta.icon("mdi.link-variant"), t("Link New IC"))
+            self.btnLinkNewIC.clicked.connect(self._linkNewIC)
+            self.btnLinkNewIC.setVisible(self.ptw.canLinkIC())
+            lytLinkage.addWidget(self.btnLinkNewIC)
+            lytLinkage.addStretch(1)
 
         for tabIdx in range(self.stack.count()):
             QShortcut(QKeySequence(f"Alt+{tabIdx + 1}"), self).activated.connect(partial(self.stack.setCurrentIndex, tabIdx))
@@ -477,27 +480,48 @@ class DialogPTW(QDialog):
             self.reject()
         ClientRequests.unlinkPTWFromIC(self.loggedUser, int(icId), self.ptw.id, callback=on_done)
 
+    def _linkNewIC(self):
+        icId, ok = QInputDialog.getText(self, t('Link IC to PTW #{0}').format(self.ptw.id), t('IC #:'))
+        if not ok or not icId.strip():
+            return
+        icId = icId.strip()
+        if icId in self.ptw.linked_ics:
+            QMessageBox.warning(self, t("Already Linked"), t("IC #{0} is already linked to this PTW.").format(icId))
+            return
+
+        def on_done(err, _):
+            if err:
+                QMessageBox.warning(self, t("Link Failed"), err)
+                return
+            QMessageBox.information(self, t("Linked"), t("IC #{0} has been linked. Reopen this PTW to see the updated linkage.").format(icId))
+            self.reject()
+        ClientRequests.linkPTWToIC(self.loggedUser, icId, self.ptw.id, callback=on_done)
+
     def _icLinkRow(self, icId) -> QWidget:
+        icsById = {str(ic.id): ic for ic in globalData.ics.values()}
+        ic = icsById.get(str(icId))
+        label = f"IC #{icId} — {ic.getStatus()}" if ic else f"IC #{icId}"
+
         row = QWidget()
         lyt = QHBoxLayout(row)
         lyt.setContentsMargins(0, 0, 0, 0)
-        lyt.addWidget(self._makeReadOnlyField(str(icId)), stretch=1)
-        btnView = QPushButton(t("View"))
+        lyt.addWidget(self._makeReadOnlyField(label), stretch=1)
+        btnView = QPushButton(qta.icon("fa6.eye"), t("View"))
         btnView.clicked.connect(partial(self._viewLinkedIC, icId))
         lyt.addWidget(btnView)
         if self.loggedUser.getRole() != UserRoles.GUEST:
-            btnUnlink = QPushButton(t("Unlink"))
+            btnUnlink = QPushButton(qta.icon("mdi.link-variant-off"), t("Unlink"))
             btnUnlink.clicked.connect(partial(self._unlinkIC, icId))
             lyt.addWidget(btnUnlink)
         return row
 
-    def _addICLinkRows(self, formLayout: QFormLayout, label: str, icIds: list):
+    def _addICLinkRows(self, container: QVBoxLayout, icIds: list):
         ids = [i for i in icIds if i]
         if not ids:
-            formLayout.addRow(t(label), self._makeReadOnlyField('—'))
+            container.addWidget(QLabel(t("No linked ICs.")))
             return
         for icId in ids:
-            formLayout.addRow(t(label), self._icLinkRow(icId))
+            container.addWidget(self._icLinkRow(icId))
 
     def _timelinePane(self, title: str, timeline: Timeline) -> QWidget:
         pane = QWidget()
@@ -598,15 +622,6 @@ class DialogPTW(QDialog):
 
         timeline = Timeline(entries, t("There's no running history at the moment"))
         return self._timelinePane(t("Running Timeline"), timeline)
-
-    def _linkedICsByType(self) -> dict:
-        icsById = {str(ic.id): ic for ic in globalData.ics.values()}
-        grouped = {icType: [] for icType in IC.Types}
-        for icId in self.ptw.linked_ics:
-            ic = icsById.get(str(icId))
-            if ic and ic.type in grouped:
-                grouped[ic.type].append(str(icId))
-        return grouped
 
     def ptwTypeChanged(self):
         color = PTWData.backgroundColorForType(self.boxPTWType.currentData())
