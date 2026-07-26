@@ -1,4 +1,4 @@
-from PyQt6.QtCore import Qt, pyqtSignal, QObject, QThread, QSize
+from PyQt6.QtCore import Qt, pyqtSignal, QObject, QThread, QSize, QSettings
 from PyQt6.QtWidgets import (QLineEdit, QToolButton, QDialog, QFormLayout, QLabel,
                               QStackedWidget, QPushButton, QCheckBox, QDialogButtonBox,
                               QMessageBox, QMainWindow, QWidget, QSizePolicy, QApplication, QStyle,
@@ -11,6 +11,7 @@ from SearchableComboBox import SearchableComboBox
 
 
 SERVICE_NAME = "PTW-login-credentials"
+SETTINGS_REMEMBERED_USERS_KEY = "login/rememberedUsernames"
 
 
 class PasswordLineEdit(QLineEdit):
@@ -234,7 +235,7 @@ class LoginWindow(QMainWindow):
         container = QWidget()
         self.setCentralWidget(container)
 
-        self.boxUsername = QLineEdit()
+        self.boxUsername = SearchableComboBox()
         self.boxPassword = PasswordLineEdit()
         self.btnRememberMe = QCheckBox('Remember me')
         self.btnForgotPassword = QPushButton('Forgot Password?')
@@ -250,7 +251,8 @@ class LoginWindow(QMainWindow):
         self.btnForgotPassword.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btnForgotPassword.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
 
-        self.boxUsername.returnPressed.connect(self.login)
+        self.boxUsername.lineEdit().returnPressed.connect(self.login)
+        self.boxUsername.itemSelected.connect(self._onUsernameSelected)
         self.boxPassword.returnPressed.connect(self.login)
         self.btnForgotPassword.clicked.connect(self.forgotPassword)
 
@@ -279,12 +281,7 @@ class LoginWindow(QMainWindow):
         mainLayout.setAlignment(self.btnRememberMe, Qt.AlignmentFlag.AlignCenter)
         mainLayout.setAlignment(self.btnForgotPassword, Qt.AlignmentFlag.AlignCenter)
 
-        try:
-            username, password = self.retrieveLoginCredentials()
-            self.boxUsername.setText(username)
-            self.boxPassword.setText(password)
-        except KeyringError as e:
-            pass
+        self._populateRememberedUsers()
 
         mainLayout.addRow(btnLayout)
 
@@ -297,25 +294,62 @@ class LoginWindow(QMainWindow):
     def showHidePassword(self):
         self.boxPassword.setEchoMode(QLineEdit.EchoMode.Normal if self.btnShowPassword.isChecked() else QLineEdit.EchoMode.Password)
 
+    def _rememberedUsernames(self) -> list[str]:
+        value = QSettings("PTW", "PTW").value(SETTINGS_REMEMBERED_USERS_KEY, [], type=list)
+        return [str(v) for v in value] if value else []
+
     def storeLoginCredentials(self, username: str, password: str):
         try:
-            keyring.set_password(SERVICE_NAME, 'username', username)
-            keyring.set_password(SERVICE_NAME, 'password', password)
+            keyring.set_password(SERVICE_NAME, username, password)
         except KeyringError as e:
             raise e
 
-    def retrieveLoginCredentials(self) -> tuple[str, str]:
+        usernames = self._rememberedUsernames()
+        if username in usernames:
+            usernames.remove(username)
+        usernames.insert(0, username)
+        QSettings("PTW", "PTW").setValue(SETTINGS_REMEMBERED_USERS_KEY, usernames)
+
+    def retrieveLoginCredentials(self, username: str) -> str:
         try:
-            username = keyring.get_password(SERVICE_NAME, 'username')
-            password = keyring.get_password(SERVICE_NAME, 'password')
-            return username, password
+            return keyring.get_password(SERVICE_NAME, username)
         except KeyringError as e:
             raise e
-        
+
+    def forgetLoginCredentials(self, username: str):
+        usernames = self._rememberedUsernames()
+        if username in usernames:
+            usernames.remove(username)
+            QSettings("PTW", "PTW").setValue(SETTINGS_REMEMBERED_USERS_KEY, usernames)
+        try:
+            keyring.delete_password(SERVICE_NAME, username)
+        except KeyringError:
+            pass
+
+    def _populateRememberedUsers(self):
+        usernames = self._rememberedUsernames()
+        self.boxUsername.setItems(usernames)
+        self.boxPassword.clear()
+        if usernames:
+            self._fillPasswordFor(usernames[0])
+
+    def _fillPasswordFor(self, username: str):
+        try:
+            password = self.retrieveLoginCredentials(username)
+        except KeyringError:
+            password = None
+        self.boxPassword.setText(password or '')
+
+    def _onUsernameSelected(self, username: str):
+        if username in self._rememberedUsernames():
+            self._fillPasswordFor(username)
+        else:
+            self.boxPassword.clear()
+
     def forgotPassword(self):
         from clientRequests import ClientRequests
 
-        username = self.boxUsername.text()
+        username = self.boxUsername.currentText()
         if not username:
             QMessageBox.warning(self, "Error", "Please enter your username to reset your password.")
             return
@@ -331,33 +365,28 @@ class LoginWindow(QMainWindow):
             QMessageBox.information(self, "Success", "Your password has been reset successfully. You can now log in with your new password.")
     
     def reset(self):
-        self.boxUsername.clear()
-        self.boxPassword.clear()
+        self._populateRememberedUsers()
         self.boxUsername.setFocus()
-        try:
-            username, password = self.retrieveLoginCredentials()
-            self.boxUsername.setText(username)
-            self.boxPassword.setText(password)
-        except KeyringError as e:
-            pass
-        
+
     def login(self):
         from clientRequests import ClientRequests
 
-        username = self.boxUsername.text()
+        username = self.boxUsername.currentText()
         password : str = self.boxPassword.text()
         err, user = ClientRequests.login(username, password)
-        
+
         if err is not None:
             QMessageBox.warning(self, "Error", err)
             return
-        
+
         if self.btnRememberMe.isChecked():
             try:
                 self.storeLoginCredentials(username, password)
             except KeyringError as e:
                 QMessageBox.warning(self, "Error", str(e))
-        
+        elif username in self._rememberedUsernames():
+            self.forgetLoginCredentials(username)
+
         theme = user.getTheme()
         if theme == 'dark':
             QApplication.styleHints().setColorScheme(Qt.ColorScheme.Dark)
