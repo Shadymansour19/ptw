@@ -695,6 +695,7 @@ The desktop client is structured around role-based main windows. After login, `M
 | `MainWindow.py`             | Post-login router; loads role-specific window                    |
 | `clientRequests.py`         | HTTP wrapper; all server calls return `(err, data)`              |
 | `RequestWorker.py`          | `@async_request` decorator — moves any request off the GUI thread via `QThread`; marshals result back via queued signal |
+| `RefreshOverlay.py`         | `RefreshOverlay` — dims a window/dialog and blocks input while a refresh is in flight; refcounted `showBusy()`/`hideBusy()`, auto-tracks its parent's size via an event filter, plays an animated bouncing-logo sprite (baked offline by `dev-scripts/generate_refresh_overlay_frames.py` into `assets/sh-logo-bounce-frames.png`) |
 | `GlobalData.py`             | Client-side data cache                                           |
 | `SSEListener.py`            | QThread that connects to `/events` and emits real-time PTW events|
 | `PTWData.py`                | Mirrored data model classes (client-side copy)                   |

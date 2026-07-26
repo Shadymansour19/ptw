@@ -1,7 +1,7 @@
-from PyQt6.QtCore import Qt, pyqtSignal, QObject, QThread, QSize, QSettings
+from PyQt6.QtCore import Qt, pyqtSignal, QSize, QSettings
 from PyQt6.QtWidgets import (QLineEdit, QToolButton, QDialog, QFormLayout, QLabel,
-                              QStackedWidget, QPushButton, QCheckBox, QDialogButtonBox,
-                              QMessageBox, QMainWindow, QWidget, QSizePolicy, QApplication, QStyle,
+                              QPushButton, QCheckBox, QDialogButtonBox,
+                              QMessageBox, QMainWindow, QWidget, QSizePolicy, QApplication,
                               QHBoxLayout)
 import keyring
 from keyring.errors import KeyringError
@@ -67,19 +67,6 @@ class PasswordLineEdit(QLineEdit):
 
 
 
-class _ResetRequestWorker(QObject):
-    finished = pyqtSignal(object)
-
-    def __init__(self, username: str):
-        super().__init__()
-        self._username = username
-
-    def run(self):
-        from clientRequests import ClientRequests
-        err = ClientRequests.requestResetPassword(self._username)
-        self.finished.emit(err)
-
-
 class ResetPasswordDialog(QDialog):
     def __init__(self, username: str, parent=None):
         super().__init__(parent)
@@ -89,32 +76,11 @@ class ResetPasswordDialog(QDialog):
         lyt.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         self.setLayout(lyt)
 
-
         self.boxUsername = QLineEdit()
         self.boxCode = QLineEdit()
         self.boxNewPassword = PasswordLineEdit()
         self.boxConfirmPassword = PasswordLineEdit()
-        self.progressStack = QStackedWidget()
-        self.lblStatus = QLabel("Sending verification code…")
-
-        self.icnLoading = QPushButton()
-        # self.icnLoading.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.icnLoading.setStyleSheet('QPushButton { background-color: transparent; border: none; }')
-        self._animation = qta.Spin(self.icnLoading)
-        self.icnLoading.setIcon(qta.icon('fa6s.spinner', color='green', animation=self._animation))
-        self.icnLoading.setIconSize(QSize(32, 32))
-        self._animation.start()
-
-        # self.progressBar = QProgressBar()
-        # self.progressBar.setRange(0, 0)  # indeterminate
-
-        self.icnDone = QLabel()
-        self.icnDone.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.icnDone.setPixmap(
-            QApplication.style().standardIcon(QStyle.StandardPixmap.SP_DialogOkButton).pixmap(QSize(32, 32))
-        )
-        self.progressStack.addWidget(self.icnLoading)
-        self.progressStack.addWidget(self.icnDone)
+        self.lblStatus = QLabel()
 
         self.boxUsername.setText(username)
         self.boxUsername.setReadOnly(True)
@@ -131,45 +97,32 @@ class ResetPasswordDialog(QDialog):
         lyt.addRow("New Password", self.boxNewPassword)
         lyt.addRow("Confirm Password", self.boxConfirmPassword)
         lyt.addRow(self.lblStatus)
-        lyt.addRow(self.progressStack)
         lyt.addRow(self.btns)
 
+        self._refreshOverlay = RefreshOverlay(self)
         self._setFormEnabled(False)
 
-        self._thread = QThread()
-        self._worker = _ResetRequestWorker(username)
-        self._worker.moveToThread(self._thread)
-        self._thread.started.connect(self._worker.run)
-        self._worker.finished.connect(self._onRequestFinished)
-        self._worker.finished.connect(self._thread.quit)
-        self._thread.start()
+        def on_done(err, _):
+            self._refreshOverlay.hideBusy()
+            if err:
+                self.lblStatus.setText("Error sending verification code. Please try again later.")
+                QMessageBox.warning(self, "Error", err)
+                self._setFormEnabled(False)
+                self.reject()
+            else:
+                self.lblStatus.setText("Verification code sent. Check your email.")
+                self._setFormEnabled(True)
+                self.boxCode.setFocus()
+
+        from clientRequests import ClientRequests
+        self._refreshOverlay.showBusy()
+        ClientRequests.requestResetPassword(username, callback=on_done)
 
     def _setFormEnabled(self, enabled: bool):
         self.boxCode.setEnabled(enabled)
         self.boxNewPassword.setEnabled(enabled)
         self.boxConfirmPassword.setEnabled(enabled)
         self.btns.button(QDialogButtonBox.StandardButton.Ok).setEnabled(enabled)
-        self.setCursor(Qt.CursorShape.ArrowCursor if enabled else Qt.CursorShape.WaitCursor)
-
-    def done(self, result):
-        if self._thread.isRunning():
-            self._worker.finished.disconnect(self._onRequestFinished)
-            self._thread.quit()
-            self._thread.wait()
-        super().done(result)
-
-    def _onRequestFinished(self, err):
-        if err:
-            self.lblStatus.setText("Error sending verification code. Please try again later.")
-            QMessageBox.warning(self, "Error", err)
-            self._setFormEnabled(False)
-            self.reject()
-        else:
-            self._animation.stop()
-            self.progressStack.setCurrentIndex(1)
-            self.lblStatus.setText("Verification code sent. Check your email.")
-            self._setFormEnabled(True)
-            self.boxCode.setFocus()
 
     def resetPassword(self):
         self.verificationCode = self.boxCode.text()

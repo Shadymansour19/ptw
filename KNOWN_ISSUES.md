@@ -38,6 +38,20 @@ The server binds to plain HTTP on port 5000. Every request sends the username an
 
 ## Fixed
 
+### ~~M14 — Unhandled exception in a Qt slot aborts the whole application~~ ✓
+**File:** `client/main.py`
+
+PyQt6's default behavior when a Python exception escapes a slot invoked from the C++ side (a button click, a timer, a queued callback) is to print the traceback and abort the process — there was no override, so any transient bug anywhere in the client (a stale-index lookup, a `None` where an object was expected) took the whole app down instead of just failing that one action. Fixed by installing a `sys.excepthook` that logs the traceback and shows a warning dialog instead of letting the process abort.
+
+---
+
+### ~~M13 — No timeout on any client HTTP request~~ ✓
+**File:** `client/clientRequests.py`
+
+Every `requests.get/post/put/patch/delete` call in the file was unbounded — a hung or unresponsive server left that specific request waiting indefinitely, with no way to recover short of restarting the client. Fixed by adding `ClientRequests.TIMEOUT` (15s, generic) and `ClientRequests.FILE_TIMEOUT` (60s, for the five upload/download endpoints: PTW attachments upload/download/copy, MIWI upload/download) and passing one or the other to every call.
+
+---
+
 ### ~~M12 — Department-scoped required approvers can't see the PTW they're required to approve~~ ✓
 **Files:** `server/app.py` (`getAllPTWs`, `getArchivedPTWs`)
 
@@ -79,6 +93,8 @@ Replaced the two-step `SELECT EXISTS` + conditional `INSERT`/`UPDATE` (each on s
 **Files:** `client/clientRequests.py`, `client/RequestWorker.py`
 
 All methods in `clientRequests.py` are now decorated with `@async_request` (from `RequestWorker.py`). When called with a `callback=` keyword argument, the decorator moves the request onto a fresh `QThread`, marshals the result back to the GUI thread via a queued signal, and calls the callback — leaving the GUI fully responsive throughout.
+
+**2026-07-26 follow-up:** the decorator alone wasn't sufficient — several call sites invoked an `@async_request`-decorated method *without* `callback=`, which falls back to the synchronous branch in `RequestWorker.async_request`'s wrapper and blocks the GUI thread exactly as before. Found and fixed in `MainWindow.refreshArchivedPTWs`, `Login.login`/`forgotPassword`, `TabServerLogs.refresh` and its per-entry log fetch (`onToggle`), and `WidgetPTW.newMIWI`'s upload — all now pass `callback=`. A new `RefreshOverlay` (`client/RefreshOverlay.py`) also now dims the window and blocks input with a loading animation around every refresh/mutation reachable across the client (`MainWindow`, `Login`, `DialogIC`, `WidgetPTW.DialogPTW`, and the table widgets embedded in them), so a slow-but-async operation is visibly in progress rather than looking unresponsive, and a stray click can't land on a table mid-rebuild.
 
 ---
 
