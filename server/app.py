@@ -1725,9 +1725,9 @@ def linkPTWToIC():
     if user is None:
         log.warning("POST /ics/link-ptw unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
-    if user.getRole() == UserRoles.GUEST:
-        log.warning("POST /ics/link-ptw: forbidden for guest '%s'", user.getUsername())
-        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    if user.getRole() not in (UserRoles.USER, UserRoles.ISSUING, UserRoles.COORDINATOR):
+        log.warning("POST /ics/link-ptw: forbidden for role='%s' user='%s'", user.getRole(), user.getUsername())
+        return jsonify({"success": False, "error": "Forbidden"}), 403
     payload = request.get_json(silent=True) or {}
     icId = payload.get('ic-id')
     ptwId = payload.get('ptw-id')
@@ -1780,9 +1780,9 @@ def unlinkPTWFromIC():
     if user is None:
         log.warning("POST /ics/unlink-ptw unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
-    if user.getRole() == UserRoles.GUEST:
-        log.warning("POST /ics/unlink-ptw: forbidden for guest '%s'", user.getUsername())
-        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    if user.getRole() not in (UserRoles.USER, UserRoles.ISSUING, UserRoles.COORDINATOR):
+        log.warning("POST /ics/unlink-ptw: forbidden for role='%s' user='%s'", user.getRole(), user.getUsername())
+        return jsonify({"success": False, "error": "Forbidden"}), 403
     payload = request.get_json(silent=True) or {}
     icId = payload.get('ic-id')
     ptwId = payload.get('ptw-id')

@@ -1699,7 +1699,7 @@ class CoordinatorMainWindow(MainWindow):
 
         self.tabUnderReviewPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestEditsPTW, self.optionAcceptPTW, self.optionPrintPTW, self.optionExportPTW])
         self.tabReturnedPTWs.addOptions([self.optionViewPTW, self.viewApprovalsOption, self.optionViewRequestorPTW, self.optionPrintPTW, self.optionExportPTW])
-        self.tabApprovedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionExportPTW])
+        self.tabApprovedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionLinkICToPTW, self.optionPrintPTW, self.optionExportPTW])
         self.tabWaitingRunConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionExportPTW])
         self.tabRunningPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionExportPTW])
         self.tabWaitingClsConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionExportPTW])
@@ -1708,11 +1708,34 @@ class CoordinatorMainWindow(MainWindow):
         self.tabClosedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionArchivePTW, self.optionExportPTW])
         self.tabArchivedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
 
+        # View-only across every IC tab Issuing has (same breadth of visibility, less
+        # privilege — no Accept/Request Edits/Confirm/Return/Execute actions), plus the
+        # Link to PTW action Coordinator already has via the PTW side.
+        self.tabUnderReviewICs.addOptions([self.optionViewIC, self.optionLinkPTWToIC])
+        self.tabApprovedICs.addOptions([self.optionViewIC, self.optionLinkPTWToIC])
+        self.tabIsolateConfirmingICs.addOptions([self.optionViewIC, self.optionLinkPTWToIC])
+        self.tabPendingICs.addOptions([self.optionViewIC, self.optionLinkPTWToIC])
+        self.tabActiveICs.addOptions([self.optionViewIC, self.optionLinkPTWToIC])
+        self.tabDeisolateConfirmingICs.addOptions([self.optionViewIC])
+        self.tabClosingICs.addOptions([self.optionViewIC])
+        self.tabSanctionedICs.addOptions([self.optionViewIC])
+        self.tabClosedICs.addOptions([self.optionViewIC])
+
+        self._icTabs = [
+            self.btnCertUnderReview, self.btnCertApproved, self.btnCertIsolateConfirming, self.btnCertPending,
+            self.btnCertActive, self.btnCertDeisolateConfirming, self.btnCertClosing, self.btnCertSanctioned, self.btnCertClosed,
+        ]
+        self._icTabsWidgets = [
+            self.tabUnderReviewICs, self.tabApprovedICs, self.tabIsolateConfirmingICs, self.tabPendingICs,
+            self.tabActiveICs, self.tabDeisolateConfirmingICs, self.tabClosingICs, self.tabSanctionedICs, self.tabClosedICs,
+        ]
+
         self.setAvailableTabs(
             [
                 [self.btnWelcome],
                 [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
                 [self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs, self.btnArchivedPTWs],
+                self._icTabs,
             ],
             {
                 '&PTWs': [
@@ -1720,6 +1743,7 @@ class CoordinatorMainWindow(MainWindow):
                     None,
                     self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs, self.btnArchivedPTWs,
                 ],
+                '&ICs': self._icTabs,
                 '&View': [self.btnWelcome, *self._footerButtons()],
             },
         )
@@ -1734,7 +1758,7 @@ class CoordinatorMainWindow(MainWindow):
     def stackTabChanged(self):
         super().stackTabChanged()
         tab = self.stack.currentWidget()
-        self.btnFAB.setVisible(tab != self.tabWelcome)
+        self.btnFAB.setVisible(tab != self.tabWelcome and tab not in self._icTabsWidgets)
         if tab == self.tabArchivedPTWs and not globalData.archivedPTWs:
             self.refreshArchivedPTWs()
 

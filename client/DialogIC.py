@@ -138,7 +138,7 @@ class DialogIC(QDialog):
             self._addPTWLinkRows(lytLinkage, ic.linked_ptws)
             self.btnLinkNewPTW = QPushButton(qta.icon("mdi.link-variant"), t("Link to PTW"))
             self.btnLinkNewPTW.clicked.connect(self._linkNewPTW)
-            self.btnLinkNewPTW.setVisible(not self.ic.isWindingDown())
+            self.btnLinkNewPTW.setVisible(not self.ic.isWindingDown() and self.loggedUser.getRole() in (UserRoles.USER, UserRoles.ISSUING, UserRoles.COORDINATOR))
             lytLinkage.addWidget(self.btnLinkNewPTW)
             lytLinkage.addStretch(1)
 
@@ -223,7 +223,7 @@ class DialogIC(QDialog):
         btnView = QPushButton(qta.icon("fa6.eye"), t("View"))
         btnView.clicked.connect(partial(self._viewLinkedPTW, ptwId))
         lyt.addWidget(btnView)
-        if self.loggedUser.getRole() != UserRoles.GUEST:
+        if self.loggedUser.getRole() in (UserRoles.USER, UserRoles.ISSUING, UserRoles.COORDINATOR):
             btnUnlink = QPushButton(qta.icon("mdi.link-variant-off"), t("Unlink"))
             btnUnlink.clicked.connect(partial(self._unlinkPTW, ptwId))
             lyt.addWidget(btnUnlink)

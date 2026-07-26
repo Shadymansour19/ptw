@@ -431,7 +431,7 @@ class DialogPTW(QDialog):
             self._addICLinkRows(lytLinkage, self.ptw.linked_ics)
             self.btnLinkNewIC = QPushButton(qta.icon("mdi.link-variant"), t("Link New IC"))
             self.btnLinkNewIC.clicked.connect(self._linkNewIC)
-            self.btnLinkNewIC.setVisible(self.ptw.canLinkIC())
+            self.btnLinkNewIC.setVisible(self.ptw.canLinkIC() and self.loggedUser.getRole() in (UserRoles.USER, UserRoles.ISSUING, UserRoles.COORDINATOR))
             lytLinkage.addWidget(self.btnLinkNewIC)
             lytLinkage.addStretch(1)
 
@@ -480,6 +480,22 @@ class DialogPTW(QDialog):
             self.reject()
         ClientRequests.unlinkPTWFromIC(self.loggedUser, int(icId), self.ptw.id, callback=on_done)
 
+    def _requestIsolateIC(self, icId):
+        reply = QMessageBox.question(
+            self, t('Request Isolate #{0}').format(icId), t("Request isolation for IC #{0}? This will notify Issuing to confirm.").format(icId),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        def on_done(err, _):
+            if err:
+                QMessageBox.warning(self, t("Request Failed"), err)
+                return
+            QMessageBox.information(self, t("Requested"), t("Isolation requested for IC #{0}. Reopen this PTW to see the updated status.").format(icId))
+            self.reject()
+        ClientRequests.requestIsolateIC(self.loggedUser, int(icId), callback=on_done)
+
     def _linkNewIC(self):
         icId, ok = QInputDialog.getText(self, t('Link IC to PTW #{0}').format(self.ptw.id), t('IC #:'))
         if not ok or not icId.strip():
@@ -509,7 +525,12 @@ class DialogPTW(QDialog):
         btnView = QPushButton(qta.icon("fa6.eye"), t("View"))
         btnView.clicked.connect(partial(self._viewLinkedIC, icId))
         lyt.addWidget(btnView)
-        if self.loggedUser.getRole() != UserRoles.GUEST:
+        if self.loggedUser.getRole() == UserRoles.USER:
+            btnRequestIsolate = QPushButton(qta.icon("fa6s.unlock-keyhole"), t("Request Isolate"))
+            btnRequestIsolate.setEnabled(bool(ic) and ic.getStatus() == IC.Status.APPROVED)
+            btnRequestIsolate.clicked.connect(partial(self._requestIsolateIC, icId))
+            lyt.addWidget(btnRequestIsolate)
+        if self.loggedUser.getRole() in (UserRoles.USER, UserRoles.ISSUING, UserRoles.COORDINATOR):
             btnUnlink = QPushButton(qta.icon("mdi.link-variant-off"), t("Unlink"))
             btnUnlink.clicked.connect(partial(self._unlinkIC, icId))
             lyt.addWidget(btnUnlink)
