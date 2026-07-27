@@ -77,6 +77,7 @@ class MainWindow(QMainWindow):
         self.optionViewPerformingPTW = TablePTWs.MenuOption('View PA', self.viewPerformingPTW, qta.icon('mdi6.account-hard-hat'))
         self.viewIssuingOption = TablePTWs.MenuOption('View IA', self.viewIssuing, qta.icon('fa6s.user-tie'))
         self.optionViewIC = TablePTWs.MenuOption('View', self.viewIC, qta.icon('fa6.eye'))
+        self.optionPrintIC = TablePTWs.MenuOption('Print', self.printIC, qta.icon('fa6s.print'))
         self.optionAcceptIC = TablePTWs.MenuOption('Accept', self.acceptIC, qta.icon('fa6s.check'))
         self.optionRequestEditsIC = TablePTWs.MenuOption('Request Edits', self.requestEditsIC, qta.icon('fa5s.undo'))
         self.optionRequestIsolateIC = TablePTWs.MenuOption('Request Isolate', self.requestIsolateIC, qta.icon('fa6s.unlock-keyhole'))
@@ -857,6 +858,13 @@ class MainWindow(QMainWindow):
         dlg = DialogIC(self, self.loggedUser, ic, False, True, f"IC — {ic.type}")
         dlg.exec()
 
+    def printIC(self, row: int, ic: IC):
+        self._refreshOverlay.showBusy()
+        try:
+            ReportGenerator.icReport(self.loggedUser, ic)
+        finally:
+            self._refreshOverlay.hideBusy()
+
     def acceptIC(self, row: int, ic: IC):
         reply = QMessageBox.question(
             self, f'Accept IC #{ic.id}', f"Are you sure you want to approve IC #{ic.id}? This is irreversible",
@@ -1142,6 +1150,15 @@ class MainWindow(QMainWindow):
     def setSidebarButtons(self, groups: list[list[QPushButton]]):
         FOOTER_BTNS = self._footerButtons()
 
+        capped_groups = []
+        remaining = 9
+        for group in groups:
+            if remaining <= 0:
+                break
+            capped_groups.append(group[:remaining])
+            remaining -= len(group[:remaining])
+        groups = capped_groups
+
         # --- Sidebar ---
         self.sideBarLayout.clear()
         for i, group in enumerate(groups):
@@ -1153,11 +1170,13 @@ class MainWindow(QMainWindow):
         for btn in FOOTER_BTNS:
             self.sideBarLayout.addWidget(btn)
 
-        # --- Quick-nav shortcuts (Alt+1..Alt+10) ---
+        # --- Quick-nav shortcuts (Alt+1..Alt+8) ---
         nav_btns = [btn for group in groups for btn in group]
         for i, btn in enumerate(nav_btns):
-            if i < 10:
+            if i < 8:
                 QShortcut('Alt+' + str(i + 1), self).activated.connect(btn.click)
+            else:
+                break
 
     def setTopbarButtons(self, groups: dict[str, list[QPushButton | None]]):
         """groups maps a topbar menu label (e.g. '&PTWs') to the buttons/actions shown in
@@ -1665,15 +1684,15 @@ class UserMainWindow(MainWindow):
         self.tabClosedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionArchivePTW, self.optionExportPTW])
         self.tabArchivedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
 
-        self.tabRequestedICs.addOptions([self.optionViewIC, self.optionLinkPTWToIC])
-        self.tabApprovedICs.addOptions([self.optionViewIC, self.optionRequestIsolateIC, self.optionLinkPTWToIC])
-        self.tabIsolateConfirmingICs.addOptions([self.optionViewIC, self.optionLinkPTWToIC])
-        self.tabPendingICs.addOptions([self.optionViewIC, self.optionLinkPTWToIC])
-        self.tabActiveICs.addOptions([self.optionViewIC, self.optionRequestDeisolateIC, self.optionLinkPTWToIC])
-        self.tabDeisolateConfirmingICs.addOptions([self.optionViewIC])
-        self.tabClosingICs.addOptions([self.optionViewIC])
-        self.tabSanctionedICs.addOptions([self.optionViewIC])
-        self.tabClosedICs.addOptions([self.optionViewIC])
+        self.tabRequestedICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionLinkPTWToIC])
+        self.tabApprovedICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionRequestIsolateIC, self.optionLinkPTWToIC])
+        self.tabIsolateConfirmingICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionLinkPTWToIC])
+        self.tabPendingICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionLinkPTWToIC])
+        self.tabActiveICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionRequestDeisolateIC, self.optionLinkPTWToIC])
+        self.tabDeisolateConfirmingICs.addOptions([self.optionViewIC, self.optionPrintIC])
+        self.tabClosingICs.addOptions([self.optionViewIC, self.optionPrintIC])
+        self.tabSanctionedICs.addOptions([self.optionViewIC, self.optionPrintIC])
+        self.tabClosedICs.addOptions([self.optionViewIC, self.optionPrintIC])
 
         self.setAvailableTabs(
             [   # sidebar: curated, most-used tabs for a requestor
@@ -1742,15 +1761,15 @@ class CoordinatorMainWindow(MainWindow):
         # View-only across every IC tab Issuing has (same breadth of visibility, less
         # privilege — no Accept/Request Edits/Confirm/Return/Execute actions), plus the
         # Link to PTW action Coordinator already has via the PTW side.
-        self.tabUnderReviewICs.addOptions([self.optionViewIC, self.optionLinkPTWToIC])
-        self.tabApprovedICs.addOptions([self.optionViewIC, self.optionLinkPTWToIC])
-        self.tabIsolateConfirmingICs.addOptions([self.optionViewIC, self.optionLinkPTWToIC])
-        self.tabPendingICs.addOptions([self.optionViewIC, self.optionLinkPTWToIC])
-        self.tabActiveICs.addOptions([self.optionViewIC, self.optionLinkPTWToIC])
-        self.tabDeisolateConfirmingICs.addOptions([self.optionViewIC])
-        self.tabClosingICs.addOptions([self.optionViewIC])
-        self.tabSanctionedICs.addOptions([self.optionViewIC])
-        self.tabClosedICs.addOptions([self.optionViewIC])
+        self.tabUnderReviewICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionLinkPTWToIC])
+        self.tabApprovedICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionLinkPTWToIC])
+        self.tabIsolateConfirmingICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionLinkPTWToIC])
+        self.tabPendingICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionLinkPTWToIC])
+        self.tabActiveICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionLinkPTWToIC])
+        self.tabDeisolateConfirmingICs.addOptions([self.optionViewIC, self.optionPrintIC])
+        self.tabClosingICs.addOptions([self.optionViewIC, self.optionPrintIC])
+        self.tabSanctionedICs.addOptions([self.optionViewIC, self.optionPrintIC])
+        self.tabClosedICs.addOptions([self.optionViewIC, self.optionPrintIC])
 
         self._icTabs = [
             self.btnCertUnderReview, self.btnCertApproved, self.btnCertIsolateConfirming, self.btnCertPending,
@@ -1819,15 +1838,15 @@ class IssuingMainWindow(MainWindow):
         self.tabClosedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionArchivePTW, self.optionExportPTW])
         self.tabArchivedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
 
-        self.tabUnderReviewICs.addOptions([self.optionViewIC, self.optionAcceptIC, self.optionRequestEditsIC, self.optionLinkPTWToIC])
-        self.tabApprovedICs.addOptions([self.optionViewIC, self.optionLinkPTWToIC])
-        self.tabIsolateConfirmingICs.addOptions([self.optionViewIC, self.optionConfirmIsolateIC, self.optionReturnIsolateIC, self.optionLinkPTWToIC])
-        self.tabPendingICs.addOptions([self.optionViewIC, self.optionLinkPTWToIC])
-        self.tabActiveICs.addOptions([self.optionViewIC, self.optionLinkPTWToIC])
-        self.tabDeisolateConfirmingICs.addOptions([self.optionViewIC, self.optionConfirmDeisolateIC, self.optionReturnDeisolateIC])
-        self.tabClosingICs.addOptions([self.optionViewIC])
-        self.tabSanctionedICs.addOptions([self.optionViewIC])
-        self.tabClosedICs.addOptions([self.optionViewIC])
+        self.tabUnderReviewICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionAcceptIC, self.optionRequestEditsIC, self.optionLinkPTWToIC])
+        self.tabApprovedICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionLinkPTWToIC])
+        self.tabIsolateConfirmingICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionConfirmIsolateIC, self.optionReturnIsolateIC, self.optionLinkPTWToIC])
+        self.tabPendingICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionLinkPTWToIC])
+        self.tabActiveICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionLinkPTWToIC])
+        self.tabDeisolateConfirmingICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionConfirmDeisolateIC, self.optionReturnDeisolateIC])
+        self.tabClosingICs.addOptions([self.optionViewIC, self.optionPrintIC])
+        self.tabSanctionedICs.addOptions([self.optionViewIC, self.optionPrintIC])
+        self.tabClosedICs.addOptions([self.optionViewIC, self.optionPrintIC])
 
         # no Requested button here: a single-stage (non-Protective) ic never routes to
         # tabCertRequested for the Issuing viewer once they've acted — it goes straight to
@@ -1943,7 +1962,7 @@ class ManagerMainWindow(MainWindow):
 
         # Managers are only ever involved in a Protective-type IC's approval
         # chain (after Issuing), so Under Review is the only IC tab they need.
-        self.tabUnderReviewICs.addOptions([self.optionViewIC, self.optionAcceptIC, self.optionRequestEditsIC])
+        self.tabUnderReviewICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionAcceptIC, self.optionRequestEditsIC])
 
         self.setAvailableTabs(
             [
@@ -2077,10 +2096,10 @@ class IsolatorMainWindow(MainWindow):
         super().__init__(loggedUser)
         self.setWindowTitle("PTW (Permit To Work) - Isolator Window")
 
-        self.tabPendingICs.addOptions([self.optionViewIC, self.optionExecuteIsolateIC])
-        self.tabActiveICs.addOptions([self.optionViewIC])
-        self.tabClosingICs.addOptions([self.optionViewIC, self.optionExecuteDeisolateIC])
-        self.tabSanctionedICs.addOptions([self.optionViewIC])
+        self.tabPendingICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionExecuteIsolateIC])
+        self.tabActiveICs.addOptions([self.optionViewIC, self.optionPrintIC])
+        self.tabClosingICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionExecuteDeisolateIC])
+        self.tabSanctionedICs.addOptions([self.optionViewIC, self.optionPrintIC])
 
         self.setAvailableTabs(
             [

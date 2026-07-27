@@ -14,6 +14,7 @@ import webbrowser
 from datetime import datetime
 from GlobalData import globalData
 from PTWData import PTWData, RiskAssessment
+from Isolation import IC
 import io
 import tempfile
 import platform
@@ -25,19 +26,7 @@ from utils import resource_path
 
 class ReportGenerator:
 
-    def _makeQrWithLogo(ptw: PTWData):
-        basicInfo = [
-            ['PTW#', str(ptw.id)],
-            ['Type', str(ptw.type)],
-            ['Status', str(ptw.running_status if ptw.approval_status == PTWData.ApprovalStatus.APPROVED and ptw.running_status is not None else ptw.approval_status)],
-            ['Department', str(ptw.department)],
-            ['Requestor', str(globalData.allUsers[ptw.requestor].getName()) if ptw.requestor in globalData.allUsers else 'None'],
-            ['PA', str(globalData.allUsers[ptw.getPerforming()].getName()) if ptw.getPerforming() in globalData.allUsers else 'None'],
-            ['Location', str(ptw.location)],
-            ['Equipment', str(ptw.equipment)],
-            ['Description', str(ptw.description)],
-        ]
-
+    def _qrWithLogoFromRows(basicInfo: list, filePrefix: str):
         data = '\n'.join([': '.join(row) for row in basicInfo])
         qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_Q, box_size=20, border=2)
         qr.add_data(data)
@@ -56,10 +45,38 @@ class ReportGenerator:
         PILImageDraw.Draw(bg_mask).ellipse((0, 0, total_size - 1, total_size - 1), fill=255)
         bg.paste(logo, (padding, padding), logo_mask)
         qrImg.paste(bg, ((qr_w - total_size) // 2, (qr_h - total_size) // 2), bg_mask)
-        with tempfile.NamedTemporaryFile(delete=False, prefix=f'qr-{ptw.id}-', suffix='.png') as qrFile:
+        with tempfile.NamedTemporaryFile(delete=False, prefix=f'qr-{filePrefix}-', suffix='.png') as qrFile:
             qrImg.save(qrFile.name)
             return qrFile.name
-        
+
+    def _makeQrWithLogo(ptw: PTWData):
+        basicInfo = [
+            ['PTW#', str(ptw.id)],
+            ['Type', str(ptw.type)],
+            ['Status', str(ptw.running_status if ptw.approval_status == PTWData.ApprovalStatus.APPROVED and ptw.running_status is not None else ptw.approval_status)],
+            ['Department', str(ptw.department)],
+            ['Requestor', str(globalData.allUsers[ptw.requestor].getName()) if ptw.requestor in globalData.allUsers else 'None'],
+            ['PA', str(globalData.allUsers[ptw.getPerforming()].getName()) if ptw.getPerforming() in globalData.allUsers else 'None'],
+            ['Location', str(ptw.location)],
+            ['Equipment', str(ptw.equipment)],
+            ['Description', str(ptw.description)],
+        ]
+        return ReportGenerator._qrWithLogoFromRows(basicInfo, str(ptw.id))
+
+    def _makeQrWithLogoIC(ic: IC):
+        basicInfo = [
+            ['IC#', str(ic.id)],
+            ['Type', str(ic.type)],
+            ['Status', str(ic.getStatus())],
+            ['Requestor Dept', str(ic.requestor_department)],
+            ['Execution Dept', str(ic.execution_department)],
+            ['Requestor', str(globalData.allUsers[ic.requestor].getName()) if ic.requestor in globalData.allUsers else 'None'],
+            ['Location', str(ic.location)],
+            ['Equipment', str(ic.equipment)],
+            ['Reason', str(ic.reason)],
+        ]
+        return ReportGenerator._qrWithLogoFromRows(basicInfo, f'ic-{ic.id}')
+
 
     def ptwReport(loggedUser, ptw: PTWData):
         QR_CODE_WIDTH = 60*mm
@@ -381,7 +398,302 @@ class ReportGenerator:
             ReportGenerator.openPDF(doc)
 
         return None
-    
+
+
+    def icReport(loggedUser, ic: IC):
+        QR_CODE_WIDTH = 60*mm
+        LOGO_IMG_WIDTH = 40*mm
+        TABLE_LABELS_WIDTH = 50*mm
+        MARGIN = 0.6 * inch
+
+        buffer = io.BytesIO()
+        timestamp = datetime.now().strftime('%d-%m-%Y - %H:%M:%S')
+        doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=MARGIN+QR_CODE_WIDTH, rightMargin=MARGIN, topMargin=MARGIN*0.7, bottomMargin=MARGIN*0.7)
+
+        pageWidth, pageHeight = landscape(A4)
+        dataTableWidth = pageWidth - 2*MARGIN - QR_CODE_WIDTH
+
+        styles = getSampleStyleSheet()
+
+        styles['Title'].fontSize = 24
+        styles['Title'].leading = 26
+        styles["Title"].alignment = TA_LEFT
+
+        styles['Normal'].fontSize = 16
+        styles['Normal'].leading = 18
+        styles['Normal'].fontName = 'Helvetica'
+
+        styles['Heading3'].fontSize = 16
+        styles['Heading3'].leading = 18
+        styles['Heading3'].fontName = 'Helvetica-Bold'
+
+        styles.add(ParagraphStyle('NormalCenter', parent=styles['Normal'], alignment=TA_CENTER))
+        styles.add(ParagraphStyle('Heading3Center', parent=styles['Heading3'], alignment=TA_CENTER))
+
+        def nameFor(username):
+            if not username:
+                return ''
+            return globalData.allUsers[username].getName() if username in globalData.allUsers else str(username)
+
+        def listToBullets(data: list, style):
+            if not data:
+                return None
+
+            bullets = [ListItem(Paragraph(_html.escape(element), style), bulletType='bullet', bulletFontSize=style.fontSize) for element in data]
+            return ListFlowable(
+                bullets,
+                bulletType='bullet',
+                leftIndent=0.3*inch,
+                bulletIndent=0.1*inch,
+                spaceAfter=0.1*inch,
+            )
+
+        basicInfo = [
+            ['IC#', str(ic.id)],
+            ['Type', str(ic.type)],
+            ['Print Time', timestamp],
+            ['Status', str(ic.getStatus())],
+            ['Request Date', str(ic.requestor_timestamp)],
+            ['Requestor Dept', str(ic.requestor_department)],
+            ['Execution Dept', str(ic.execution_department)],
+            ['Requestor', nameFor(ic.requestor)],
+            ['Location', str(ic.location)],
+            ['Equipment', str(ic.equipment)],
+            ['Reason', str(ic.reason)],
+            ['Long Term', (f'Yes - {ic.long_term_reason}' if ic.long_term_reason else 'Yes') if ic.long_term else 'No'],
+        ]
+
+        qrPath = ReportGenerator._makeQrWithLogoIC(ic)
+
+        elements = []
+
+        def insertTable(title, tableData: list[list]):
+            if not tableData:
+                return
+
+            nonlocal elements
+            table = Table(tableData, colWidths=[TABLE_LABELS_WIDTH, dataTableWidth - TABLE_LABELS_WIDTH], splitByRow=1)
+            table.setStyle(TableStyle([
+                # header column (left)
+                ('BACKGROUND', (0, 0), (0, -1), colors.Color(0, 0, 0, 0.2)),
+
+                # Alignment
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+
+                # padding
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+
+                # grid (optional)
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ]))
+            elements.extend([title, Spacer(1, 0.2 * inch), table, PageBreak()])
+
+        insertTable(Paragraph('Summery:', styles["Title"]), [
+            [Paragraph(row[0], styles['Heading3']), Paragraph(_html.escape(row[1]), styles['Normal'])]
+            for row in basicInfo
+        ])
+
+        def insertItemsTable(title, items: list[IC.IsolationItem]):
+            if not items:
+                return
+
+            nonlocal elements
+            headers = ['No.', 'Tag', 'Description', 'State', 'Lock#', 'Lock Box#']
+            weights = [7, 16, 40, 11, 11, 11]
+            rows = [[Paragraph(h, styles['Heading3Center']) for h in headers]]
+            for i, item in enumerate(items, start=1):
+                rows.append([
+                    Paragraph(str(i), styles['NormalCenter']),
+                    Paragraph(_html.escape(item.tag or ''), styles['Normal']),
+                    Paragraph(_html.escape(item.description or ''), styles['Normal']),
+                    Paragraph(_html.escape(item.state or ''), styles['NormalCenter']),
+                    Paragraph(_html.escape(item.lock_num or ''), styles['NormalCenter']),
+                    Paragraph(_html.escape(item.lock_box_num or ''), styles['NormalCenter']),
+                ])
+            table = Table(rows, colWidths=[w * dataTableWidth / sum(weights) for w in weights], repeatRows=1)
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0, 0, 0, 0.2)),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ]))
+            elements.extend([title, Spacer(1, 0.2 * inch), table, PageBreak()])
+
+        insertItemsTable(Paragraph('Isolation Items:', styles["Title"]), ic.items)
+
+        if ic.linked_ptws:
+            elements.extend([
+                Paragraph('Linked PTWs:', styles["Title"]),
+                Spacer(1, 0.2 * inch),
+                listToBullets([f'PTW #{ptwId}' for ptwId in ic.linked_ptws], styles['Normal']),
+                PageBreak(),
+            ])
+
+        try:
+            pdfmetrics.registerFont(TTFont('Satisfy', resource_path('fonts/Satisfy/Satisfy-Regular.ttf')))
+            sig_font = 'Satisfy'
+        except Exception:
+            sig_font = 'Helvetica-Oblique'
+
+        label_style = ParagraphStyle('SigLabel', parent=styles['Heading3'], fontSize=13, leading=14, alignment=TA_CENTER)
+        sig_style   = ParagraphStyle('Signature', parent=styles['Normal'],  fontSize=16, leading=17, alignment=TA_CENTER, fontName=sig_font)
+        date_style  = ParagraphStyle('SigDate',   parent=styles['Normal'],  fontSize=12,  leading=14, alignment=TA_CENTER)
+
+        def sigTables(columns: list, chunk_size=3):
+            """columns: list of (label, sig, ts) or None for empty padding slots."""
+            chunks = [columns[i:i+chunk_size] for i in range(0, len(columns), chunk_size)]
+            result = []
+            for chunk in chunks:
+                col_w = dataTableWidth / len(chunk)
+                header_row, name_row, date_row = [], [], []
+                style_cmds = [
+                    ('ALIGN',         (0, 0), (-1, -1), 'CENTER'),
+                    ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
+                    ('TOPPADDING',    (0, 0), (-1, -1), 4),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                ]
+                for i, col in enumerate(chunk):
+                    if col is not None:
+                        label, sig, ts = col
+                        style_cmds.append(('LINEBELOW', (i, 0), (i, 0), 0.5, colors.black))
+                        style_cmds.append(('LINEBELOW', (i, 1), (i, 1), 0.5, colors.black))
+                    else:
+                        label, sig, ts = '', '', ''
+                    header_row.append(Paragraph(label or ' ',        label_style))
+                    name_row.append(  Paragraph(sig   or ' ',    sig_style))
+                    date_row.append(  Paragraph(ts    or ' ',        date_style))
+                table = Table(
+                    [header_row, name_row, date_row],
+                    colWidths=[col_w] * len(chunk),
+                )
+                table.setStyle(TableStyle(style_cmds))
+                result.append(table)
+                result.append(Spacer(1, 0.09 * inch))
+            return result
+
+        def approvalColumns():
+            def lastApprovalFor(approver):
+                match = None
+                for approval in ic.approvals:
+                    if approver.matchesUser(globalData.allUsers.get(approval.username)):
+                        match = approval
+                return match
+
+            cols = []
+            for stage in ic.requiredApprovers():
+                for approver in stage:
+                    approval = lastApprovalFor(approver)
+                    if approval and approval.action == IC.ApprovalActions.APPROVED:
+                        name = nameFor(approval.username)
+                        ts   = approval.timestamp or ''
+                    else:
+                        name, ts = '', ''
+                    cols.append((str(approver), name, ts))
+            while len(cols) < 5:
+                cols.append(None)
+            return cols
+
+        elements.extend([
+            Paragraph('Approvals:', styles["Title"]),
+            Spacer(1, 0.07 * inch),
+            *sigTables(approvalColumns()),
+            PageBreak(),
+        ])
+
+        isolateCols = [
+            ('Isolate Requested', nameFor(ic.isolate_requestor), ic.isolate_requestor_timestamp or ''),
+            (f'Isolate {ic.isolate_issuing_action}' if ic.isolate_issuing_action else 'Isolate Confirmed', nameFor(ic.isolate_issuing), ic.isolate_issuing_timestamp or ''),
+            ('Isolate Carried Out', nameFor(ic.isolate_isolator), ic.isolate_isolator_timestamp or ''),
+        ]
+        deisolateCols = [
+            ('De-isolate Requested', nameFor(ic.deisolate_requestor), ic.deisolate_requestor_timestamp or ''),
+            (f'De-isolate {ic.deisolate_issuing_action}' if ic.deisolate_issuing_action else 'De-isolate Confirmed', nameFor(ic.deisolate_issuing), ic.deisolate_issuing_timestamp or ''),
+            ('De-isolate Carried Out', nameFor(ic.deisolate_isolator), ic.deisolate_isolator_timestamp or ''),
+        ]
+
+        elements.extend([
+            Paragraph('Isolation:', styles["Title"]),
+            Spacer(1, 0.07 * inch),
+            *sigTables(isolateCols),
+        ])
+
+        sanctionCols = [
+            ('Sanction Requested', nameFor(ic.sanction_requestor), ic.sanction_requestor_timestamp or ''),
+            ('Sanction Confirmed',  nameFor(ic.sanction_issuing),   ic.sanction_issuing_timestamp or ''),
+            ('Sanction Carried Out', nameFor(ic.sanction_isolator), ic.sanction_isolator_timestamp or ''),
+        ]
+        elements.extend([
+            Spacer(1, 0.1 * inch),
+            Paragraph('Sanction for Test:', styles["Title"]),
+            Spacer(1, 0.07 * inch),
+            *sigTables(sanctionCols),
+        ])
+
+        reisolateCols = [
+            ('Re-isolate Requested', nameFor(ic.reisolate_requestor), ic.reisolate_requestor_timestamp or ''),
+            ('Re-isolate Confirmed',  nameFor(ic.reisolate_issuing),   ic.reisolate_issuing_timestamp or ''),
+            ('Re-isolate Carried Out', nameFor(ic.reisolate_isolator), ic.reisolate_isolator_timestamp or ''),
+        ]
+        elements.extend([
+            Spacer(1, 0.1 * inch),
+            Paragraph('Re-isolation:', styles["Title"]),
+            Spacer(1, 0.07 * inch),
+            *sigTables(reisolateCols),
+        ])
+
+        elements.extend([
+            Spacer(1, 0.1 * inch),
+            Paragraph('De-isolation:', styles["Title"]),
+            Spacer(1, 0.07 * inch),
+            *sigTables(deisolateCols),
+        ])
+
+        class NumberedCanvas(canvas.Canvas):
+            def __init__(self, *args, **kwargs):
+                canvas.Canvas.__init__(self, *args, **kwargs)
+                self._saved_page_states = []
+
+            def showPage(self):
+                self._saved_page_states.append(dict(self.__dict__))
+                self._startPage()
+
+            def save(self):
+                num_pages = len(self._saved_page_states)
+                for state in self._saved_page_states:
+                    self.__dict__.update(state)
+                    self.setFont('Helvetica', 14)
+                    self.setFillColorRGB(0, 0, 0, 1)
+                    self.drawCentredString(0.7 * MARGIN + QR_CODE_WIDTH / 2, MARGIN, f'Page {self._pageNumber} of {num_pages}')
+                    canvas.Canvas.showPage(self)
+                canvas.Canvas.save(self)
+
+        def pageHeaderAndWatermark(canvas: canvas.Canvas, doc):
+            canvas.saveState()
+
+            canvas.drawImage(resource_path("assets/rashpetco-logo.png"), 0.7 * MARGIN + (QR_CODE_WIDTH - LOGO_IMG_WIDTH) / 2, (pageHeight - LOGO_IMG_WIDTH) / 2.0 + pageHeight / 3.5, LOGO_IMG_WIDTH, LOGO_IMG_WIDTH, mask='auto')
+            canvas.drawImage(resource_path("assets/burullus-logo.png"),  0.7 * MARGIN + (QR_CODE_WIDTH - LOGO_IMG_WIDTH) / 2, (pageHeight - LOGO_IMG_WIDTH) / 2.0 - pageHeight / 3.5, LOGO_IMG_WIDTH, LOGO_IMG_WIDTH, mask='auto')
+
+            canvas.setFont('Helvetica-Bold', 50)
+            canvas.setFillColorRGB(0, 0, 0, 0.2)
+            canvas.translate(pageWidth / 2.0, pageHeight / 2.0)
+            canvas.rotate(35)
+            canvas.drawCentredString(0, 0, f'Printed @ {timestamp}')
+
+            canvas.restoreState()
+            canvas.drawImage(qrPath, 0.7 * MARGIN, (pageHeight - QR_CODE_WIDTH) / 2.0, QR_CODE_WIDTH, QR_CODE_WIDTH)
+
+        doc.build(elements, onFirstPage=pageHeaderAndWatermark, onLaterPages=pageHeaderAndWatermark, canvasmaker=NumberedCanvas)
+        buffer.seek(0)
+        with tempfile.NamedTemporaryFile(delete=False, prefix=f'ic-{ic.id}-', suffix='.pdf') as icPdfFile:
+            icPdfFile.write(buffer.read())
+            icPdfFile.flush()
+            ReportGenerator.openPDF(icPdfFile.name)
+
+        return None
+
 
     def openPDF(filepath: str):
         webbrowser.open_new_tab(filepath)
