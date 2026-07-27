@@ -4,19 +4,21 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QTableWi
                               QPushButton, QDialogButtonBox)
 from PyQt6.QtGui import QFont
 
-from Isolation import Isolation
+from Isolation import IC
 
 
-class DialogSelectIsolations(QDialog):
+class DialogSelectHeldICs(QDialog):
     """
-    Dual-mode isolation dialog.
+    Dual-mode linked-IC dialog, for the PTW hold flow.
 
     Selection mode  (review_mode=False, selectable=True):
-        PA selects which isolations to KEEP.  Unchecked rows will be de-isolated.
-        Returns kept tags via getKeptTags().
+        PA selects which linked ICs must stay HELD (isolated). Unchecked ICs are no longer
+        required by this PTW while held, and become eligible for de-isolation once every
+        other PTW linked to them is also closed or held-without-requiring them.
+        Returns held IC ids via getHeldICIds().
 
     Review mode (review_mode=True):
-        IA sees what the PA decided to keep (checked) vs release (unchecked).
+        IA sees what the PA decided to keep held (checked) vs release (unchecked).
         Three buttons: Accept / Reject / Cancel.
         Result is stored in self.action ('accept' | 'reject' | None).
     """
@@ -24,12 +26,12 @@ class DialogSelectIsolations(QDialog):
     def __init__(
         self,
         parent,
-        isolations: list[Isolation],
-        kept: list[str] = [],
+        ics: list[IC],
+        held: list[str] = [],
         selectable: bool = True,
         review_mode: bool = False,
         view_only: bool = False,
-        title: str = "Isolations",
+        title: str = "Linked ICs",
     ):
         super().__init__(parent)
         self.setWindowTitle(title)
@@ -38,20 +40,20 @@ class DialogSelectIsolations(QDialog):
         lyt = QVBoxLayout(self)
 
         if view_only:
-            lbl = QLabel("Kept isolations (checked) will remain active. Unchecked will be de-isolated:")
+            lbl = QLabel("Held ICs (checked) will remain isolated. Unchecked will be released for de-isolation:")
         elif review_mode:
-            lbl = QLabel("Checked isolations will remain active. Unchecked will be de-isolated:")
+            lbl = QLabel("Checked ICs will remain isolated. Unchecked will be released for de-isolation:")
         elif selectable:
-            lbl = QLabel("Check the isolations to KEEP active (unchecked will be de-isolated):")
+            lbl = QLabel("Check the linked ICs that must stay HELD (isolated) — unchecked will be released for de-isolation:")
         else:
-            lbl = QLabel("The following isolations will remain active:")
+            lbl = QLabel("The following linked ICs will remain isolated:")
         lbl.setFont(QFont("Helvetica", 12))
         lbl.setWordWrap(True)
         lyt.addWidget(lbl)
 
         self.tbl = QTableWidget()
         self.tbl.setColumnCount(4)
-        self.tbl.setHorizontalHeaderLabels(['Keep', 'Type', 'Tag', 'Description'])
+        self.tbl.setHorizontalHeaderLabels(['Hold', 'IC#', 'Type', 'Status'])
         self.tbl.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         self.tbl.setColumnWidth(0, 40)
         self.tbl.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
@@ -72,10 +74,10 @@ class DialogSelectIsolations(QDialog):
                 width: 20px;
                 height: 20px;
             }
-        """)  
+        """)
         lyt.addWidget(self.tbl)
 
-        for iso in isolations:
+        for ic in ics:
             row = self.tbl.rowCount()
             self.tbl.insertRow(row)
             chk = QTableWidgetItem()
@@ -85,21 +87,21 @@ class DialogSelectIsolations(QDialog):
             elif not selectable:
                 flags &= ~Qt.ItemFlag.ItemIsEnabled
             chk.setFlags(flags)
-            is_kept = (iso.tag in kept) if kept else False
-            chk.setCheckState(Qt.CheckState.Checked if is_kept else Qt.CheckState.Unchecked)
+            is_held = (str(ic.id) in held) if held else False
+            chk.setCheckState(Qt.CheckState.Checked if is_held else Qt.CheckState.Unchecked)
             chk.setSizeHint(QSize(20, 20))
             self.tbl.setItem(row, 0, chk)
-            self.tbl.setItem(row, 1, QTableWidgetItem(str(iso.type)))
-            self.tbl.setItem(row, 2, QTableWidgetItem(iso.tag))
-            self.tbl.setItem(row, 3, QTableWidgetItem(iso.description))
+            self.tbl.setItem(row, 1, QTableWidgetItem(str(ic.id)))
+            self.tbl.setItem(row, 2, QTableWidgetItem(str(ic.type)))
+            self.tbl.setItem(row, 3, QTableWidgetItem(str(ic.getStatus())))
 
         if selectable and not review_mode:
             btnRowLyt = QHBoxLayout()
-            btnKeepAll = QPushButton("Keep All")
+            btnHoldAll = QPushButton("Hold All")
             btnReleaseAll = QPushButton("Release All")
-            btnKeepAll.clicked.connect(self._keepAll)
+            btnHoldAll.clicked.connect(self._holdAll)
             btnReleaseAll.clicked.connect(self._releaseAll)
-            btnRowLyt.addWidget(btnKeepAll)
+            btnRowLyt.addWidget(btnHoldAll)
             btnRowLyt.addWidget(btnReleaseAll)
             btnRowLyt.addStretch()
             lyt.addLayout(btnRowLyt)
@@ -133,7 +135,7 @@ class DialogSelectIsolations(QDialog):
         self.action = action
         self.accept()
 
-    def _keepAll(self):
+    def _holdAll(self):
         for row in range(self.tbl.rowCount()):
             self.tbl.item(row, 0).setCheckState(Qt.CheckState.Checked)
 
@@ -141,9 +143,9 @@ class DialogSelectIsolations(QDialog):
         for row in range(self.tbl.rowCount()):
             self.tbl.item(row, 0).setCheckState(Qt.CheckState.Unchecked)
 
-    def getKeptTags(self) -> list[str]:
+    def getHeldICIds(self) -> list[str]:
         return [
-            self.tbl.item(row, 2).text()
+            self.tbl.item(row, 1).text()
             for row in range(self.tbl.rowCount())
             if self.tbl.item(row, 0).checkState() == Qt.CheckState.Checked
         ]

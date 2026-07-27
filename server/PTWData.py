@@ -466,7 +466,7 @@ class PTWData:
                      run_ia: str = None, run_ia_action: str = None, run_ia_comment: str = None, run_ia_timestamp: str = None,
                      stop_pa: str = None, stop_pa_request: str = None, stop_pa_comment: str = None, stop_pa_timestamp: str = None,
                      stop_ia: str = None, stop_ia_action: str = None, stop_ia_comment: str = None, stop_ia_timestamp: str = None,
-                     keep_isolations: list = None):
+                     held_ics: list = None):
             self.run_pa = run_pa
             self.run_pa_timestamp = run_pa_timestamp
             self.run_ia = run_ia
@@ -481,7 +481,7 @@ class PTWData:
             self.stop_ia_action = stop_ia_action
             self.stop_ia_comment = stop_ia_comment
             self.stop_ia_timestamp = stop_ia_timestamp
-            self.keep_isolations = list(keep_isolations) if keep_isolations else []
+            self.held_ics = list(held_ics) if held_ics else []
 
         def setAll(self, data: dict):
             for k,v in data.items():
@@ -816,9 +816,9 @@ class PTWData:
         cycle = self.currentRunCycle()
         return cycle.run_ia_timestamp if cycle and cycle.run_ia_action == PTWData.RunCycle.Actions.APPROVED else None
 
-    def getKeepIsolations(self) -> list[str]:
+    def getHeldICs(self) -> list[str]:
         cycle = self.operativeRunCycle()
-        return cycle.keep_isolations if cycle else []
+        return cycle.held_ics if cycle else []
     
     def requiredApprovers(self) -> list[list['PTWData.Approver']]:
         requiredApprovers = [

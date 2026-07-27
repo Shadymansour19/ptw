@@ -168,10 +168,10 @@ class PtwsDb:
         patch = {'stop_ia': ia, 'stop_ia_action': PTWData.RunCycle.Actions.REJECTED, 'stop_ia_comment': comment, 'stop_ia_timestamp': ts}
         self._patchLastRunCycle(ptwId, patch, revertToPrev=True)
 
-    def requestToHldPTW(self, ptwId: str, pa: str, ts: str, comment: str = None, keepTags: list[str] = []):
+    def requestToHldPTW(self, ptwId: str, pa: str, ts: str, comment: str = None, heldICs: list[str] = []):
         patch = {
             'stop_pa': pa, 'stop_pa_request': PTWData.RunCycle.StopTypes.HOLD, 'stop_pa_comment': comment, 'stop_pa_timestamp': ts,
-            'keep_isolations': keepTags,
+            'held_ics': heldICs,
         }
         self._patchLastRunCycle(ptwId, patch, runningStatus=PTWData.RunningStatus.WAITING_HLD_CONFIRM)
 

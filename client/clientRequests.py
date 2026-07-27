@@ -496,12 +496,12 @@ class ClientRequests:
         return None
 
     @async_request
-    def requestToHldPTW(loggedUser: User, ptwId: str, pa: str, ts: str, comment: str = None, keepTags: list[str] = []):
+    def requestToHldPTW(loggedUser: User, ptwId: str, pa: str, ts: str, comment: str = None, heldICs: list[str] = []):
         response = None
         try:
             response = requests.post(
                 f'{ClientRequests.SERVER_URL}/ptws/hold-request',
-                json={'ptw-id': ptwId, 'pa': pa, 'timestamp': ts, 'comment': comment, 'keep-tags': keepTags},
+                json={'ptw-id': ptwId, 'pa': pa, 'timestamp': ts, 'comment': comment, 'held-ics': heldICs},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
                 timeout=ClientRequests.TIMEOUT
             )

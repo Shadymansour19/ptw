@@ -158,6 +158,66 @@ def _sync_ptw(ptw_id):
         log.warning("PTW #%s not found in DB during sync", ptw_id)
 
 
+def _setDeisolateRequested(icId, by: str):
+    """Shared by the manual /ics/deisolate-request route and the automatic check below —
+    moves an IC into DEISOLATE_CONFIRMING, resetting any stale IA decision from a previous,
+    since-returned attempt."""
+    icDB.updateICFromDict({
+        'id': icId,
+        'deisolate_requestor': by,
+        'deisolate_requestor_timestamp': datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+        'deisolate_issuing': None,
+        'deisolate_issuing_timestamp': None,
+        'deisolate_issuing_action': '',
+    })
+    updated = icDB.getICById(icId)
+    if updated:
+        with globalData.lock:
+            globalData.ics[updated.id] = updated
+    _broadcast("ic_deisolate_request", {"ic_id": icId, "by": by})
+
+
+def _checkAndAutoDeisolateICs(icIds: list, by: str = "system"):
+    """Called after a PTW stops actively needing IC(s) it's linked to — on close-accept,
+    hold-accept, and manual unlink. The link itself is never removed, so for each IC we check
+    whether every PTW still linked to it no longer needs it either (closed, or held without
+    listing it in that PTW's held_ics) and if so, auto-request its de-isolation."""
+    for icIdStr in icIds:
+        if not icIdStr:
+            continue
+        try:
+            icId = int(icIdStr)
+        except (TypeError, ValueError):
+            continue
+        with globalData.lock:
+            ic = globalData.ics.get(icId)
+        if ic is None or ic.getStatus() != IC.Status.ACTIVE or not ic.linked_ptws:
+            continue
+        allClear = True
+        for linkedPtwIdStr in ic.linked_ptws:
+            try:
+                linkedPtw = globalData.allPTWs.get(int(linkedPtwIdStr))
+            except (TypeError, ValueError):
+                linkedPtw = None
+            if linkedPtw is None:
+                try:
+                    linkedPtw = ptwDB.getPTWById(linkedPtwIdStr)
+                except Exception:
+                    linkedPtw = None
+            if linkedPtw is None:
+                allClear = False
+                break
+            if linkedPtw.running_status == PTWData.RunningStatus.CLOSED:
+                continue
+            if linkedPtw.running_status == PTWData.RunningStatus.HELD and str(icId) not in linkedPtw.getHeldICs():
+                continue
+            allClear = False
+            break
+        if allClear:
+            _setDeisolateRequested(icId, by)
+            log.info("IC auto de-isolate requested: id=%s (all linked PTWs closed or held without requiring it)", icId)
+
+
 def _periodic_refresh():
     while True:
         sleep(_DB_PERIODIC_REFRESH_INTERVAL)
@@ -1002,15 +1062,15 @@ def requestToHldPTW():
     pa = payload.get('pa')
     ts = payload.get('timestamp')
     comment = payload.get('comment')
-    keepTags = payload.get('keep-tags', [])
+    heldICs = payload.get('held-ics', [])
     if ptwId is None or pa is None or ts is None:
         log.warning("POST /ptws/hold-request: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
     try:
-        ptwDB.requestToHldPTW(ptwId, pa, ts, comment, keepTags)
+        ptwDB.requestToHldPTW(ptwId, pa, ts, comment, heldICs)
         _sync_ptw(ptwId)
         _broadcast("ptw_hold_request", {"ptw_id": ptwId, "by": pa}, roles=[UserRoles.USER, UserRoles.ISSUING])
-        log.info("PTW hold requested: id=%s by PA='%s' keep_tags=%s", ptwId, pa, keepTags)
+        log.info("PTW hold requested: id=%s by PA='%s' held_ics=%s", ptwId, pa, heldICs)
         return jsonify({"success": True})
     except Exception as e:
         log.error("POST /ptws/hold-request failed for PTW #%s: %s", ptwId, e, exc_info=True)
@@ -1045,6 +1105,7 @@ def hldPTW():
         if ok:
             ptwDB.hldAcceptPTW(ptwId, ia, ts, comment)
             _sync_ptw(ptwId)
+            _checkAndAutoDeisolateICs(ptw.linked_ics)
             _broadcast("ptw_hold", {"ptw_id": ptwId, "accepted": True, "by": ia})
             log.info("PTW hold accepted: id=%s by IA='%s'", ptwId, ia)
             return jsonify({"success": True})
@@ -1115,6 +1176,7 @@ def clsPTW():
         if ok:
             ptwDB.clsAcceptPTW(ptwId, ia, ts, comment)
             _sync_ptw(ptwId)
+            _checkAndAutoDeisolateICs(ptw.linked_ics)
             _broadcast("ptw_close", {"ptw_id": ptwId, "accepted": True, "by": ia})
             log.info("PTW closed (accepted): id=%s by IA='%s'", ptwId, ia)
             return jsonify({"success": True})
@@ -1602,21 +1664,7 @@ def requestDeisolateIC():
         )
         return jsonify({"success": False, "error": "IC is not awaiting a de-isolate request"}), 403
     try:
-        icDB.updateICFromDict({
-            'id': icId,
-            'deisolate_requestor': user.getUsername(),
-            'deisolate_requestor_timestamp': datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
-            # Reset any stale decision from a previous, since-returned attempt — same reasoning
-            # as isolate-request: otherwise a leftover 'Returned' would mask this new request.
-            'deisolate_issuing': None,
-            'deisolate_issuing_timestamp': None,
-            'deisolate_issuing_action': '',
-        })
-        updated = icDB.getICById(icId)
-        if updated:
-            with globalData.lock:
-                globalData.ics[updated.id] = updated
-        _broadcast("ic_deisolate_request", {"ic_id": icId, "by": user.getUsername()})
+        _setDeisolateRequested(icId, user.getUsername())
         log.info("IC de-isolate requested: id=%s by='%s'", icId, user.getUsername())
         return jsonify({"success": True})
     except Exception as e:
@@ -1814,6 +1862,7 @@ def unlinkPTWFromIC():
         _sync_ptw(ptwId)
         _broadcast("ic_unlink_ptw", {"ic_id": icId, "ptw_id": ptwId, "by": user.getUsername()})
         log.info("IC unlinked from PTW: id=%s ptw=%s by='%s'", icId, ptwId, user.getUsername())
+        _checkAndAutoDeisolateICs([icId], user.getUsername())
         return jsonify({"success": True})
     except Exception as e:
         log.error("POST /ics/unlink-ptw failed for IC #%s: %s", icId, e, exc_info=True)
