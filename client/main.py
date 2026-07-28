@@ -11,6 +11,7 @@ from MainWindow import MainWindow, GuestMainWindow, AdminMainWindow, UserMainWin
 from User import UserRoles
 from utils import resource_path
 from qdarktheme import load_palette, load_stylesheet
+from OcrConfig import configureTesseract
 import i18n
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -73,6 +74,8 @@ def on_logout():
 
 
 app = QApplication([])
+
+configureTesseract()
 
 _lang = QLocale.system().name()[:2]   # e.g. 'ar', 'en', 'fr'
 i18n.init(_lang)

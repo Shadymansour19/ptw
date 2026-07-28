@@ -72,6 +72,63 @@ class IC:
             return self
 
 
+    class Highlight:
+        def __init__(self, tag: str = '', page: int = 0, rect=None, state: str = '', manual: bool = False):
+            self.tag = tag
+            self.page = page          # 0-based page index
+            self.rect = rect or [0.0, 0.0, 0.0, 0.0]  # [x, y, w, h], fractional 0..1 of page size
+            self.state = state        # IC.IsolationItem.States value at highlight-time
+            self.manual = manual      # unused today; reserved for future manual override editing
+
+        def setAll(self, data: dict = None, namespace: SimpleNamespace = None):
+            if namespace:
+                self.__dict__.update(vars(namespace))
+            elif data:
+                for k, v in data.items():
+                    if hasattr(self, k):
+                        try:
+                            setattr(self, k, v)
+                        except Exception:
+                            pass
+            return self
+
+    class PidWiringDocument:
+        @staticmethod
+        def _asHighlight(h) -> 'IC.Highlight':
+            """highlights arrives in three possible shapes depending on the caller: an already-
+            built IC.Highlight (in-memory, e.g. from PidWiringHighlighter.computeHighlights), a
+            plain dict (raw JSON), or a SimpleNamespace (nested inside a DB row's namespace, via
+            dictToObj) - tolerate all three rather than assuming one."""
+            if isinstance(h, IC.Highlight):
+                return h
+            if isinstance(h, SimpleNamespace):
+                return IC.Highlight().setAll(namespace=h)
+            return IC.Highlight().setAll(h)
+
+        def __init__(self, filename: str = '', original_filename: str = '', page_count: int = 1, ocr_used: bool = False, highlights=None):
+            self.filename = filename                    # the highlighted/burned-in file - served to the app and to external viewers
+            self.original_filename = original_filename  # pristine upload, kept only so highlights can be recomputed later
+            self.page_count = page_count
+            self.ocr_used = ocr_used
+            self.highlights: list['IC.Highlight'] = [IC.PidWiringDocument._asHighlight(h) for h in (highlights or [])]
+
+        def setAll(self, data: dict = None, namespace: SimpleNamespace = None):
+            if namespace:
+                self.__dict__.update(vars(namespace))
+                self.highlights = [IC.PidWiringDocument._asHighlight(h) for h in self.highlights]
+            elif data:
+                for k, v in data.items():
+                    if hasattr(self, k):
+                        try:
+                            if k == 'highlights':
+                                self.highlights = [IC.PidWiringDocument._asHighlight(h) for h in v]
+                            else:
+                                setattr(self, k, v)
+                        except Exception:
+                            pass
+            return self
+
+
     class Types(enum.StrEnum):
         MECHANICAL = 'Mechanical'
         ELECTRICAL = 'Electrical'
@@ -153,6 +210,7 @@ class IC:
         self.equipment : str = data.get('equipment')
         self.reason : str = data.get('reason')
         self.items : list[IC.IsolationItem] = [IC.IsolationItem().setAll(iso) for iso in data.get('items', [])]
+        self.pid_documents : list[IC.PidWiringDocument] = [IC.PidWiringDocument().setAll(d) for d in data.get('pid_documents', [])]
 
         # ============== isolation usernames & timestamps =================
         # isolate_requestor/timestamp are set later, when someone requests the isolation
@@ -202,6 +260,7 @@ class IC:
             self.__dict__.update(vars(namespace))
             self.approvals = [IC.Approval().setAll(a.__dict__) for a in self.approvals]
             self.items = [IC.IsolationItem().setAll(i.__dict__) for i in self.items]
+            self.pid_documents = [IC.PidWiringDocument().setAll(d.__dict__) for d in self.pid_documents]
         elif data:
             for k, v in data.items():
                 if hasattr(self, k):
@@ -210,6 +269,8 @@ class IC:
                             self.approvals = [IC.Approval().setAll(a) for a in v]
                         elif k == 'items':
                             self.items = [IC.IsolationItem().setAll(i) for i in v]
+                        elif k == 'pid_documents':
+                            self.pid_documents = [IC.PidWiringDocument().setAll(d) for d in v]
                         else:
                             setattr(self, k, v)
                     except Exception:
@@ -317,6 +378,14 @@ class IC:
     @staticmethod
     def foregroundColorForType(certType: Types):
         return IC.__foregroundColors.get(certType) or IC.__foregroundColors.get(IC.Types.OTHER)
+
+    @staticmethod
+    def colorForItemState(state) -> QColor:
+        if state == IC.IsolationItem.States.OPEN:
+            return QColor('red')
+        if state == IC.IsolationItem.States.CLOSE:
+            return QColor('green')
+        return QColor('gray')
 
     def backgroundColor(self):
         return IC.__backgroundColors.get(self.type) or IC.__backgroundColors.get(IC.Types.OTHER)

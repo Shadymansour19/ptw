@@ -33,6 +33,7 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 - **Full running lifecycle** — Run / Hold / Close with two-party confirmation (Performing Authority + Issuing Authority)
 - **Equipment isolation management** — a PTW declares what isolations it needs (type/tag/description); an **IC (Isolation Certificate)** is the actual approval + physical-execution document, linked to the PTW — a PTW can't run unless every linked IC is confirmed isolated
 - **Isolation Certificates (ICs)** — formal isolation request documents (type, location, equipment, reason, isolation items) with their own staged approval chain (Issuing, plus PDH→PGM→SOD→DFGM for Protective-type ICs — this manager approval lives only here, not duplicated on the PTW), a full isolate/de-isolate execution cycle (request → Issuing confirms → Isolator carries out, both directions), their own Requested/Under Review/Pending/Active/Sanctioned/Closed lifecycle, color-coded by isolation type (Mechanical=gray, Electrical=yellow, Self=green, Protective System=red, Other=neutral gray), a two-pane approval/isolation history timeline, bidirectional PTW↔IC linking (link and unlink from either side), and a dedicated Isolator role window *(sanction-for-test and re-isolate cycles not yet implemented)*
+- **P&ID / Wiring highlighting** — attach diagrams (PDF or scanned image) to an IC and every isolation item's tag is automatically located and highlighted — red for Open, green for Closed — using native PDF text search with an OCR fallback (Tesseract) for scanned pages/images with no text layer; highlights are burned permanently into the file (visible in any external viewer, not just this app), can be manually added/adjusted/deleted with live drag-and-resize, and stay in sync with the items list via a one-click Sync
 - **Color-coded permit types** — Cold Work (blue), Spark (yellow), Hot Work (red), HydroCarbon (black), Excavation (gray), Confined Space (green)
 - **Risk assessment library** — Safety team maintains a reusable generic risk assessment library; each PTW gets its own editable, deduplicated risk item table — built by adding items manually, pulling from the generic library, or importing an Excel/CSV file — that becomes its permanent risk record, carried over automatically on re-request
 - **PDF permit reports** — Printable PDF generation for each PTW
@@ -64,6 +65,7 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 | Email         | Flask-Mail (Gmail SMTP)               |
 | Credentials   | `keyring`                             |
 | Reports       | ReportLab (PDF), Pillow, qrcode       |
+| PDF/OCR       | `pypdf`, PyQt6 `QtPdf` (native text search), `pytesseract`/Tesseract (OCR fallback) |
 | Excel Export  | `openpyxl`                            |
 | Distribution  | Nuitka `--onedir` → zipped for release (Windows + Linux) |
 
@@ -182,7 +184,8 @@ A separate, formal request workflow for isolation work — an IC's `items` are i
 - **Lifecycle:** `Requested` → (staged approval — Issuing, plus PDH→PGM→SOD→DFGM for a Protective-type IC) → `Approved` → (isolate request → Issuing confirms → Isolator carries out) → `Active` → (de-isolate request → Issuing confirms → Isolator carries out) → `Closed`, with a `Sanctioned` (for-test) side branch
 - **Roles:** requestor (User) creates an IC; Issuing (and PDH/PGM/SOD/DFGM for Protective-type ICs) approve/reject in sequence; Isolator physically carries out both the isolate and de-isolate steps
 - **PTW linkage:** either side can link/unlink — a "Link to IC" action on the PTW, a "Link to PTW" action on the IC, and an Unlink button on both sides' linkage tabs. **A PTW can't be accepted into `RUNNING` unless every IC it's linked to is `Active`** (confirmed isolated) — enforced server-side at run-accept.
-- **Implemented:** data model, dialogs, create/list round trip, full staged approval chain, the complete isolate and de-isolate execution cycles, and bidirectional PTW↔IC linking. **Not yet implemented:** sanction-for-test and re-isolate cycles (tabs exist in the UI but stay empty), and PTW reports printing linked ICs.
+- **P&ID / Wiring:** attach one or more diagrams (PDF or image) while creating the IC; isolation-item tags are found via native PDF text search or OCR (Tesseract, English-only) and highlighted directly in the file — red for Open, green for Closed. Highlights can be manually added, dragged, resized, or deleted, always live (no separate edit mode), and re-sync with the items list on request. See [PROJECT.md](PROJECT.md#pid--wiring-highlighting) for the full breakdown.
+- **Implemented:** data model, dialogs, create/list round trip, full staged approval chain, the complete isolate and de-isolate execution cycles, bidirectional PTW↔IC linking, and P&ID/wiring highlighting. **Not yet implemented:** sanction-for-test and re-isolate cycles (tabs exist in the UI but stay empty), PTW reports printing linked ICs, and — since ICs have no edit flow at all — attaching a P&ID/wiring document to an IC after it's already been submitted.
 
 ---
 
@@ -208,7 +211,10 @@ ptw/
 │   ├── TableICs.py              # IC list (one instance per tab, mirrors TablePTWs)
 │   ├── DialogIC.py              # IC create/view dialog (new/readOnly modes)
 │   ├── TableIsolationItems.py   # Embedded editable isolation-item list inside the IC dialog
-│   ├── DialogIsolationItem.py   # Single isolation-item add dialog (tag/description/state/lock)
+│   ├── DialogIsolationItem.py   # Isolation-item add/edit/view dialog (tag/description/state/lock)
+│   ├── WidgetPidWiring.py       # P&ID/Wiring tab: document picker, preview, live highlight editing
+│   ├── PidWiringHighlighter.py  # Highlight detection (PDF text search + OCR) and file burn-in
+│   ├── OcrConfig.py             # Points pytesseract at the bundled Tesseract binary when frozen
 │   ├── TabServerLogs.py         # Admin log viewer tab (collapsible, color-coded, filterable)
 │   ├── CheckableComboBox.py     # Reusable multi-select checkbox combo box
 │   ├── SearchableComboBox.py    # Reusable fuzzy-autocomplete combo box that accepts free text
@@ -284,7 +290,7 @@ MAIL_PASSWORD=your_app_password
 
 ```bash
 cd client
-pip install PyQt6 qtawesome requests keyring reportlab pillow qrcode pypdf openpyxl bcrypt
+pip install PyQt6 qtawesome requests keyring reportlab pillow qrcode pypdf openpyxl bcrypt pytesseract
 python main.py
 ```
 
@@ -305,6 +311,7 @@ On first launch, open **Settings** and point the client at your server URL.
 | Close cycle | `POST /ptws/close-request` · `POST /ptws/close` |
 | Attachments | `GET/POST/DELETE /ptws/attachments` · `POST /ptws/attachments/copy` |
 | ICs | `GET/POST /ics` · `POST /ics/approvals` · `POST /ics/isolate-request` · `POST /ics/isolate-confirm` · `POST /ics/isolate-execute` · `POST /ics/deisolate-request` · `POST /ics/deisolate-confirm` · `POST /ics/deisolate-execute` · `POST /ics/link-ptw` · `POST /ics/unlink-ptw` |
+| IC attachments (P&ID/Wiring) | `GET/POST/DELETE /ics/attachments` |
 | Risks | `GET/POST/PUT/DELETE /risks` |
 | MIWI docs | `GET /miwi` · `GET /miwis` · `POST /miwi` |
 | Archive | `GET /ptws/archive` · `POST /ptws/archive` |

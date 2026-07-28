@@ -29,7 +29,17 @@ jobs:
           restore-keys: nuitka-windows-
 
       - name: Install dependencies
-        run: pip install nuitka pyqt6 qtawesome reportlab pillow qrcode requests pypdf openpyxl bcrypt keyring
+        run: pip install nuitka pyqt6 qtawesome reportlab pillow qrcode requests pypdf openpyxl bcrypt keyring pytesseract
+
+      - name: Stage Tesseract OCR (English only)
+        shell: pwsh
+        run: |
+          choco install tesseract -y --no-progress
+          Copy-Item -Recurse -Force "C:\Program Files\Tesseract-OCR" tesseract-bin
+          Get-ChildItem tesseract-bin\tessdata -Filter *.traineddata |
+            Where-Object { $_.Name -notin @('eng.traineddata', 'osd.traineddata') } |
+            Remove-Item
+          if (!(Test-Path "tesseract-bin\tessdata\eng.traineddata")) { throw "eng.traineddata not found after Tesseract install" }
 
       - name: Build
         run: >
@@ -40,6 +50,7 @@ jobs:
           --enable-plugin=pyqt6
           --include-data-dir=assets=assets
           --include-data-dir=fonts=fonts
+          --include-data-dir=tesseract-bin=tesseract-bin
           --windows-icon-from-ico=assets/sh-logo-trans.ico
           --windows-console-mode=disable
           --output-filename=PTW.exe
@@ -77,10 +88,22 @@ jobs:
           restore-keys: nuitka-linux-
 
       - name: Install system dependencies
-        run: sudo apt-get install -y patchelf libgl1 libegl1
+        run: |
+          sudo apt-get install -y patchelf libgl1 libegl1 tesseract-ocr
+          sudo apt-get install -y tesseract-ocr-eng || true
 
       - name: Install dependencies
-        run: pip install nuitka pyqt6 qtawesome reportlab pillow qrcode requests pypdf openpyxl bcrypt keyring
+        run: pip install nuitka pyqt6 qtawesome reportlab pillow qrcode requests pypdf openpyxl bcrypt keyring pytesseract
+
+      - name: Stage Tesseract OCR (English only)
+        run: |
+          mkdir -p tesseract-bin/lib tesseract-bin/tessdata
+          TESS_BIN="$(which tesseract)"
+          cp "$TESS_BIN" tesseract-bin/tesseract
+          ldd "$TESS_BIN" | awk '{print $3}' | grep '^/' | xargs -I{} cp -n {} tesseract-bin/lib/
+          find /usr/share -path '*/tessdata/eng.traineddata' -exec cp {} tesseract-bin/tessdata/ \;
+          find /usr/share -path '*/tessdata/osd.traineddata' -exec cp {} tesseract-bin/tessdata/ \;
+          test -f tesseract-bin/tessdata/eng.traineddata
 
       - name: Build
         run: >
@@ -91,6 +114,7 @@ jobs:
           --enable-plugin=pyqt6
           --include-data-dir=assets=assets
           --include-data-dir=fonts=fonts
+          --include-data-dir=tesseract-bin=tesseract-bin
           --output-filename=PTW
           main.py
 

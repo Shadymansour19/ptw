@@ -1,3 +1,4 @@
+import os
 import requests
 from User import User, SecuredUser, UserDepartments
 from PTWData import PTWData, RiskAssessment, Attachment
@@ -626,6 +627,110 @@ class ClientRequests:
             err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
             return f"Failed to add IC\n{err}", None
         return None, data.get('ic-id')
+
+    @async_request
+    def addIcAttachments(loggedUser: User, icId: str, attachments: list[Attachment]) -> str:
+        if not attachments:
+            return ClientRequests.deleteAllIcAttachments(loggedUser, icId)
+
+        files = {}
+        opened = []
+        for attach in attachments:
+            f = open(attach.localPath, 'rb')
+            files[attach.remoteName] = (attach.remoteName, f)
+            opened.append(f)
+
+        response = None
+        try:
+            response = requests.post(
+                f'{ClientRequests.SERVER_URL}/ics/attachments',
+                data={'ic-id': icId},
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                files=files,
+                timeout=ClientRequests.FILE_TIMEOUT
+            )
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            for f in opened:
+                f.close()
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to add attachment\n{err}"
+
+        for f in opened:
+            f.close()
+
+        if not data.get("success"):
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to add attachment\n{err}"
+        return None
+
+    @async_request
+    def getIcAttachmentNames(loggedUser: User, icId: str) -> tuple[str, list[str]]:
+        response = None
+        try:
+            response = requests.get(
+                f'{ClientRequests.SERVER_URL}/ics/attachments',
+                json={'ic-id': icId},
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
+            )
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to get attachments\n{err}", None
+
+        if not data.get("success"):
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to get attachments\n{err}", None
+
+        return None, data.get("attachments", [])
+
+    @async_request
+    def getIcAttachment(loggedUser: User, icId: str, filename: str):
+        response = None
+        try:
+            response = requests.get(
+                f'{ClientRequests.SERVER_URL}/ics/attachments',
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                json={'ic-id': icId, 'filename': filename},
+                timeout=ClientRequests.FILE_TIMEOUT
+            )
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to download attachment file {filename}\n{err}", None
+
+        try:
+            suffix = os.path.splitext(filename)[1] or '.pdf'
+            with tempfile.NamedTemporaryFile(delete=False, prefix=f'attach-{icId}-{filename}-', suffix=suffix) as f:
+                f.write(response.content)
+                return None, f.name
+        except Exception as e:
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to save attachment file {filename}\n{err}", None
+
+    @async_request
+    def deleteAllIcAttachments(loggedUser: User, icId: str, keepFilenames: list[str] = []) -> str:
+        response = None
+        try:
+            response = requests.delete(
+                f'{ClientRequests.SERVER_URL}/ics/attachments',
+                json={'ic-id': icId, 'keep-filenames': keepFilenames},
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
+            )
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to delete attachments\n{err}"
+
+        if not data.get("success"):
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to delete attachments\n{err}"
+        return None
 
     @async_request
     def updateApprovalIC(loggedUser: User, icId, approval: IC.Approval) -> str:

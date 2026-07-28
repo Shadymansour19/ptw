@@ -14,7 +14,7 @@ class ICDb:
                 columns = list(objToDict(icSample).keys())
                 types = [
                     'SERIAL PRIMARY KEY' if columns[i] == 'id' else
-                    'JSONB[]' if columns[i] in ('items', 'approvals') else
+                    'JSONB[]' if columns[i] in ('items', 'approvals', 'pid_documents') else
                     'TEXT[]' if isinstance(getattr(icSample, columns[i]), list) else
                     'VARCHAR(300) NOT NULL' if columns[i] in ('reason', 'long_term_reason') else
                     'BOOLEAN NOT NULL DEFAULT FALSE' if isinstance(getattr(icSample, columns[i]), bool) else

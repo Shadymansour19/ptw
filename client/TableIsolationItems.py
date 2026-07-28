@@ -1,4 +1,4 @@
-from PyQt6.QtCore import Qt, QPoint, QSize
+from PyQt6.QtCore import Qt, QPoint, QSize, pyqtSignal
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem,
                               QAbstractItemView, QHeaderView, QPushButton, QDialog, QMessageBox,
                               QMenu)
@@ -11,6 +11,8 @@ from DialogIsolationItem import DialogIsolationItem
 
 class TableIsolationItems(QWidget):
     """Editable isolation-item list embedded inside an IC dialog."""
+
+    itemsChanged = pyqtSignal()
 
     def __init__(self, parent, items, readonly):
         super().__init__(parent)
@@ -33,6 +35,7 @@ class TableIsolationItems(QWidget):
         self.tbl.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.tbl.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.tbl.setAlternatingRowColors(True)
+        self.tbl.cellDoubleClicked.connect(self._onCellDoubleClicked)
         if not readonly:
             self.tbl.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
             self.tbl.customContextMenuRequested.connect(self.showContextMenu)
@@ -86,12 +89,17 @@ class TableIsolationItems(QWidget):
         data = [str(getattr(item, f)) for f in self.summeryFields]
         for i, d in enumerate(data):
             cell = QTableWidgetItem(d)
+            if i == 0:
+                # stashed so double-click can resolve the right item even after the
+                # table has been re-sorted by a column header click
+                cell.setData(Qt.ItemDataRole.UserRole, item)
             self.tbl.setItem(self.tbl.rowCount()-1, i, cell)
 
     def addItem(self, item: 'IC.IsolationItem'):
         self.__addItemToGUI(item)
         self.items.append(item)
         self.refreshGUI()
+        self.itemsChanged.emit()
 
     def newItemDialog(self):
         dialog = DialogIsolationItem(self)
@@ -102,6 +110,29 @@ class TableIsolationItems(QWidget):
                 QMessageBox.warning(self, "Error", "An isolation item with the same tag already exists.")
                 return
             self.addItem(item)
+
+    def _onCellDoubleClicked(self, row: int, col: int):
+        cell = self.tbl.item(row, 0)
+        if cell is None:
+            return
+        item = cell.data(Qt.ItemDataRole.UserRole)
+        if item is None:
+            return
+        self.editItemDialog(item)
+
+    def editItemDialog(self, existingItem: 'IC.IsolationItem'):
+        dialog = DialogIsolationItem(self, item=existingItem, readonly=self.readonly)
+        resp = dialog.exec()
+        if self.readonly or resp != QDialog.DialogCode.Accepted:
+            return
+        newItem = dialog.getItem()
+        otherTags = [i.tag for i in self.items if i is not existingItem]
+        if newItem.tag in otherTags:
+            QMessageBox.warning(self, "Error", "An isolation item with the same tag already exists.")
+            return
+        self.items[self.items.index(existingItem)] = newItem
+        self.refreshGUI()
+        self.itemsChanged.emit()
 
     def refreshGUI(self):
         self.tbl.clearContents()
@@ -120,6 +151,8 @@ class TableIsolationItems(QWidget):
         selectedRows = sorted(set(row.row() for row in self.tbl.selectedIndexes() if row.isValid()), reverse=True)
         for row in selectedRows:
             self.deleteItem(row)
+        if selectedRows:
+            self.itemsChanged.emit()
 
     def showContextMenu(self, pos: QPoint):
         row = self.tbl.indexAt(pos)

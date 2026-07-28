@@ -1373,6 +1373,140 @@ def copyPtwAttachments():
         return jsonify({"success": False, "error": str(e)}), 400
 
 
+@app.route("/ics/attachments", methods=["POST"])
+def addIcAttachments():
+    user = getVerifiedUser(request.authorization)
+    if user is None:
+        log.warning("POST /ics/attachments unauthorized (ip=%s)", request.remote_addr)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+
+    attachments = request.files or {}
+    payload = request.values.to_dict() or {}
+    icId = payload.get('ic-id')
+    if icId is None:
+        log.warning("POST /ics/attachments: missing ic-id (user='%s')", user.getUsername())
+        return jsonify({"success": False, "error": "Missing IC id field"}), 400
+    try:
+        icId = int(icId)
+    except (ValueError, TypeError):
+        log.warning("POST /ics/attachments: invalid ic-id='%s' (user='%s')", icId, user.getUsername())
+        return jsonify({"success": False, "error": "Invalid IC id"}), 400
+
+    attachDir = os.path.join(_BASE_DIR, f'ic-{icId}-attachments')
+    os.makedirs(attachDir, exist_ok=True)
+
+    errors = []
+    validated = []
+    for file in attachments.values():
+        filename = file.filename if file else None
+        if not filename:
+            errors.append("No file selected for uploading")
+            continue
+        filepath = os.path.join(attachDir, filename)
+        if not os.path.abspath(filepath).startswith(os.path.abspath(attachDir)):
+            log.warning("POST /ics/attachments: path traversal attempt: ic-id='%s' file='%s' user='%s'", icId, filename, user.getUsername())
+            errors.append(f"Invalid filename: {filename}")
+            continue
+        if os.path.exists(filepath):
+            errors.append(f"File already exists: {filename}")
+            continue
+        validated.append((file, filename, filepath))
+
+    if not errors:
+        for file, filename, filepath in validated:
+            try:
+                file.save(filepath)
+                log.debug("Attachment saved: IC #%s file='%s'", icId, filename)
+            except Exception as e:
+                errors.append(f"Failed to upload {filename}: {str(e)}")
+                log.error("Attachment upload failed: IC #%s file='%s': %s", icId, filename, e)
+
+    if errors:
+        log.warning("Attachment upload didn't complete due to errors: IC #%s errors=%s", icId, errors)
+        return jsonify({"success": False, "error": "\n".join(errors)}), 400
+    else:
+        log.info("Attachments uploaded: IC #%s files=%s by='%s'", icId, [f[1] for f in validated], user.getUsername())
+        return jsonify({"success": True, "message": "Files uploaded successfully"})
+
+
+@app.route("/ics/attachments", methods=["GET"])
+def getIcAttachment():
+    user = getVerifiedUser(request.authorization)
+    if user is None:
+        log.warning("GET /ics/attachments unauthorized (ip=%s)", request.remote_addr)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    payload = request.get_json(silent=True) or {}
+    icId = payload.get('ic-id')
+    filename = payload.get('filename')
+    if icId is None:
+        log.warning("GET /ics/attachments: missing ic-id (user='%s')", user.getUsername())
+        return jsonify({"success": False, "error": "Missing required fields"}), 400
+    try:
+        icId = int(icId)
+    except (ValueError, TypeError):
+        log.warning("GET /ics/attachments: invalid ic-id='%s' (user='%s')", icId, user.getUsername())
+        return jsonify({"success": False, "error": "Invalid IC id"}), 400
+    try:
+        attachDir = os.path.join(_BASE_DIR, f'ic-{icId}-attachments')
+        if filename:
+            filepath = os.path.join(attachDir, filename)
+            if not os.path.isfile(filepath):
+                log.warning("Attachment not found: IC #%s file='%s'", icId, filename)
+                return jsonify({"success": False, "error": "File not found"}), 404
+            if not os.path.abspath(filepath).startswith(os.path.abspath(attachDir)):
+                log.warning("GET /ics/attachments: path traversal attempt: ic-id='%s' file='%s' user='%s'", icId, filename, user.getUsername())
+                return jsonify({"success": False, "error": "Invalid filename"}), 400
+            log.debug("Attachment served: IC #%s file='%s' to user='%s'", icId, filename, user.getUsername())
+            return send_file(filepath, as_attachment=True)
+        else:
+            filenames = []
+            if not os.path.exists(attachDir):
+                return jsonify({"success": True, "message": "IC attachments dir not found", "attachments": []})
+            for fname in os.listdir(attachDir):
+                fpath = os.path.join(attachDir, fname)
+                if os.path.isfile(fpath):
+                    filenames.append(fname)
+            log.debug("Attachment list: IC #%s count=%d user='%s'", icId, len(filenames), user.getUsername())
+            return jsonify({"success": True, "attachments": filenames})
+    except Exception as e:
+        log.error("GET /ics/attachments failed for IC #%s: %s", icId, e, exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+@app.route("/ics/attachments", methods=["DELETE"])
+def deleteIcAttachments():
+    user = getVerifiedUser(request.authorization)
+    if user is None:
+        log.warning("DELETE /ics/attachments unauthorized (ip=%s)", request.remote_addr)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    payload = request.get_json(silent=True) or {}
+    icId = payload.get('ic-id')
+    keepFilenames = payload.get('keep-filenames')
+    if icId is None or keepFilenames is None:
+        log.warning("DELETE /ics/attachments: missing required fields (user='%s')", user.getUsername())
+        return jsonify({"success": False, "error": "Missing required fields"}), 400
+    try:
+        icId = int(icId)
+    except (ValueError, TypeError):
+        log.warning("DELETE /ics/attachments: invalid ic-id='%s' (user='%s')", icId, user.getUsername())
+        return jsonify({"success": False, "error": "Invalid IC id"}), 400
+    keepFilenames = set(keepFilenames)
+    try:
+        dirpath = os.path.join(_BASE_DIR, f'ic-{icId}-attachments')
+        deleted = []
+        if os.path.exists(dirpath):
+            for fname in os.listdir(dirpath):
+                fpath = os.path.join(dirpath, fname)
+                if os.path.isfile(fpath) and fname not in keepFilenames:
+                    os.remove(fpath)
+                    deleted.append(fname)
+        log.info("Attachments deleted: IC #%s deleted=%s by='%s'", icId, deleted, user.getUsername())
+        return jsonify({"success": True})
+    except Exception as e:
+        log.error("DELETE /ics/attachments failed for IC #%s: %s", icId, e, exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
 @app.route("/ics", methods=["GET"])
 def getAllICs():
     user = getVerifiedUser(request.authorization)

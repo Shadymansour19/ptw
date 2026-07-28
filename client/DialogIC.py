@@ -12,6 +12,7 @@ from User import UserRoles, UserDepartments
 from PTWData import PTWData
 from Isolation import IC
 from TableIsolationItems import TableIsolationItems
+from WidgetPidWiring import WidgetPidWiring
 from UiUtils import TabButton, lightenColor, Timeline
 from GlobalData import globalData
 from clientRequests import ClientRequests
@@ -51,17 +52,21 @@ class DialogIC(QDialog):
 
         self.tabBasicInfo = QWidget(self.stack)
         self.tabItems = QWidget(self.stack)
+        self.tabPidWiring = QWidget(self.stack)
 
         formBasicInfo = QFormLayout(self.tabBasicInfo)
         formBasicInfo.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         lytItems = QVBoxLayout(self.tabItems)
+        lytPidWiring = QVBoxLayout(self.tabPidWiring)
 
         self.btnBasicInfo = TabButton(self.stack, t("Basic Info"), "mdi6.file-document-outline")
         self.btnItems = TabButton(self.stack, t("Isolation Items"), "fa6s.unlock-keyhole")
+        self.btnPidWiring = TabButton(self.stack, t("P&&ID / Wiring"), "mdi6.pipe")
 
         self.tabsBtnsMap: dict[TabButton, QWidget] = {
             self.btnBasicInfo: self.tabBasicInfo,
             self.btnItems: self.tabItems,
+            self.btnPidWiring: self.tabPidWiring,
         }
 
         # History and PTW Linkage are only meaningful once there's something to show,
@@ -131,6 +136,11 @@ class DialogIC(QDialog):
         self.itemsTable = TableIsolationItems(self.tabItems, ic.items, readOnly)
         self.itemsTable.setMinimumHeight(300)
         lytItems.addWidget(self.itemsTable, stretch=1)
+
+        self.pidWiringWidget = WidgetPidWiring(self.tabPidWiring, self.loggedUser, ic, readOnly)
+        lytPidWiring.addWidget(self.pidWiringWidget, stretch=1)
+        self.pidDocsToBeUploaded = self.pidWiringWidget.docsToBeUploaded
+        self.itemsTable.itemsChanged.connect(self.pidWiringWidget.onItemsChanged)
 
         if readOnly:
             lytHistoryPanes.addWidget(self._buildApprovalTimelinePane(), stretch=1)

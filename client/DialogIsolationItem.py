@@ -7,9 +7,11 @@ from SearchableComboBox import SearchableComboBox
 
 
 class DialogIsolationItem(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, item: IC.IsolationItem = None, readonly: bool = False):
         super().__init__(parent)
-        self.setWindowTitle("New Isolation Item")
+        self.readonly = readonly
+        self._originalItem = item  # only consulted for lock_num/lock_box_num, which the user never edits here
+        self.setWindowTitle("View Isolation Item" if readonly else ("Edit Isolation Item" if item else "New Isolation Item"))
         self.setModal(True)
         self.item = None
 
@@ -30,6 +32,13 @@ class DialogIsolationItem(QDialog):
         self.boxLockBoxNum.setReadOnly(True)
         self.boxLockBoxNum.setPlaceholderText("Set by isolator on confirmation")
 
+        if item:
+            self.boxTag.setCurrentText(item.tag)
+            self.boxDescription.setText(item.description)
+            self.stateCombo.setCurrentText(item.state)
+            self.boxLockNum.setText(item.lock_num)
+            self.boxLockBoxNum.setText(item.lock_box_num)
+
         self.boxTag.itemSelected.connect(self._on_tag_selected)
 
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
@@ -43,7 +52,15 @@ class DialogIsolationItem(QDialog):
         lyt.addRow("Lock Box #:", self.boxLockBoxNum)
         lyt.addWidget(btns)
 
+        if readonly:
+            self.boxTag.setEnabled(False)
+            self.boxDescription.setReadOnly(True)
+            self.stateCombo.setEnabled(False)
+            btns.button(QDialogButtonBox.StandardButton.Cancel).hide()
+
     def _on_tag_selected(self, tag):
+        if self.readonly:
+            return
         isolation = PTWData.ALL_ISOLATIONS.get(tag)
         self.boxDescription.setText(isolation.description if isolation else '')
 
@@ -51,6 +68,10 @@ class DialogIsolationItem(QDialog):
         return self.item
 
     def accept(self):
+        if self.readonly:
+            super().accept()
+            return
+
         tag = self.boxTag.currentText()
         description = self.boxDescription.toPlainText()
 
@@ -62,5 +83,7 @@ class DialogIsolationItem(QDialog):
             return
 
         self.item = IC.IsolationItem(tag=tag, description=description, state=self.stateCombo.currentText())
-        self.item.setLockNum(self.boxLockNum.text()).setLockBoxNum(self.boxLockBoxNum.text())
+        lockNum = self._originalItem.lock_num if self._originalItem else self.boxLockNum.text()
+        lockBoxNum = self._originalItem.lock_box_num if self._originalItem else self.boxLockBoxNum.text()
+        self.item.setLockNum(lockNum).setLockBoxNum(lockBoxNum)
         super().accept()

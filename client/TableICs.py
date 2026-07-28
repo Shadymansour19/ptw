@@ -295,6 +295,11 @@ class TableICs(QWidget):
             ic.id = icId
             globalData.ics[ic.id] = ic
             self.addICToGUI(ic)
+            if dlg.pidDocsToBeUploaded:
+                def on_pid_upload_done(err, _):
+                    if err:
+                        QMessageBox.warning(self, "Warning", f"IC saved but failed to upload P&ID/Wiring documents:\n{err}")
+                ClientRequests.addIcAttachments(self.loggedUser, ic.id, dlg.pidDocsToBeUploaded, callback=on_pid_upload_done)
 
         self.window()._refreshOverlay.showBusy()
         ClientRequests.addIC(self.loggedUser, ic, callback=on_done)
