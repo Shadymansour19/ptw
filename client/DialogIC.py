@@ -58,6 +58,7 @@ class DialogIC(QDialog):
         formBasicInfo.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         lytItems = QVBoxLayout(self.tabItems)
         lytPidWiring = QVBoxLayout(self.tabPidWiring)
+        lytPidWiring.setContentsMargins(0, 0, 0, 0)
 
         self.btnBasicInfo = TabButton(self.stack, t("Basic Info"), "mdi6.file-document-outline")
         self.btnItems = TabButton(self.stack, t("Isolation Items"), "fa6s.unlock-keyhole")

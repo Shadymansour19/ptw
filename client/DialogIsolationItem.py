@@ -23,6 +23,7 @@ class DialogIsolationItem(QDialog):
         self.boxTag.setItems(list(PTWData.ALL_ISOLATIONS.keys()))
         self.boxDescription = QTextEdit()
         self.boxDescription.setFixedHeight(self.boxDescription.fontMetrics().lineSpacing() * 3 + 10)
+        self.boxDescription.setTabChangesFocus(True)
         self.stateCombo = QComboBox()
         self.stateCombo.addItems([s.value for s in IC.IsolationItem.States])
         self.boxLockNum = QLineEdit()
@@ -61,8 +62,12 @@ class DialogIsolationItem(QDialog):
     def _on_tag_selected(self, tag):
         if self.readonly:
             return
+        # Only autofill from the library when the tag actually matches a known entry - a
+        # custom/out-of-list tag (typed freely, or an existing item's own tag while editing)
+        # must leave whatever description is already there alone, not blank it out.
         isolation = PTWData.ALL_ISOLATIONS.get(tag)
-        self.boxDescription.setText(isolation.description if isolation else '')
+        if isolation:
+            self.boxDescription.setText(isolation.description)
 
     def getItem(self):
         return self.item

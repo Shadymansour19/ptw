@@ -146,6 +146,14 @@ class _PidGraphicsView(QGraphicsView):
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        # Scrollbars are redundant here (panning is click-drag via ScrollHandDrag above) and
+        # actively wrong with them on: fitInView computes its fit against whatever viewport
+        # size is current *at that instant* - if a scrollbar is showing (from the previous
+        # page/zoom) it shrinks the viewport fitInView measures, so the resulting scale ends
+        # up too zoomed-in relative to the final, scrollbar-free size. Permanently off avoids
+        # that feedback loop entirely, rather than fighting it around each fitInView call.
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._drawingNew = False
         self._drawStart = None
         self._drawItem = None
@@ -170,7 +178,17 @@ class _PidGraphicsView(QGraphicsView):
                              self.height() - self.zoomCombo.height() - margin)
 
     def fitInView(self, *args, **kwargs):
+        # Qt gotcha: if the previous content left scrollbars visible, fitInView computes
+        # its scale against the scrollbar-shrunk viewport, then the scrollbars disappear
+        # once the new (smaller) scale no longer needs them - leaving the result zoomed in
+        # slightly more than a true fit to the final, full-size viewport. Force scrollbars
+        # off for the computation itself to avoid the feedback loop, then restore policy.
+        hPolicy, vPolicy = self.horizontalScrollBarPolicy(), self.verticalScrollBarPolicy()
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         super().fitInView(*args, **kwargs)
+        self.setHorizontalScrollBarPolicy(hPolicy)
+        self.setVerticalScrollBarPolicy(vPolicy)
         self._updateZoomDisplay()
 
     def _currentZoomPercent(self) -> int:
@@ -222,7 +240,10 @@ class _PidGraphicsView(QGraphicsView):
         self.setDragMode(QGraphicsView.DragMode.NoDrag if armed else QGraphicsView.DragMode.ScrollHandDrag)
 
     def mousePressEvent(self, event):
-        if self._drawingNew and self.itemAt(event.pos()) is None:
+        # the rendered page itself is a full-page QGraphicsPixmapItem, so itemAt() almost
+        # never returns None for a click inside the page - only an existing highlight
+        # should block starting a new draw (so it can be moved/resized instead).
+        if self._drawingNew and not isinstance(self.itemAt(event.pos()), _EditableHighlightItem):
             self._drawStart = self.mapToScene(event.pos())
             self._drawItem = QGraphicsRectItem(QRectF(self._drawStart, self._drawStart))
             self._drawItem.setPen(QPen(Qt.GlobalColor.blue, 2, Qt.PenStyle.DashLine))
@@ -276,6 +297,8 @@ class WidgetPidWiring(QWidget):
         self._pairs = []                  # list of (IC.Highlight, _EditableHighlightItem) for the displayed page
 
         lyt = QVBoxLayout(self)
+        lyt.setContentsMargins(4, 4, 4, 0)  # zero bottom margin - this is the last tab content before
+                                             # the dialog's own Ok/Cancel row, no need to double that gap
 
         topRow = QHBoxLayout()
         self.docCombo = QComboBox()
@@ -536,24 +559,32 @@ class WidgetPidWiring(QWidget):
         overlay = getattr(self.window(), '_refreshOverlay', None)
         if overlay:
             overlay.showBusy()
-        try:
-            highlights, pageCount, ocrUsed = highlighter.computeHighlights(filePath, self.ic.items)
-            burnedInPath = highlighter.burnInHighlights(filePath, highlights)
-        except Exception as e:
-            QMessageBox.warning(self, t("Error"), t("Failed to process document:") + f" {e}")
-            return
-        finally:
-            if overlay:
-                overlay.hideBusy()
 
-        originalName = self._uniqueOriginalName(filename)
-        doc = IC.PidWiringDocument(filename=filename, original_filename=originalName,
-                                    page_count=pageCount, ocr_used=ocrUsed, highlights=highlights)
-        self.ic.pid_documents.append(doc)
-        self.docsToBeUploaded.append(Attachment(localPath=burnedInPath, remoteName=filename, uploaded=False))
-        self.docsToBeUploaded.append(Attachment(localPath=filePath, remoteName=originalName, uploaded=False))
+        def on_compute_done(err, result):
+            if err:
+                if overlay:
+                    overlay.hideBusy()
+                QMessageBox.warning(self, t("Error"), t("Failed to process document:") + f" {err}")
+                return
+            highlights, pageCount, ocrUsed = result
 
-        self._refreshDocCombo(selectFilename=filename)
+            def on_burn_done(err2, burnedInPath):
+                if overlay:
+                    overlay.hideBusy()
+                if err2:
+                    QMessageBox.warning(self, t("Error"), t("Failed to process document:") + f" {err2}")
+                    return
+                originalName = self._uniqueOriginalName(filename)
+                doc = IC.PidWiringDocument(filename=filename, original_filename=originalName,
+                                            page_count=pageCount, ocr_used=ocrUsed, highlights=highlights)
+                self.ic.pid_documents.append(doc)
+                self.docsToBeUploaded.append(Attachment(localPath=burnedInPath, remoteName=filename, uploaded=False))
+                self.docsToBeUploaded.append(Attachment(localPath=filePath, remoteName=originalName, uploaded=False))
+                self._refreshDocCombo(selectFilename=filename)
+
+            highlighter.burnInHighlightsAsync(filePath, highlights, callback=on_burn_done)
+
+        highlighter.computeHighlightsAsync(filePath, self.ic.items, callback=on_compute_done)
 
     def _deleteSelectedDoc(self):
         doc = self._currentDoc
@@ -592,25 +623,50 @@ class WidgetPidWiring(QWidget):
         overlay = getattr(self.window(), '_refreshOverlay', None)
         if overlay:
             overlay.showBusy()
-        try:
-            for doc in self.ic.pid_documents:
-                originalPath = self._originalLocalPathFor(doc)
-                if not originalPath:
-                    continue
-                manualHighlights = [h for h in doc.highlights if h.manual]
-                autoHighlights, pageCount, ocrUsed = highlighter.computeHighlights(originalPath, self.ic.items)
-                doc.highlights = manualHighlights + autoHighlights
-                doc.page_count = pageCount
-                doc.ocr_used = ocrUsed
-                newBurnedPath = highlighter.burnInHighlights(originalPath, doc.highlights)
-                self._replaceStagedFile(doc.filename, newBurnedPath)
-        except Exception as e:
-            QMessageBox.warning(self, t("Error"), t("Failed to resync highlights:") + f" {e}")
-        finally:
-            if overlay:
-                overlay.hideBusy()
 
-        self._refreshDocCombo(selectFilename=currentFilename)
+        queue = list(self.ic.pid_documents)
+        errors = []
+
+        def process_next():
+            if not queue:
+                if overlay:
+                    overlay.hideBusy()
+                if errors:
+                    QMessageBox.warning(self, t("Error"), t("Failed to resync highlights:") + "\n" + "\n".join(errors))
+                self._refreshDocCombo(selectFilename=currentFilename)
+                return
+
+            doc = queue.pop(0)
+            originalPath = self._originalLocalPathFor(doc)
+            if not originalPath:
+                process_next()
+                return
+            manualHighlights = [h for h in doc.highlights if h.manual]
+
+            def on_compute_done(err, result, doc=doc, manualHighlights=manualHighlights, originalPath=originalPath):
+                if err:
+                    errors.append(err)
+                    process_next()
+                    return
+                autoHighlights, pageCount, ocrUsed = result
+                combined = manualHighlights + autoHighlights
+
+                def on_burn_done(err2, newBurnedPath, doc=doc, combined=combined, pageCount=pageCount, ocrUsed=ocrUsed):
+                    if err2:
+                        errors.append(err2)
+                        process_next()
+                        return
+                    doc.highlights = combined
+                    doc.page_count = pageCount
+                    doc.ocr_used = ocrUsed
+                    self._replaceStagedFile(doc.filename, newBurnedPath)
+                    process_next()
+
+                highlighter.burnInHighlightsAsync(originalPath, combined, callback=on_burn_done)
+
+            highlighter.computeHighlightsAsync(originalPath, self.ic.items, callback=on_compute_done)
+
+        process_next()
 
     def _clearSelectedDocHighlights(self):
         doc = self._currentDoc
@@ -630,18 +686,19 @@ class WidgetPidWiring(QWidget):
         overlay = getattr(self.window(), '_refreshOverlay', None)
         if overlay:
             overlay.showBusy()
-        try:
-            doc.highlights = []
-            doc.ocr_used = False
-            newPath = highlighter.burnInHighlights(originalPath, [])
-            self._replaceStagedFile(doc.filename, newPath)
-        except Exception as e:
-            QMessageBox.warning(self, t("Error"), t("Failed to clear highlights:") + f" {e}")
-        finally:
+
+        def on_done(err, newPath):
             if overlay:
                 overlay.hideBusy()
+            if err:
+                QMessageBox.warning(self, t("Error"), t("Failed to clear highlights:") + f" {err}")
+                return
+            doc.highlights = []
+            doc.ocr_used = False
+            self._replaceStagedFile(doc.filename, newPath)
+            self._refreshDocCombo(selectFilename=doc.filename)
 
-        self._refreshDocCombo(selectFilename=doc.filename)
+        highlighter.burnInHighlightsAsync(originalPath, [], callback=on_done)
 
     # ------------------------------------------------------------ manual highlight editing (always live)
 
@@ -669,15 +726,17 @@ class WidgetPidWiring(QWidget):
         overlay = getattr(self.window(), '_refreshOverlay', None)
         if overlay:
             overlay.showBusy()
-        try:
-            newBurnedPath = highlighter.burnInHighlights(self._currentOriginalPath, doc.highlights)
-            self._replaceStagedFile(doc.filename, newBurnedPath)
-            self._currentBurnedPath = newBurnedPath
-        except Exception as e:
-            QMessageBox.warning(self, t("Error"), t("Failed to apply highlight changes:") + f" {e}")
-        finally:
+
+        def on_done(err, newBurnedPath):
             if overlay:
                 overlay.hideBusy()
+            if err:
+                QMessageBox.warning(self, t("Error"), t("Failed to apply highlight changes:") + f" {err}")
+                return
+            self._replaceStagedFile(doc.filename, newBurnedPath)
+            self._currentBurnedPath = newBurnedPath
+
+        highlighter.burnInHighlightsAsync(self._currentOriginalPath, doc.highlights, callback=on_done)
 
     def _onHighlightGeometryChanged(self):
         self._applyCurrentPageHighlights()

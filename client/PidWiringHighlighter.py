@@ -10,8 +10,15 @@ from PyQt6.QtPdf import QPdfDocument, QPdfSearchModel
 
 from Isolation import IC
 from OcrConfig import tessdataConfig
+from RequestWorker import async_request
 
 log = logging.getLogger("client")
+
+# pypdf logs a WARNING ("Ignoring wrong pointing object N 0 (offset ...)") whenever a PDF's
+# xref table has a stale/incorrect byte offset - common in real-world PDFs from a variety of
+# tools, and pypdf recovers from it automatically via its own fallback object scan. It's noise,
+# not a sign burn-in failed - only escalate this specific logger on genuine errors.
+logging.getLogger("pypdf._reader").setLevel(logging.ERROR)
 
 RENDER_TARGET_LONG_SIDE = 4000  # px; page raster resolution used for OCR and on-screen display -
                                  # the in-app view only scales this fixed pixmap up on zoom (no
@@ -88,6 +95,19 @@ def computeHighlights(filePath: str, items: list) -> tuple:
     for h in highlights:
         h.rect = _padRect(h.rect)
     return highlights, pageCount, ocrUsed
+
+
+@async_request
+def computeHighlightsAsync(filePath: str, items: list):
+    """Same work as computeHighlights, wrapped for the async_request calling convention
+    (call with callback=(err, result) to run OCR/PDF-search on a background QThread instead
+    of the GUI thread) - the GUI thread would otherwise be blocked long enough for
+    RefreshOverlay's busy animation to visibly stall on a slow document."""
+    try:
+        result = computeHighlights(filePath, items)
+    except Exception as e:
+        return str(e), None
+    return None, result
 
 
 def _padRect(rect: list) -> list:
@@ -234,6 +254,16 @@ def burnInHighlights(filePath: str, highlights: list) -> str:
     if filePath.lower().endswith('.pdf'):
         return _burnInPdf(filePath, highlights)
     return _burnInImage(filePath, highlights)
+
+
+@async_request
+def burnInHighlightsAsync(filePath: str, highlights: list):
+    """Same work as burnInHighlights, wrapped for the async_request calling convention."""
+    try:
+        result = burnInHighlights(filePath, highlights)
+    except Exception as e:
+        return str(e), None
+    return None, result
 
 
 def _copyUnchanged(filePath: str) -> str:
