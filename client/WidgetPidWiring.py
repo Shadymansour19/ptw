@@ -132,9 +132,14 @@ class _AssignHighlightDialog(QDialog):
 class _PidGraphicsView(QGraphicsView):
     """Wheel-zoom + drag-pan viewer for a single rendered page image. When armed via
     armAddRect(True), a click-drag on empty canvas draws a new rectangle instead of
-    panning, and emits rectDrawn once released."""
+    panning, and emits rectDrawn once released. A floating, editable zoom-level combo
+    sits pinned to the bottom-left corner, always reflecting the current scale."""
 
     rectDrawn = pyqtSignal(QRectF)
+
+    ZOOM_PRESETS = ['25%', '50%', '75%', '100%', '125%', '150%', '200%', '300%', '400%']
+    ZOOM_MIN_PERCENT = 5
+    ZOOM_MAX_PERCENT = 1000
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -145,9 +150,72 @@ class _PidGraphicsView(QGraphicsView):
         self._drawStart = None
         self._drawItem = None
 
+        self.zoomCombo = QComboBox(self)
+        self.zoomCombo.setEditable(True)
+        self.zoomCombo.addItems(self.ZOOM_PRESETS)
+        self.zoomCombo.setFixedWidth(80)
+        self.zoomCombo.setToolTip(t("Zoom level - pick a preset or type a percentage"))
+        self.zoomCombo.setStyleSheet("""
+            QComboBox { background: rgba(255, 255, 255, 220); color: black; }
+            QComboBox QAbstractItemView { background: white; color: black; }
+        """)
+        self.zoomCombo.activated.connect(self._onZoomComboChosen)
+        self.zoomCombo.lineEdit().returnPressed.connect(self._onZoomComboEntered)
+        self._updateZoomDisplay()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        margin = 20
+        self.zoomCombo.move(self.width() - self.zoomCombo.width() - margin,
+                             self.height() - self.zoomCombo.height() - margin)
+
+    def fitInView(self, *args, **kwargs):
+        super().fitInView(*args, **kwargs)
+        self._updateZoomDisplay()
+
+    def _currentZoomPercent(self) -> int:
+        return round(self.transform().m11() * 100)
+
+    def _updateZoomDisplay(self):
+        self.zoomCombo.blockSignals(True)
+        self.zoomCombo.setEditText(f"{self._currentZoomPercent()}%")
+        self.zoomCombo.blockSignals(False)
+
+    def _parsePercent(self, text: str):
+        digits = ''.join(ch for ch in text if ch.isdigit())
+        if not digits:
+            return None
+        return max(self.ZOOM_MIN_PERCENT, min(int(digits), self.ZOOM_MAX_PERCENT))
+
+    def _setZoomPercent(self, percent: int):
+        # use the exact transform scale, not the rounded display percentage - compounding
+        # the display's own rounding here would make repeated entry (e.g. "100%") drift
+        # away from the value actually requested.
+        current = self.transform().m11()
+        if current <= 0:
+            return
+        factor = (percent / 100) / current
+        self.scale(factor, factor)
+        self._updateZoomDisplay()
+
+    def _onZoomComboChosen(self, index: int):
+        percent = self._parsePercent(self.zoomCombo.itemText(index))
+        if percent:
+            self._setZoomPercent(percent)
+        else:
+            self._updateZoomDisplay()
+
+    def _onZoomComboEntered(self):
+        percent = self._parsePercent(self.zoomCombo.currentText())
+        if percent:
+            self._setZoomPercent(percent)
+        else:
+            self._updateZoomDisplay()
+
     def wheelEvent(self, event):
         factor = 1.1 if event.angleDelta().y() > 0 else 1 / 1.1
         self.scale(factor, factor)
+        self._updateZoomDisplay()
 
     def armAddRect(self, armed: bool):
         self._drawingNew = armed
