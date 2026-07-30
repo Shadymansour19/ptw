@@ -617,14 +617,14 @@ hazards                     TEXT[]
 controls                    TEXT[]
 risks                       TEXT[]
 linked_ics                  TEXT[]
-approval_status             VARCHAR(100)
 running_status              VARCHAR(100)
 approvals                   JSONB[]
 isolations                  JSONB[]
-attachs                     TEXT[]
 ```
 
 `linked_ics` — fully implemented PTW↔IC linkage (list of linked IC ids; see [Isolation Management](#isolation-management)). `run_cycles` replaced the old flat `performing`/`issuing`/`performing_timestamp`/`issuing_timestamp`/`close_performing`/`close_issuing`/`close_performing_timestamp`/`close_issuing_timestamp`/`hold_performing`/`hold_issuing`/`hold_performing_timestamp`/`hold_issuing_timestamp`/`keep_isolations` columns (see [Running Cycle](#2-running-cycle)); `dev-scripts/migrate_ptw_run_cycles.py` is the one-time migration that adds it, backfills it from those old columns, and drops them.
+
+**Two `PTWData` fields are deliberately not columns here.** `approval_status` is recomputed by `__updateStatus()` from `approvals` on every read, so a stored copy would just be a stale duplicate. `attachs` only ever holds the client's local, not-yet-uploaded staging list (used by `validate()`'s required-attachment check) — the actual attachment filenames live only in the `ptw-{id}-attachments/` folder on disk (see [Attachments](#attachments)); `ReportGenerator.ptwReport()` fetches that live listing via `GET /ptws/attachments` rather than trusting `ptw.attachs`.
 
 **There is no more `isolations` table.** It (and the plain `Isolation.linked_ptws`/`held_by`/`primary_ptw`/`latest_ptw`/`is_physically_isolated`/`linkPTW`/`holdPTW`/`unlinkPTW` state it backed) was removed entirely 2026-07-25 along with `server/IsolationDb.py` and the client's global "Isolations" browse tab — see [Isolation Management](#isolation-management). `PTWData.isolations` still exists but is a plain `JSONB[]` column on `ptws` holding declarative `type`/`tag`/`description` records only, same as always.
 
@@ -682,18 +682,18 @@ held_by                         TEXT[]
 
 ### `risks`
 ```sql
-title          VARCHAR(300) NOT NULL
-date           VARCHAR(100) NOT NULL
-ptw_id         INTEGER               -- NULL = generic library entry; set = that PTW's own materialized row
-hazard         VARCHAR(300) NOT NULL
-effect         VARCHAR(300)
-free_analysis  VARCHAR(300)
-ctrl           VARCHAR(300)
-ctrl_analysis  VARCHAR(300)
-eval           VARCHAR(300)
+hazard         VARCHAR(300)  NOT NULL
+effect         VARCHAR(300)  NOT NULL
+free_analysis  VARCHAR(300)  NOT NULL
+ctrl           VARCHAR(1000) NOT NULL
+ctrl_analysis  VARCHAR(300)  NOT NULL
+eval           VARCHAR(300)  NOT NULL
+title          VARCHAR(300)  NOT NULL
+date           VARCHAR(300)  NOT NULL
+ptw_id         INTEGER                -- NULL = generic library entry; set = that PTW's own materialized row
 ```
 
-Indexed on `ptw_id` (`idx_risks_ptw_id`) for fast per-PTW lookups.
+`ctrl` is wider than the other text fields (1000 vs 300) — control-measure descriptions routinely ran past 300 characters in practice. Indexed on `ptw_id` (`idx_risks_ptw_id`) for fast per-PTW lookups.
 
 ---
 

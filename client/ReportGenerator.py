@@ -178,6 +178,13 @@ class ReportGenerator:
         if err:
             ptwSpecificRisk = None
 
+        # Attachment filenames are never persisted on the PTW row itself, only the files
+        # on disk (ptw-{id}-attachments/) are authoritative — fetch the live listing rather
+        # than trusting ptw.attachs (which reflects the local, not-yet-uploaded staging list).
+        err, attachNames = ClientRequests.getPtwAttachmentNames(loggedUser, ptw.id)
+        if err:
+            attachNames = []
+
         tableAdditionalInfoData = [
             [Paragraph('Tools', styles['Heading3']), listToBullets(ptw.tools, styles['Normal'])],
             [Paragraph('Hazards', styles['Heading3']), listToBullets(ptw.hazards, styles['Normal'])],
@@ -187,8 +194,8 @@ class ReportGenerator:
             tableAdditionalInfoData.append([Paragraph('MIWI', styles['Heading3']), listToBullets([ptw.miwi], styles['Normal'])])
         # elif ptw.mos:
         #     tableAdditionalInfoData.append([Paragraph('MOS', styles['Heading3']), listToBullets(ptw.mos.split('\n'), styles['Normal'])])
-        if ptw.attachs:
-            tableAdditionalInfoData.append([Paragraph('Attachments', styles['Heading3']), listToBullets(ptw.attachs, styles['Normal'])])
+        if attachNames:
+            tableAdditionalInfoData.append([Paragraph('Attachments', styles['Heading3']), listToBullets(attachNames, styles['Normal'])])
         # if ptw.isolations:
         #     tableAdditionalInfoData.append([Paragraph('Isolations', styles['Heading3']), listToBullets([str(isolation) for isolation in ptw.isolations], styles['Normal'])])
 

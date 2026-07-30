@@ -74,7 +74,6 @@ def init_tables():
                     run_cycles            JSONB[],
                     miwi                  VARCHAR(100),
                     mos                   VARCHAR(100),
-                    attachs               TEXT[],
                     tools                 TEXT[],
                     isolations            JSONB[],
                     hazards               TEXT[],
@@ -82,12 +81,15 @@ def init_tables():
                     risks                 TEXT[],
                     linked_ics            TEXT[],
                     approvals             JSONB[],
-                    approval_status       VARCHAR(100),
                     running_status        VARCHAR(100),
                     prev_running_status   VARCHAR(100)
                 )
             """)
             print("Ensured table: ptws")
+            # No `attachs` column: attachment filenames are never persisted here, only read
+            # live from the ptw-{id}-attachments/ folder (see ReportGenerator.ptwReport).
+            # No `approval_status` column: PTWData.__updateStatus() recomputes it from
+            # `approvals` on every read, so it's always correct without being stored.
 
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS ics (
@@ -143,7 +145,7 @@ def init_tables():
                     hazard          VARCHAR(300) NOT NULL,
                     effect          VARCHAR(300) NOT NULL,
                     free_analysis   VARCHAR(300) NOT NULL,
-                    ctrl            VARCHAR(300) NOT NULL,
+                    ctrl            VARCHAR(1000) NOT NULL,
                     ctrl_analysis   VARCHAR(300) NOT NULL,
                     eval            VARCHAR(300) NOT NULL,
                     title           VARCHAR(300) NOT NULL,

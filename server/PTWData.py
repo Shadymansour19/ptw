@@ -511,6 +511,9 @@ class PTWData:
         self.run_cycles : list[PTWData.RunCycle] = [PTWData.RunCycle().setAll(cycle) for cycle in data.get('run_cycles', [])]
         self.miwi : str = data.get('miwi')
         self.mos : str = data.get('mos')
+        # Not a `ptws` column — the ptw-{id}-attachments/ folder is the only source of
+        # truth for what's actually attached. This only ever holds the client's staged,
+        # not-yet-uploaded filenames for validate()'s required-attachment check.
         self.attachs : list[str] = data.get('attachs', [])
         self.tools : list[str] = data.get('tools', [])
         self.isolations : list[Isolation] = [Isolation().setAll(iso) for iso in data.get('isolations', [])]
@@ -519,6 +522,8 @@ class PTWData:
         self.risks : list[str] = data.get('risks', [])
         self.linked_ics : list[str] = data.get('linked_ics', [])
         self.approvals : list[PTWData.Approval] = [PTWData.Approval().setAll(approval) for approval in data.get('approvals', [])]
+        # Not a `ptws` column either — __updateStatus() below recomputes this from
+        # `approvals` every time, so persisting it would just be a stale duplicate.
         self.approval_status : PTWData.ApprovalStatus = data.get('approval_status') or PTWData.ApprovalStatus.UNDER_REVIEW
         self.running_status : PTWData.RunningStatus = data.get('running_status') or PTWData.RunningStatus.NOT_RUNNING
         self.prev_running_status : PTWData.RunningStatus = data.get('prev_running_status') or PTWData.RunningStatus.NOT_RUNNING
