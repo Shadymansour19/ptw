@@ -5,20 +5,8 @@ from commonDb import CommonDB
 
 
 class RisksDb:
-    def __init__(self):
-        with CommonDB.get_conn() as conn:
-            try:
-                riskItemSample = RiskItem()
-                columns = list(riskItemSample.__dict__.keys())
-                columns.extend(['title', 'date'])
-                with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                    cursor.execute(
-                        "CREATE TABLE IF NOT EXISTS risks (" +
-                        ", ".join(col + ' VARCHAR(300) NOT NULL' for col in columns) + ")"
-                    )
-                conn.commit()
-            except Exception as e:
-                raise Exception("Error initializing risks database: " + str(e))
+    """Assumes the `risks` table already exists — run server/dev-scripts/init_db.py once before
+    first starting the server."""
 
     def addRiskAssessmentFromDict(self, riskAssessment: dict):
         try:

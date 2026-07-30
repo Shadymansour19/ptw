@@ -581,7 +581,7 @@ Path traversal is prevented server-side via `os.path.abspath` containment check.
 
 ## Database Schema
 
-Database name: `ptw_database` (PostgreSQL, localhost)
+Database name: `ptw_database` (PostgreSQL, localhost). `server/dev-scripts/init_db.py` is the one-time script that creates the database and every table below in this final shape — run it once before starting the server for the first time. The `*Db.py` classes (`usersDb.py`/`ptwDb.py`/`risksDb.py`/`ICDb.py`) assume their table already exists; they no longer `CREATE TABLE`/`ALTER TABLE` on every server startup the way they used to while the schema was still evolving (table/column renames, drops, splits — that churn is done, so a fresh database now gets the end result directly instead of walking through it). `UsersDb` is the one exception: its constructor still seeds the initial `admin` account if `users` is empty, since that's data seeding rather than schema.
 
 ### `users`
 ```sql
@@ -600,7 +600,7 @@ is_active   BOOLEAN      NOT NULL DEFAULT TRUE
 ```sql
 id                          SERIAL PRIMARY KEY
 type                        VARCHAR(100)
-date                        VARCHAR(100)
+request_date                VARCHAR(100)
 location                    VARCHAR(100)
 equipment                   VARCHAR(100)
 area_class                  VARCHAR(100)
@@ -630,18 +630,22 @@ attachs                     TEXT[]
 
 ### `ics`
 
-Auto-created by introspecting a sample `IC` (same recipe as `ptws`, see `server/ICDb.py`): `id` → `SERIAL PRIMARY KEY`, `items`/`approvals`/`pid_documents` → `JSONB[]` (`pid_documents` added 2026-07-28, see [P&ID / Wiring Highlighting](#pid--wiring-highlighting)), other lists → `TEXT[]`, `reason`/`long_term_reason` → `VARCHAR(300) NOT NULL`, `long_term` → `BOOLEAN`, everything else → `VARCHAR(100)`. Renamed from `isolation_certificates` 2026-07-25 (`server/ICDb.py` runs `ALTER TABLE IF EXISTS isolation_certificates RENAME TO ics` before the `CREATE TABLE IF NOT EXISTS`, so existing data survives the rename on an already-deployed install). `department` split into `requestor_department`/`execution_department` 2026-07-26 — `ICDb.__init__` renames the old column in place (`department` → `requestor_department`, guarded by an `information_schema.columns` check so it's a no-op on an already-migrated or brand-new table) and adds `execution_department` via `ADD COLUMN IF NOT EXISTS`.
+Created by `server/dev-scripts/init_db.py` in the shape below (renamed from `isolation_certificates` 2026-07-25; `department` split into `requestor_department`/`execution_department` 2026-07-26; `pid_documents` added 2026-07-28, see [P&ID / Wiring Highlighting](#pid--wiring-highlighting) — all migrations that a live install needed to get here have already run, so a fresh database just gets this final shape directly, see [Database Schema](#database-schema) above).
 
 ```sql
 id                              SERIAL PRIMARY KEY
 type                            VARCHAR(100)
 requestor_department            VARCHAR(100)
 execution_department            VARCHAR(100)
+requestor                       VARCHAR(100)
+requestor_timestamp             VARCHAR(100)
+approvals                       JSONB[]
 location                        VARCHAR(100)
 equipment                       VARCHAR(100)
 reason                          VARCHAR(300) NOT NULL
 items                           JSONB[]
 pid_documents                   JSONB[]
+isolate_asap                    BOOLEAN NOT NULL DEFAULT FALSE
 isolate_requestor               VARCHAR(100)
 isolate_requestor_timestamp     VARCHAR(100)
 isolate_issuing                 VARCHAR(100)
@@ -665,16 +669,16 @@ deisolate_requestor             VARCHAR(100)
 deisolate_requestor_timestamp   VARCHAR(100)
 deisolate_issuing               VARCHAR(100)
 deisolate_issuing_timestamp     VARCHAR(100)
+deisolate_issuing_action        VARCHAR(100)
 deisolate_isolator              VARCHAR(100)
 deisolate_isolator_timestamp    VARCHAR(100)
 long_term                       BOOLEAN NOT NULL DEFAULT FALSE
 long_term_reason                VARCHAR(300) NOT NULL
 linked_ptws                     TEXT[]
 held_by                         TEXT[]
-approvals                       JSONB[]
 ```
 
-`linked_ptws`/`held_by` are the IC's own runtime linkage state — fully implemented (link+unlink, symmetric with `PTWData.linked_ics`), see [Isolation Management](#isolation-management). `primary_ptw`/`latest_ptw`/`is_physically_isolated` columns existed at one point but were removed 2026-07-25 (`latest_ptw` was always derivable as `linked_ptws[-1]`, `is_physically_isolated` as `bool(linked_ptws or held_by)`, and `primary_ptw` had no clean replacement and wasn't worth keeping) — `ICDb.__init__` runs `ALTER TABLE ics DROP COLUMN IF EXISTS ...` for all three on every startup so an already-deployed install loses the stale columns too, not just fresh installs.
+`linked_ptws`/`held_by` are the IC's own runtime linkage state — fully implemented (link+unlink, symmetric with `PTWData.linked_ics`), see [Isolation Management](#isolation-management). `primary_ptw`/`latest_ptw`/`is_physically_isolated` columns existed at one point but were removed 2026-07-25 (`latest_ptw` was always derivable as `linked_ptws[-1]`, `is_physically_isolated` as `bool(linked_ptws or held_by)`, and `primary_ptw` had no clean replacement and wasn't worth keeping) — they're absent from the schema above and from any already-migrated install; a fresh database created by `init_db.py` never has them at all.
 
 ### `risks`
 ```sql

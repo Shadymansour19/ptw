@@ -33,5 +33,6 @@ client/qr-summery-*.png
 .vscode/
 *.swp
 
-# One-off dev/maintenance scripts — not for the repo
-dev-scripts/
+# One-off dev/maintenance scripts, local only — not for the repo
+# (server/dev-scripts/ is a separate, tracked folder for scripts meant to ship with the repo)
+/dev-scripts/

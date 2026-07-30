@@ -2,40 +2,13 @@ import json
 from psycopg2.extras import RealDictCursor
 
 from Isolation import IC
-from utils import dictToObj, objToDict
+from utils import dictToObj
 from commonDb import CommonDB
 
 
 class ICDb:
-    def __init__(self):
-        with CommonDB.get_conn() as conn:
-            try:
-                icSample = IC()
-                columns = list(objToDict(icSample).keys())
-                types = [
-                    'SERIAL PRIMARY KEY' if columns[i] == 'id' else
-                    'JSONB[]' if columns[i] in ('items', 'approvals', 'pid_documents') else
-                    'TEXT[]' if isinstance(getattr(icSample, columns[i]), list) else
-                    'VARCHAR(300) NOT NULL' if columns[i] in ('reason', 'long_term_reason') else
-                    'BOOLEAN NOT NULL DEFAULT FALSE' if isinstance(getattr(icSample, columns[i]), bool) else
-                    'VARCHAR(100)'
-                    for i in range(len(columns))
-                ]
-                query = "CREATE TABLE IF NOT EXISTS ics (" + ", ".join(columns[i] + ' ' + types[i] for i in range(len(columns))) + ")"
-                with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                    cursor.execute("ALTER TABLE IF EXISTS isolation_certificates RENAME TO ics")
-                    cursor.execute(query)
-                    cursor.execute("ALTER TABLE ics DROP COLUMN IF EXISTS primary_ptw")
-                    cursor.execute("ALTER TABLE ics DROP COLUMN IF EXISTS latest_ptw")
-                    cursor.execute("ALTER TABLE ics DROP COLUMN IF EXISTS is_physically_isolated")
-                    cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'ics'")
-                    existingCols = {row['column_name'] for row in cursor.fetchall()}
-                    if 'department' in existingCols and 'requestor_department' not in existingCols:
-                        cursor.execute("ALTER TABLE ics RENAME COLUMN department TO requestor_department")
-                    cursor.execute("ALTER TABLE ics ADD COLUMN IF NOT EXISTS execution_department VARCHAR(100)")
-                conn.commit()
-            except Exception as e:
-                raise Exception("Error initializing ics database: " + str(e))
+    """Assumes the `ics` table already exists — run server/dev-scripts/init_db.py once before
+    first starting the server."""
 
     def addICFromDict(self, icDict: dict):
         with CommonDB.get_conn() as conn:

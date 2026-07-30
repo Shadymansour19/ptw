@@ -7,26 +7,8 @@ from commonDb import CommonDB
 
 
 class PtwsDb:
-    def __init__(self):
-        with CommonDB.get_conn() as conn:
-            try:
-                ptwSample = PTWData()
-                columns = list(objToDict(ptwSample).keys())
-                types = [
-                    'SERIAL PRIMARY KEY' if columns[i] == 'id' else
-                    'JSONB[]' if columns[i] in ['approvals', 'isolations', 'run_cycles'] else
-                    'TEXT[]' if isinstance(getattr(ptwSample, columns[i]), list) else
-                    'VARCHAR(300) NOT NULL' if columns[i] == 'description' else
-                    'BOOLEAN NOT NULL DEFAULT FALSE' if isinstance(getattr(ptwSample, columns[i]), bool) else
-                    'VARCHAR(100)'
-                    for i in range(len(columns))
-                ]
-                query = "CREATE TABLE IF NOT EXISTS ptws (" + ", ".join(columns[i] + ' ' + types[i] for i in range(len(columns))) + ")"
-                with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                    cursor.execute(query)
-                conn.commit()
-            except Exception as e:
-                raise Exception("Error initializing ptws database: " + str(e))
+    """Assumes the `ptws` table already exists — run server/dev-scripts/init_db.py once before
+    first starting the server."""
 
     def addPTWFromDict(self, ptwDict: dict):
         with CommonDB.get_conn() as conn:

@@ -24,23 +24,12 @@ def _verify_password(plain: str, hashed: str) -> bool:
 
 class UsersDb:
     def __init__(self):
+        """Assumes the `users` table already exists — run server/dev-scripts/init_db.py once
+        before first starting the server. Only seeds the initial admin account if the
+        table is empty."""
         with CommonDB.get_conn() as conn:
             try:
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                    cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS users (
-                            username VARCHAR(50) PRIMARY KEY,
-                            password VARCHAR(100) NOT NULL,
-                            name VARCHAR(100) NOT NULL,
-                            role VARCHAR(50) NOT NULL,
-                            department VARCHAR(100),
-                            email VARCHAR(100),
-                            ext VARCHAR(50),
-                            theme VARCHAR(20),
-                            is_active BOOLEAN NOT NULL DEFAULT TRUE
-                        )
-                    """)
-                    cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE")
                     cursor.execute("SELECT COUNT(*) FROM users")
                     if cursor.fetchone()['count'] == 0:
                         seed_password = secrets.token_urlsafe(12)
