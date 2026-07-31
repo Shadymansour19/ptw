@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QStackedWidget, QVBoxLayout, 
                               QToolBar, QDialog, QDialogButtonBox, QTextEdit, QListWidget,
                               QListWidgetItem, QMenu, QSizePolicy, QSystemTrayIcon,
                               QMessageBox, QApplication, QGraphicsOpacityEffect, QStyle, QInputDialog)
-from PyQt6.QtGui import QFont, QIcon, QPalette, QKeySequence, QPainter, QPixmap, QAction, QActionGroup, QShortcut
+from PyQt6.QtGui import QFont, QIcon, QPalette, QKeySequence, QAction, QActionGroup, QShortcut
 
 from PTWData import PTWData, RiskAssessment
 from TablePTWs import TablePTWs
@@ -636,14 +636,6 @@ class MainWindow(QMainWindow):
 
     def createPopupMenu(self):
         return None
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        painter.setOpacity(0.2 if self.stack.currentWidget() == self.tabWelcome else 0.1)
-        painter.drawPixmap(self.rect(), QPixmap(resource_path('assets/sh-logo-trans.png')))
-        painter.setOpacity(1.0)
-        super().paintEvent(event)
 
     def stackTabChanged(self):
         self.update()
