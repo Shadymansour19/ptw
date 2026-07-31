@@ -140,9 +140,9 @@ WAITING_RUN_CONFIRM
     │       CLOSED                           RUNNING (returns)
     │         │
     │         │ [Archive — manual, or automatic after 7 days]
-    │         │
+    │         │ (sets is_archived; running_status stays CLOSED)
     │         ▼
-    │      ARCHIVED
+    │      (is_archived = true)
     │
     │
     └──── [PA sends hold request + selects keep_isolations]
@@ -173,9 +173,10 @@ WAITING_RUN_CONFIRM
 | CLOSED               | Work complete; permit closed                                          |
 | WAITING_HLD_CONFIRM  | Hold request sent to Issuing Authority; awaiting confirmation         |
 | HELD                 | Work paused; selected isolations maintained                           |
-| ARCHIVED             | Permit archived after closure (terminal state); stored separately     |
 
-**Archiving:** A `CLOSED` PTW can be archived manually (`POST /ptws/archive`, any authenticated non-guest user) or automatically. A daemon thread (`server/app.py` — `_auto_archive_closed_ptws`) sweeps `globalData.allPTWs` every `_AUTO_ARCHIVE_CHECK_INTERVAL` (1 hour) and archives any `CLOSED` PTW whose last `RunCycle.stop_ia_timestamp` is `_AUTO_ARCHIVE_AFTER_DAYS` (7 days) or older. Both paths call the same `PtwsDb.archivePTWs()` and broadcast the same `ptw_archived` SSE event with `"by"` set to the acting user (manual) or `"system"` (automatic).
+**`running_status` is computed, not stored** — `PTWData.__updateRunningStatus()` (both `client`/`server` `PTWData.py`) replays `run_cycles` forward on every read (same pattern as `approval_status`/`approvals`, see [Database Schema](#database-schema)): a stop request (`stop_pa_request`/`stop_ia_action`) is checked ahead of `run_ia_action` so a cycle still resolves correctly even where `run_ia_action` didn't survive the old flat-columns migration (see `RunCycle` below); a rejected run/stop request simply leaves the replay's running status wherever it already was, which is what makes a separate `prev_running_status` snapshot unnecessary — it no longer exists.
+
+**Archiving is a separate `is_archived` boolean, not a `running_status` value** — a `CLOSED` PTW can be archived manually (`POST /ptws/archive`, any authenticated non-guest user) or automatically. A daemon thread (`server/app.py` — `_auto_archive_closed_ptws`) sweeps `globalData.allPTWs` every `_AUTO_ARCHIVE_CHECK_INTERVAL` (1 hour) and archives any `CLOSED` PTW whose last `RunCycle.stop_ia_timestamp` is `_AUTO_ARCHIVE_AFTER_DAYS` (7 days) or older. Both paths call the same `PtwsDb.archivePTWs()` (`UPDATE ptws SET is_archived = TRUE`) and broadcast the same `ptw_archived` SSE event with `"by"` set to the acting user (manual) or `"system"` (automatic). `running_status` keeps showing the real last state (`CLOSED`) forever, even once archived — `is_archived` is checked independently wherever code needs to know that (e.g. `PtwsDb.getAllPTWs()`/`getArchivedPTWs()` filter on it, not on `running_status`).
 
 **`RunCycle` — full audit trail for the running cycle** (`PTWData.RunCycle`, `client`/`server` `PTWData.py`, kept in sync): `PTWData.run_cycles` is an ordered list of `RunCycle` records, one per pass through the state machine above — a fresh `RunCycle` is appended every time a PA sends a run request (including resuming from `HELD`), and its `stop_*` fields are filled in later, in place, as that same cycle progresses. Each `RunCycle` has:
 
@@ -407,9 +408,9 @@ linked_ics  — List of linked IC ids — fully implemented (link+unlink, both d
 ### Status Fields
 
 ```
-approval_status        — Current approval state (UNDER_REVIEW, APPROVED, RETURNED, REJECTED)
-running_status         — Current execution state (NOT_RUNNING through CLOSED)
-prev_running_status    — Previous status (used when a request is rejected, to restore state)
+approval_status        — Current approval state (UNDER_REVIEW, APPROVED, RETURNED) — computed, not stored
+running_status         — Current execution state (NOT_RUNNING through HELD) — computed, not stored
+is_archived            — Archived after closure — the only one of these that IS a real column
 approvals              — Ordered list of Approval records (full audit trail)
 ```
 
@@ -439,7 +440,7 @@ A handful of legacy files still sit directly under `server/miwi/` (uploaded befo
 - **New user creation:** the initial password is auto-generated (`secrets.token_urlsafe(12)`), shown read-only in the admin's "Add User" dialog, and emailed to the new user's registered email address (see **Guest Access** below for the email itself — it uses the same template family as password reset).
 - **Password Reset** flow: user requests a reset → server sends a 6-digit verification code to the user's registered email via Gmail SMTP → code expires after 15 minutes → user submits new password with code.
 - Role-based access control is enforced at the API layer for sensitive operations (user management, risk assessment management, PTW lifecycle: only `ISSUING` can accept/reject run, hold, and close requests).
-- `DELETE /ptws` and `POST /ptws/archive` are open to all authenticated users but are state-gated: deletion requires `REJECTED` or `ARCHIVED` status; archiving requires `running_status == CLOSED` (a `REJECTED` approval status alone no longer qualifies).
+- `DELETE /ptws` and `POST /ptws/archive` are open to all authenticated users but are state-gated: deletion requires `approval_status == RETURNED` — an archived PTW qualifies too, but only incidentally, since `globalData.allPTWs` excludes archived rows entirely (see [Database Schema](#database-schema)) and the lookup returning nothing skips the check rather than passing it explicitly; archiving requires `running_status == CLOSED`.
 
 ### Guest Access
 
@@ -609,7 +610,6 @@ description                 VARCHAR(300) NOT NULL
 fast_track                  BOOLEAN NOT NULL DEFAULT FALSE
 requestor                   VARCHAR(100)
 run_cycles                  JSONB[]
-prev_running_status         VARCHAR(100)
 miwi                        VARCHAR(100)
 mos                         VARCHAR(100)
 tools                       TEXT[]
@@ -617,14 +617,14 @@ hazards                     TEXT[]
 controls                    TEXT[]
 risks                       TEXT[]
 linked_ics                  TEXT[]
-running_status              VARCHAR(100)
 approvals                   JSONB[]
 isolations                  JSONB[]
+is_archived                 BOOLEAN NOT NULL DEFAULT FALSE
 ```
 
 `linked_ics` — fully implemented PTW↔IC linkage (list of linked IC ids; see [Isolation Management](#isolation-management)). `run_cycles` replaced the old flat `performing`/`issuing`/`performing_timestamp`/`issuing_timestamp`/`close_performing`/`close_issuing`/`close_performing_timestamp`/`close_issuing_timestamp`/`hold_performing`/`hold_issuing`/`hold_performing_timestamp`/`hold_issuing_timestamp`/`keep_isolations` columns (see [Running Cycle](#2-running-cycle)); `dev-scripts/migrate_ptw_run_cycles.py` is the one-time migration that adds it, backfills it from those old columns, and drops them.
 
-**Two `PTWData` fields are deliberately not columns here.** `approval_status` is recomputed by `__updateStatus()` from `approvals` on every read, so a stored copy would just be a stale duplicate. `attachs` only ever holds the client's local, not-yet-uploaded staging list (used by `validate()`'s required-attachment check) — the actual attachment filenames live only in the `ptw-{id}-attachments/` folder on disk (see [Attachments](#attachments)); `ReportGenerator.ptwReport()` fetches that live listing via `GET /ptws/attachments` rather than trusting `ptw.attachs`.
+**Three `PTWData` fields are deliberately not columns here.** `approval_status` and `running_status` are both recomputed by `__updateStatus()` from `approvals`/`run_cycles` on every read (see [Running Cycle](#2-running-cycle)), so a stored copy would just be a stale duplicate — this also removed the old `prev_running_status` column entirely, since the replay-forward derivation never needs a "revert to" snapshot the way the old direct-SQL-write transitions did. `attachs` only ever holds the client's local, not-yet-uploaded staging list (used by `validate()`'s required-attachment check) — the actual attachment filenames live only in the `ptw-{id}-attachments/` folder on disk (see [Attachments](#attachments)); `ReportGenerator.ptwReport()` fetches that live listing via `GET /ptws/attachments` rather than trusting `ptw.attachs`. `is_archived` is the one exception that IS a real column — archiving isn't something a run cycle's fields can encode.
 
 **There is no more `isolations` table.** It (and the plain `Isolation.linked_ptws`/`held_by`/`primary_ptw`/`latest_ptw`/`is_physically_isolated`/`linkPTW`/`holdPTW`/`unlinkPTW` state it backed) was removed entirely 2026-07-25 along with `server/IsolationDb.py` and the client's global "Isolations" browse tab — see [Isolation Management](#isolation-management). `PTWData.isolations` still exists but is a plain `JSONB[]` column on `ptws` holding declarative `type`/`tag`/`description` records only, same as always.
 

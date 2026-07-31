@@ -1432,7 +1432,6 @@ class PTWData:
         CLOSED = 'Closed'
         WAITING_HLD_CONFIRM = 'Waiting Hold Confirm'
         HELD = 'Held'
-        ARCHIVED = 'Archived'
     
     class Approval:
         def __init__(self, action = None, username: str = None, timestamp: str = None, comment: str = None):
@@ -1606,8 +1605,11 @@ class PTWData:
         # Not a `ptws` column either — __updateStatus() below recomputes this from
         # `approvals` every time, so persisting it would just be a stale duplicate.
         self.approval_status : PTWData.ApprovalStatus = data.get('approval_status') or PTWData.ApprovalStatus.UNDER_REVIEW
+        # Also not a `ptws` column — derived from run_cycles by __updateRunningStatus()
+        # below, same reasoning as approval_status above. Archival is tracked separately
+        # by `is_archived`, since it's not something a run cycle's fields can encode.
         self.running_status : PTWData.RunningStatus = data.get('running_status') or PTWData.RunningStatus.NOT_RUNNING
-        self.prev_running_status : PTWData.RunningStatus = data.get('prev_running_status') or PTWData.RunningStatus.NOT_RUNNING
+        self.is_archived : bool = data.get('is_archived', False)
         self.__updateStatus()
     
     def setAll(self, data: dict = {}, namespace : SimpleNamespace = None):
@@ -1876,9 +1878,7 @@ class PTWData:
     def clearApprovals(self):
         self.approvals = []
         self.run_cycles = []
-        self.approval_status = PTWData.ApprovalStatus.UNDER_REVIEW
-        self.running_status = PTWData.RunningStatus.NOT_RUNNING
-        self.prev_running_status = PTWData.RunningStatus.NOT_RUNNING
+        self.__updateStatus()
         return self
 
     def lastRunCycle(self) -> 'PTWData.RunCycle':
@@ -1974,9 +1974,38 @@ class PTWData:
         self.__updateRunningStatus()
 
     def __updateRunningStatus(self):
+        """Replays run_cycles forward to the current state — a rejected run/stop request
+        simply leaves `status` at whatever it already was (the state that request was made
+        from), which is what makes a separate prev_running_status snapshot unnecessary."""
         if self.approval_status != PTWData.ApprovalStatus.APPROVED:
             self.running_status = PTWData.RunningStatus.NOT_RUNNING
             return
+        status = PTWData.RunningStatus.NOT_RUNNING
+        for cycle in self.run_cycles:
+            if cycle.run_ia_action == PTWData.RunCycle.Actions.REJECTED:
+                continue
+            # A stop request is only ever recorded once a cycle is running, so its
+            # presence is authoritative on its own — checked ahead of run_ia_action so a
+            # cycle whose run_ia_action didn't survive the old flat-columns migration (see
+            # migrate_ptw_run_cycles.py; a hold/close accept used to blank performing/issuing)
+            # still resolves correctly from its stop_* fields.
+            if cycle.stop_pa_request == PTWData.RunCycle.StopTypes.CLOSE:
+                status = (
+                    PTWData.RunningStatus.CLOSED if cycle.stop_ia_action == PTWData.RunCycle.Actions.APPROVED else
+                    PTWData.RunningStatus.RUNNING if cycle.stop_ia_action == PTWData.RunCycle.Actions.REJECTED else
+                    PTWData.RunningStatus.WAITING_CLS_CONFIRM
+                )
+            elif cycle.stop_pa_request == PTWData.RunCycle.StopTypes.HOLD:
+                status = (
+                    PTWData.RunningStatus.HELD if cycle.stop_ia_action == PTWData.RunCycle.Actions.APPROVED else
+                    PTWData.RunningStatus.RUNNING if cycle.stop_ia_action == PTWData.RunCycle.Actions.REJECTED else
+                    PTWData.RunningStatus.WAITING_HLD_CONFIRM
+                )
+            elif cycle.run_ia_action == PTWData.RunCycle.Actions.APPROVED:
+                status = PTWData.RunningStatus.RUNNING
+            else:
+                status = PTWData.RunningStatus.WAITING_RUN_CONFIRM
+        self.running_status = status
 
     def __updateApprovalStatus(self):
         if len(self.approvals) == 0:

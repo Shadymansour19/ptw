@@ -81,15 +81,16 @@ def init_tables():
                     risks                 TEXT[],
                     linked_ics            TEXT[],
                     approvals             JSONB[],
-                    running_status        VARCHAR(100),
-                    prev_running_status   VARCHAR(100)
+                    is_archived           BOOLEAN NOT NULL DEFAULT FALSE
                 )
             """)
             print("Ensured table: ptws")
             # No `attachs` column: attachment filenames are never persisted here, only read
             # live from the ptw-{id}-attachments/ folder (see ReportGenerator.ptwReport).
-            # No `approval_status` column: PTWData.__updateStatus() recomputes it from
-            # `approvals` on every read, so it's always correct without being stored.
+            # No `approval_status`/`running_status` column: PTWData.__updateStatus() recomputes
+            # both from `approvals`/`run_cycles` on every read, so they're always correct
+            # without being stored. `is_archived` is the one bit that IS stored — archiving
+            # isn't something a run cycle's fields can encode.
 
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS ics (

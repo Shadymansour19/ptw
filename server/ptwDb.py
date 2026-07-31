@@ -41,10 +41,10 @@ class PtwsDb:
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                     cursor.execute('''
                         SELECT * FROM ptws WHERE
-                        running_status != %s AND
+                        NOT is_archived AND
                         (%s IS NULL OR department ILIKE %s) AND
                         (%s IS NULL OR requestor  ILIKE %s)''',
-                        (PTWData.RunningStatus.ARCHIVED, department, department, requestor, requestor)
+                        (department, department, requestor, requestor)
                     )
                     rows = cursor.fetchall()
             for row in rows:
@@ -61,9 +61,9 @@ class PtwsDb:
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                     cursor.execute('''
                         SELECT * FROM ptws WHERE
-                        running_status = %s AND
+                        is_archived AND
                         (%s IS NULL OR department ILIKE %s)''',
-                        (PTWData.RunningStatus.ARCHIVED, department, department)
+                        (department, department)
                     )
                     rows = cursor.fetchall()
             for row in rows:
@@ -94,73 +94,68 @@ class PtwsDb:
             placeholders = ', '.join(['%s'] * len(ptwIds))
             with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 cursor.execute(
-                    f'UPDATE ptws SET running_status = %s WHERE id IN ({placeholders})',
-                    (PTWData.RunningStatus.ARCHIVED, *ptwIds)
+                    f'UPDATE ptws SET is_archived = TRUE WHERE id IN ({placeholders})',
+                    tuple(ptwIds)
                 )
             conn.commit()
 
-    def _appendRunCycle(self, ptwId: str, cycle: dict, runningStatus: str):
-        """Appends a brand-new RunCycle (a fresh run request) and advances running_status."""
+    def _appendRunCycle(self, ptwId: str, cycle: dict):
+        """Appends a brand-new RunCycle (a fresh run request). running_status is derived
+        from run_cycles on read (PTWData.__updateRunningStatus), so there's nothing else
+        to update here."""
         with CommonDB.get_conn() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 cursor.execute(
-                    'UPDATE ptws SET run_cycles = array_append(run_cycles, %s::jsonb), prev_running_status = running_status, running_status = %s WHERE id = %s',
-                    (json.dumps(cycle), runningStatus, ptwId)
+                    'UPDATE ptws SET run_cycles = array_append(run_cycles, %s::jsonb) WHERE id = %s',
+                    (json.dumps(cycle), ptwId)
                 )
             conn.commit()
 
-    def _patchLastRunCycle(self, ptwId: str, patch: dict, runningStatus: str = None, revertToPrev: bool = False):
+    def _patchLastRunCycle(self, ptwId: str, patch: dict):
         """Merges new fields into the most recent RunCycle (still in progress), leaving earlier fields intact."""
-        setClauses = ['run_cycles[cardinality(run_cycles)] = run_cycles[cardinality(run_cycles)] || %s::jsonb']
-        params = [json.dumps(patch)]
-        if revertToPrev:
-            setClauses.append('prev_running_status = running_status')
-            setClauses.append('running_status = prev_running_status')
-        else:
-            setClauses.append('prev_running_status = running_status')
-            setClauses.append('running_status = %s')
-            params.append(runningStatus)
-        params.append(ptwId)
         with CommonDB.get_conn() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                cursor.execute(f'UPDATE ptws SET {", ".join(setClauses)} WHERE id = %s', tuple(params))
+                cursor.execute(
+                    'UPDATE ptws SET run_cycles[cardinality(run_cycles)] = run_cycles[cardinality(run_cycles)] || %s::jsonb WHERE id = %s',
+                    (json.dumps(patch), ptwId)
+                )
             conn.commit()
 
     def requestToRunPTW(self, ptwId: str, pa: str, ts: str):
         cycle = objToDict(PTWData.RunCycle(run_pa=pa, run_pa_timestamp=ts))
-        self._appendRunCycle(ptwId, cycle, PTWData.RunningStatus.WAITING_RUN_CONFIRM)
+        self._appendRunCycle(ptwId, cycle)
 
     def runAcceptPTW(self, ptwId: str, ia: str, ts: str, comment: str = None):
         patch = {'run_ia': ia, 'run_ia_action': PTWData.RunCycle.Actions.APPROVED, 'run_ia_comment': comment, 'run_ia_timestamp': ts}
-        self._patchLastRunCycle(ptwId, patch, runningStatus=PTWData.RunningStatus.RUNNING)
+        self._patchLastRunCycle(ptwId, patch)
 
     def runRejectPTW(self, ptwId: str, ia: str, ts: str, comment: str = None):
         patch = {'run_ia': ia, 'run_ia_action': PTWData.RunCycle.Actions.REJECTED, 'run_ia_comment': comment, 'run_ia_timestamp': ts}
-        self._patchLastRunCycle(ptwId, patch, revertToPrev=True)
+        self._patchLastRunCycle(ptwId, patch)
 
     def requestToClsPTW(self, ptwId: str, pa: str, ts: str, comment: str = None):
         patch = {'stop_pa': pa, 'stop_pa_request': PTWData.RunCycle.StopTypes.CLOSE, 'stop_pa_comment': comment, 'stop_pa_timestamp': ts}
-        self._patchLastRunCycle(ptwId, patch, runningStatus=PTWData.RunningStatus.WAITING_CLS_CONFIRM)
+        self._patchLastRunCycle(ptwId, patch)
 
     def clsAcceptPTW(self, ptwId: str, ia: str, ts: str, comment: str = None):
         patch = {'stop_ia': ia, 'stop_ia_action': PTWData.RunCycle.Actions.APPROVED, 'stop_ia_comment': comment, 'stop_ia_timestamp': ts}
-        self._patchLastRunCycle(ptwId, patch, runningStatus=PTWData.RunningStatus.CLOSED)
+        self._patchLastRunCycle(ptwId, patch)
 
     def clsRejectPTW(self, ptwId: str, ia: str, ts: str, comment: str = None):
         patch = {'stop_ia': ia, 'stop_ia_action': PTWData.RunCycle.Actions.REJECTED, 'stop_ia_comment': comment, 'stop_ia_timestamp': ts}
-        self._patchLastRunCycle(ptwId, patch, revertToPrev=True)
+        self._patchLastRunCycle(ptwId, patch)
 
     def requestToHldPTW(self, ptwId: str, pa: str, ts: str, comment: str = None, heldICs: list[str] = []):
         patch = {
             'stop_pa': pa, 'stop_pa_request': PTWData.RunCycle.StopTypes.HOLD, 'stop_pa_comment': comment, 'stop_pa_timestamp': ts,
             'held_ics': heldICs,
         }
-        self._patchLastRunCycle(ptwId, patch, runningStatus=PTWData.RunningStatus.WAITING_HLD_CONFIRM)
+        self._patchLastRunCycle(ptwId, patch)
 
     def hldAcceptPTW(self, ptwId: str, ia: str, ts: str, comment: str = None):
         patch = {'stop_ia': ia, 'stop_ia_action': PTWData.RunCycle.Actions.APPROVED, 'stop_ia_comment': comment, 'stop_ia_timestamp': ts}
-        self._patchLastRunCycle(ptwId, patch, runningStatus=PTWData.RunningStatus.HELD)
+        self._patchLastRunCycle(ptwId, patch)
 
     def hldRejectPTW(self, ptwId: str, ia: str, ts: str, comment: str = None):
         patch = {'stop_ia': ia, 'stop_ia_action': PTWData.RunCycle.Actions.REJECTED, 'stop_ia_comment': comment, 'stop_ia_timestamp': ts}
-        self._patchLastRunCycle(ptwId, patch, revertToPrev=True)
+        self._patchLastRunCycle(ptwId, patch)
