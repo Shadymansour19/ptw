@@ -1547,6 +1547,13 @@ def addICRequest():
             ic.execution_department, ic.requestor_department, user.getUsername(),
         )
         return jsonify({"success": False, "error": "Self-isolation must be executed by the requestor's own department"}), 400
+    if ic.is_psic:
+        if not ic.psic_reasons:
+            log.warning("POST /ics: PSIC with no reason selected (user='%s')", user.getUsername())
+            return jsonify({"success": False, "error": "At least one PSIC reason is required"}), 400
+        if not (ic.psic_system_description or '').strip() or not (ic.psic_isolation_method or '').strip() or not (ic.psic_control_measures or '').strip():
+            log.warning("POST /ics: PSIC missing system description / isolation method / control measures (user='%s')", user.getUsername())
+            return jsonify({"success": False, "error": "PSIC system description, isolation method, and control measures are all required"}), 400
     try:
         ic.requestor = user.getUsername()
         ic.requestor_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")

@@ -1849,9 +1849,9 @@ class IssuingMainWindow(MainWindow):
         self.tabSanctionedICs.addOptions([self.optionViewIC, self.optionPrintIC])
         self.tabClosedICs.addOptions([self.optionViewIC, self.optionPrintIC])
 
-        # no Requested button here: a single-stage (non-Protective) ic never routes to
+        # no Requested button here: a single-stage (non-PSIC) ic never routes to
         # tabCertRequested for the Issuing viewer once they've acted — it goes straight to
-        # Pending. Only a rare Protective-type ic (needing PDH/PGM/SOD/DFGM after Issuing)
+        # Pending. Only a rare PSIC ic (needing PDH/PGM/SOD/DFGM after Issuing)
         # would land there for Issuing to track — accepted gap for now, not wired up.
         self._icTabs = [
             self.btnCertUnderReview, self.btnCertApproved, self.btnCertIsolateConfirming, self.btnCertPending,
@@ -1961,7 +1961,7 @@ class ManagerMainWindow(MainWindow):
         self.tabClosedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionArchivePTW, self.optionExportPTW])
         self.tabArchivedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
 
-        # Managers are only ever involved in a Protective-type IC's approval
+        # Managers are only ever involved in a PSIC's approval
         # chain (after Issuing), so Under Review is the only IC tab they need.
         self.tabUnderReviewICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionAcceptIC, self.optionRequestEditsIC])
 

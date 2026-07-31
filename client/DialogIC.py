@@ -3,7 +3,7 @@ from functools import partial
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont
-from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QComboBox, QLineEdit,
+from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGridLayout, QComboBox, QLineEdit,
                               QTextEdit, QCheckBox, QLabel, QDialogButtonBox, QMessageBox,
                               QWidget, QStackedWidget, QPushButton, QInputDialog)
 import qtawesome as qta
@@ -18,6 +18,35 @@ from GlobalData import globalData
 from clientRequests import ClientRequests
 from i18n import t
 from RefreshOverlay import RefreshOverlay
+
+
+# PSIC ("Protective System IC") reason options - defined client-side only, not enforced
+# by the server as a fixed enum; the server just stores whatever list of strings is sent.
+PSIC_REASONS = ['ESD', 'Fire Protection', 'Fire Detection', 'Gas Detection', 'Protection System', 'Other']
+PSIC_REASON_GRID_COLS = 3
+
+# Sample per-tag isolation data for the "autofill from tag" convenience feature - stands in
+# for a real per-tag data source, which doesn't exist yet.
+PSIC_TAG_SAMPLES = {
+    'XV-3615E': {
+        'reasons': ['ESD'],
+        'system_description': "UT-C Control Valve — part of the Unit UT-C emergency shutdown loop.",
+        'isolation_method': "Close XV-3615E and secure in the closed position with a mechanical lock-out device.",
+        'control_measures': "Verify zero-energy state with a local pressure/position check; apply lock-out tag; log in the isolation register before work starts.",
+    },
+    'SDV-6514': {
+        'reasons': ['ESD', 'Fire Protection'],
+        'system_description': "FL-A Breaker — feeds the flare header's shutdown valve actuator.",
+        'isolation_method': "Open SDV-6514's supply breaker and rack it out.",
+        'control_measures': "Verify de-energized with a voltage tester; apply electrical lock-out and danger tag; notify the Electrical shift lead.",
+    },
+    'EV-5333': {
+        'reasons': ['Protection System'],
+        'system_description': "IN-A Feeder Panel — supplies the instrument air system's protective shutdown solenoid.",
+        'isolation_method': "Isolate EV-5333 at the feeder panel and remove the fuse.",
+        'control_measures': "Confirm zero air pressure downstream; apply lock-out tag on the panel; retain the fuse with the permit holder.",
+    },
+}
 
 
 class DialogIC(QDialog):
@@ -53,21 +82,25 @@ class DialogIC(QDialog):
         self.tabBasicInfo = QWidget(self.stack)
         self.tabItems = QWidget(self.stack)
         self.tabPidWiring = QWidget(self.stack)
+        self.tabPsic = QWidget(self.stack)
 
         formBasicInfo = QFormLayout(self.tabBasicInfo)
         formBasicInfo.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         lytItems = QVBoxLayout(self.tabItems)
         lytPidWiring = QVBoxLayout(self.tabPidWiring)
         lytPidWiring.setContentsMargins(0, 0, 0, 0)
+        lytPsic = QVBoxLayout(self.tabPsic)
 
         self.btnBasicInfo = TabButton(self.stack, t("Basic Info"), "mdi6.file-document-outline")
         self.btnItems = TabButton(self.stack, t("Isolation Items"), "fa6s.unlock-keyhole")
         self.btnPidWiring = TabButton(self.stack, t("P&&ID / Wiring"), "mdi6.pipe")
+        self.btnPsic = TabButton(self.stack, t("PSIC"), "mdi6.shield-check")
 
         self.tabsBtnsMap: dict[TabButton, QWidget] = {
             self.btnBasicInfo: self.tabBasicInfo,
             self.btnItems: self.tabItems,
             self.btnPidWiring: self.tabPidWiring,
+            self.btnPsic: self.tabPsic,
         }
 
         # History and PTW Linkage are only meaningful once there's something to show,
@@ -142,6 +175,70 @@ class DialogIC(QDialog):
         lytPidWiring.addWidget(self.pidWiringWidget, stretch=1)
         self.pidDocsToBeUploaded = self.pidWiringWidget.docsToBeUploaded
         self.itemsTable.itemsChanged.connect(self.pidWiringWidget.onItemsChanged)
+
+        # PSIC (Protective System IC) - any IC, regardless of type, can be flagged as one.
+        self.boxIsPsic = QCheckBox(t("Protective System IC (PSIC)"))
+        self.boxIsPsic.setFont(QFont("Helvetica", 13, QFont.Weight.Bold))
+        lytIsPsicRow = QHBoxLayout()
+        lytIsPsicRow.addStretch()
+        lytIsPsicRow.addWidget(self.boxIsPsic)
+        lytIsPsicRow.addStretch()
+        lytPsic.addLayout(lytIsPsicRow)
+
+        formPsicOther = QFormLayout()
+        formPsicOther.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        self.boxPsicMocNumber = QLineEdit()
+        self.boxPsicMocNumber.setPlaceholderText(t("MOC # (if applicable)"))
+        self.psicTagCombo = QComboBox()
+        self.btnPsicAutofill = QPushButton(qta.icon("mdi6.auto-fix"), t("Autofill from Tag"))
+        self.btnPsicAutofill.clicked.connect(self._autofillPsicFromTag)
+        lytPsicAutofill = QHBoxLayout()
+        lytPsicAutofill.addWidget(self.psicTagCombo, stretch=1)
+        lytPsicAutofill.addWidget(self.btnPsicAutofill)
+        formPsicOther.addRow(t("MOC Number:"), self.boxPsicMocNumber)
+        formPsicOther.addRow(t("Autofill from Tag:"), lytPsicAutofill)
+        lytPsic.addLayout(formPsicOther)
+
+        lytPsic.addWidget(QLabel(f"<b>{t('PSIC Reason(s)')}</b>"))
+        gridPsicReasons = QGridLayout()
+        self.psicReasonCheckboxes: dict[str, QCheckBox] = {}
+        for i, reason in enumerate(PSIC_REASONS):
+            btn = QCheckBox(t(reason))
+            self.psicReasonCheckboxes[reason] = btn
+            gridPsicReasons.addWidget(btn, i // PSIC_REASON_GRID_COLS, i % PSIC_REASON_GRID_COLS)
+        lytPsic.addLayout(gridPsicReasons)
+
+        lytPsicFields = QHBoxLayout()
+
+        def addPsicFieldColumn(labelText: str) -> QTextEdit:
+            col = QVBoxLayout()
+            col.addWidget(QLabel(t(labelText)), 0, Qt.AlignmentFlag.AlignTop)
+            box = QTextEdit()
+            box.setMinimumHeight(box.fontMetrics().lineSpacing() * 6 + 10)
+            box.setTabChangesFocus(True)
+            col.addWidget(box, 1)
+            lytPsicFields.addLayout(col)
+            return box
+
+        self.boxPsicSystemDescription = addPsicFieldColumn("System to be Isolated:")
+        self.boxPsicIsolationMethod = addPsicFieldColumn("Method of Isolation:")
+        self.boxPsicControlMeasures = addPsicFieldColumn("Control Measure / Mitigation:")
+        lytPsic.addLayout(lytPsicFields, stretch=1)
+
+        # Combo/button/checkbox controls have no "read-only" concept, so they're always
+        # disabled outright in readonly mode (matching typeCombo/boxLocation) to prevent
+        # interaction. Text fields instead rely on setReadOnly() for that (see
+        # _applyReadOnly) and stay visually enabled whenever checked, so a PSIC's own data
+        # reads normally in view mode (matching boxLongTermReason's convention).
+        self._psicComboWidgets = [self.psicTagCombo, self.btnPsicAutofill] + list(self.psicReasonCheckboxes.values())
+        self._psicTextWidgets = [
+            self.boxPsicMocNumber, self.boxPsicSystemDescription, self.boxPsicIsolationMethod, self.boxPsicControlMeasures,
+        ]
+        self.boxIsPsic.toggled.connect(self._psicToggled)
+        self.boxIsPsic.toggled.connect(self._certTypeChanged)
+
+        self.itemsTable.itemsChanged.connect(self._refreshPsicTagChoices)
+        self._refreshPsicTagChoices()
 
         if readOnly:
             lytHistoryPanes.addWidget(self._buildApprovalTimelinePane(), stretch=1)
@@ -347,9 +444,10 @@ class DialogIC(QDialog):
         return self._timelinePane(t("Isolation Timeline"), timeline)
 
     def _certTypeChanged(self, _=None):
-        color = IC.backgroundColorForType(self.typeCombo.currentText())
+        isPsic = self.boxIsPsic.isChecked()
+        color = IC.backgroundColorForType(self.typeCombo.currentText(), isPsic)
         accentColor = lightenColor(color)
-        textColor = IC.foregroundColorForType(self.typeCombo.currentText())
+        textColor = IC.foregroundColorForType(self.typeCombo.currentText(), isPsic)
         self.tabsContainer.setStyleSheet(f"""
             QWidget {{
                 background: {color.name()};
@@ -399,6 +497,16 @@ class DialogIC(QDialog):
         self.boxLongTermReason.setText(self.ic.long_term_reason or '')
         self.boxLongTermReason.setEnabled(self.boxLongTerm.isChecked())
 
+        self.boxIsPsic.setChecked(bool(self.ic.is_psic))
+        psicReasons = set(self.ic.psic_reasons or [])
+        for reason, btn in self.psicReasonCheckboxes.items():
+            btn.setChecked(reason in psicReasons)
+        self.boxPsicMocNumber.setText(self.ic.psic_moc_number or '')
+        self.boxPsicSystemDescription.setText(self.ic.psic_system_description or '')
+        self.boxPsicIsolationMethod.setText(self.ic.psic_isolation_method or '')
+        self.boxPsicControlMeasures.setText(self.ic.psic_control_measures or '')
+        self._psicToggled(self.boxIsPsic.isChecked())
+
     def _applyReadOnly(self):
         self.typeCombo.setEnabled(not self.readonly)
         self.boxLocation.setEnabled(not self.readonly)
@@ -409,6 +517,44 @@ class DialogIC(QDialog):
         self.boxLongTermReason.setReadOnly(self.readonly)
         if self.readonly:
             self.boxLongTermReason.setEnabled(self.boxLongTerm.isChecked())
+
+        self.boxIsPsic.setEnabled(not self.readonly)
+        self.boxPsicMocNumber.setReadOnly(self.readonly)
+        self.boxPsicSystemDescription.setReadOnly(self.readonly)
+        self.boxPsicIsolationMethod.setReadOnly(self.readonly)
+        self.boxPsicControlMeasures.setReadOnly(self.readonly)
+        if self.readonly:
+            self._psicToggled(self.boxIsPsic.isChecked())
+
+    def _psicToggled(self, checked: bool):
+        for widget in self._psicComboWidgets:
+            widget.setEnabled(checked and not self.readonly)
+        for widget in self._psicTextWidgets:
+            widget.setEnabled(checked)
+
+    def _refreshPsicTagChoices(self):
+        currentTag = self.psicTagCombo.currentText()
+        self.psicTagCombo.clear()
+        self.psicTagCombo.addItems([item.tag for item in self.itemsTable.getItems()])
+        idx = self.psicTagCombo.findText(currentTag)
+        if idx >= 0:
+            self.psicTagCombo.setCurrentIndex(idx)
+
+    def _autofillPsicFromTag(self):
+        tag = self.psicTagCombo.currentText()
+        if not tag:
+            QMessageBox.information(self, t("No Tag Selected"), t("Add an isolation item first, then pick its tag to autofill from."))
+            return
+        sample = PSIC_TAG_SAMPLES.get(tag)
+        if not sample:
+            QMessageBox.information(self, t("No Sample Data"), t("No sample isolation data is defined yet for tag '{0}'. Please fill in the fields manually.").format(tag))
+            return
+        sampleReasons = set(sample.get('reasons', []))
+        for reason, btn in self.psicReasonCheckboxes.items():
+            btn.setChecked(reason in sampleReasons)
+        self.boxPsicSystemDescription.setText(sample['system_description'])
+        self.boxPsicIsolationMethod.setText(sample['isolation_method'])
+        self.boxPsicControlMeasures.setText(sample['control_measures'])
 
     def getIC(self):
         return self.ic
@@ -434,6 +580,17 @@ class DialogIC(QDialog):
             QMessageBox.warning(self, "Invalid Input", "Please add at least one isolation item.")
             return
 
+        psic_system_description = self.boxPsicSystemDescription.toPlainText().strip()
+        psic_isolation_method = self.boxPsicIsolationMethod.toPlainText().strip()
+        psic_control_measures = self.boxPsicControlMeasures.toPlainText().strip()
+        if self.boxIsPsic.isChecked():
+            if not any(btn.isChecked() for btn in self.psicReasonCheckboxes.values()):
+                QMessageBox.warning(self, "Invalid Input", "Please select at least one PSIC reason.")
+                return
+            if not psic_system_description or not psic_isolation_method or not psic_control_measures:
+                QMessageBox.warning(self, "Invalid Input", "Please fill in the system to be isolated, method of isolation, and control measure/mitigation for this PSIC.")
+                return
+
         executionDept = self.boxExecutionDepartment.currentData()
         if not executionDept:
             QMessageBox.warning(self, "Invalid Input", "Please select an execution department.")
@@ -449,6 +606,13 @@ class DialogIC(QDialog):
         self.ic.isolate_asap = self.boxIsolateAsap.isChecked()
         self.ic.long_term = self.boxLongTerm.isChecked()
         self.ic.long_term_reason = long_term_reason
+
+        self.ic.is_psic = self.boxIsPsic.isChecked()
+        self.ic.psic_reasons = [reason for reason, btn in self.psicReasonCheckboxes.items() if btn.isChecked()]
+        self.ic.psic_moc_number = self.boxPsicMocNumber.text().strip()
+        self.ic.psic_system_description = psic_system_description
+        self.ic.psic_isolation_method = psic_isolation_method
+        self.ic.psic_control_measures = psic_control_measures
 
         if self.new:
             self.ic.requestor_department = self.loggedUser.getDepartment()

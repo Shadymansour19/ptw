@@ -132,7 +132,6 @@ class IC:
         MECHANICAL = 'Mechanical'
         ELECTRICAL = 'Electrical'
         SELF       = 'Self'
-        PROTECTIVE = 'Protective System'
         OTHER      = 'Other'
 
     class Status(enum.StrEnum):
@@ -251,6 +250,16 @@ class IC:
         
         self.long_term: bool = data.get('long_term', False)
         self.long_term_reason: str = data.get('long_term_reason')
+
+        # ============== PSIC (Protective System IC) =================
+        # Any IC, regardless of type, can be flagged as a PSIC - see requiredApprovers().
+        self.is_psic: bool = data.get('is_psic', False)
+        self.psic_reasons: list = data.get('psic_reasons', [])
+        self.psic_moc_number: str = data.get('psic_moc_number')
+        self.psic_system_description: str = data.get('psic_system_description')
+        self.psic_isolation_method: str = data.get('psic_isolation_method')
+        self.psic_control_measures: str = data.get('psic_control_measures')
+
         self.linked_ptws: list = []
         self.held_by: list = []
 
@@ -281,7 +290,7 @@ class IC:
 
     def requiredApprovers(self) -> list[list['IC.Approver']]:
         stages = [[IC.Approver(UserRoles.ISSUING)]]
-        if self.type == IC.Types.PROTECTIVE:
+        if self.is_psic:
             stages.extend([
                 [IC.Approver(UserRoles.PDH)],
                 [IC.Approver(UserRoles.PGM)],

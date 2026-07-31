@@ -133,7 +133,6 @@ class IC:
         MECHANICAL = 'Mechanical'
         ELECTRICAL = 'Electrical'
         SELF       = 'Self'
-        PROTECTIVE = 'Protective System'
         OTHER      = 'Other'
 
     class Status(enum.StrEnum):
@@ -252,6 +251,16 @@ class IC:
         
         self.long_term: bool = data.get('long_term', False)
         self.long_term_reason: str = data.get('long_term_reason')
+
+        # ============== PSIC (Protective System IC) =================
+        # Any IC, regardless of type, can be flagged as a PSIC - see requiredApprovers().
+        self.is_psic: bool = data.get('is_psic', False)
+        self.psic_reasons: list = data.get('psic_reasons', [])
+        self.psic_moc_number: str = data.get('psic_moc_number')
+        self.psic_system_description: str = data.get('psic_system_description')
+        self.psic_isolation_method: str = data.get('psic_isolation_method')
+        self.psic_control_measures: str = data.get('psic_control_measures')
+
         self.linked_ptws: list = []
         self.held_by: list = []
 
@@ -282,7 +291,7 @@ class IC:
 
     def requiredApprovers(self) -> list[list['IC.Approver']]:
         stages = [[IC.Approver(UserRoles.ISSUING)]]
-        if self.type == IC.Types.PROTECTIVE:
+        if self.is_psic:
             stages.extend([
                 [IC.Approver(UserRoles.PDH)],
                 [IC.Approver(UserRoles.PGM)],
@@ -356,27 +365,34 @@ class IC:
         return self.getApprovalStatus()
 
     __backgroundColors = {
-        Types.MECHANICAL: QColor(120, 120, 120, 200),  # gray
+        Types.MECHANICAL: QColor( 20,  20,  20, 200),  # near-black
         Types.ELECTRICAL: QColor(200, 165,   0, 200),  # yellow
         Types.SELF:       QColor( 30, 160, 100, 200),  # green
-        Types.PROTECTIVE: QColor(200,  30,  30, 200),  # red
         Types.OTHER:      QColor(150, 150, 150, 150),  # neutral gray
     }
 
     __foregroundColors = {
-        Types.MECHANICAL: QColor('black'),
+        Types.MECHANICAL: QColor('white'),
         Types.ELECTRICAL: QColor('black'),
         Types.SELF:       QColor('black'),
-        Types.PROTECTIVE: QColor('black'),
         Types.OTHER:      QColor('black'),
     }
 
+    # PSIC overrides the type-based color while checked - same red the old
+    # `Protective System` type used before it was replaced by is_psic.
+    __PSIC_BACKGROUND_COLOR = QColor(200, 30, 30, 200)
+    __PSIC_FOREGROUND_COLOR = QColor('black')
+
     @staticmethod
-    def backgroundColorForType(certType: Types):
+    def backgroundColorForType(certType: Types, isPsic: bool = False):
+        if isPsic:
+            return IC.__PSIC_BACKGROUND_COLOR
         return IC.__backgroundColors.get(certType) or IC.__backgroundColors.get(IC.Types.OTHER)
 
     @staticmethod
-    def foregroundColorForType(certType: Types):
+    def foregroundColorForType(certType: Types, isPsic: bool = False):
+        if isPsic:
+            return IC.__PSIC_FOREGROUND_COLOR
         return IC.__foregroundColors.get(certType) or IC.__foregroundColors.get(IC.Types.OTHER)
 
     @staticmethod
@@ -388,10 +404,10 @@ class IC:
         return QColor('gray')
 
     def backgroundColor(self):
-        return IC.__backgroundColors.get(self.type) or IC.__backgroundColors.get(IC.Types.OTHER)
+        return IC.backgroundColorForType(self.type, self.is_psic)
 
     def foregroundColor(self):
-        return IC.__foregroundColors.get(self.type) or IC.__foregroundColors.get(IC.Types.OTHER)
+        return IC.foregroundColorForType(self.type, self.is_psic)
 
     def isWindingDown(self) -> bool:
         """True once a sanction-for-test or de-isolate cycle is underway, or once closed —

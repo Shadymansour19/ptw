@@ -135,11 +135,23 @@ def init_tables():
                     deisolate_isolator_timestamp      VARCHAR(100),
                     long_term                       BOOLEAN NOT NULL DEFAULT FALSE,
                     long_term_reason                VARCHAR(300) NOT NULL,
+                    is_psic                          BOOLEAN NOT NULL DEFAULT FALSE,
+                    psic_reasons                     TEXT[],
+                    psic_moc_number                  VARCHAR(100),
+                    psic_system_description          VARCHAR(300) NOT NULL,
+                    psic_isolation_method            VARCHAR(300) NOT NULL,
+                    psic_control_measures            VARCHAR(300) NOT NULL,
                     linked_ptws                     TEXT[],
                     held_by                         TEXT[]
                 )
             """)
             print("Ensured table: ics")
+            # is_psic ("Protective System IC") is independent of `type` - any IC type can be
+            # flagged PSIC. psic_reasons/psic_moc_number/psic_system_description/
+            # psic_isolation_method/psic_control_measures are only meaningful when is_psic is
+            # set; the three VARCHAR(300) NOT NULL fields are kept non-null the same way
+            # long_term_reason is - the client always writes an empty string rather than
+            # leaving them unset, per DialogIC.accept().
 
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS risks (
