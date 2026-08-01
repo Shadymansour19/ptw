@@ -1,9 +1,13 @@
 import os
+import re
 import sys
 import json
 import queue
+import shutil
 import logging
+import tarfile
 import threading
+import subprocess
 from time import time, sleep
 from datetime import datetime, timedelta
 from logging.handlers import RotatingFileHandler
@@ -11,7 +15,6 @@ from dotenv import load_dotenv
 from flask import Flask, request, jsonify, Response, stream_with_context, send_file
 from flask_mail import Mail, Message
 from random import randint
-import shutil
 
 from db.commonDb import CommonDB
 from db.usersDb import UsersDb
@@ -24,11 +27,16 @@ from models.PTW import PTW
 from models.Isolation import IC
 from utils import objToDict
 
+load_dotenv()
+
 # Resolve the directory that contains this file (works both as a plain script and
 # as a Nuitka/PyInstaller onefile binary, regardless of the process's CWD).
 _BASE_DIR = os.path.dirname(sys.executable if getattr(sys, 'frozen', False) or getattr(sys, '__compiled__', False) else os.path.abspath(__file__))
 _MIWI_DIR = os.path.join(_BASE_DIR, 'miwi')
 _LOGS_DIR = os.path.join(_BASE_DIR, 'logs')
+_BACKUP_DIR = os.environ.get('BACKUP_DIR', os.path.join(_BASE_DIR, 'backups'))
+_BACKUP_NAME_RE = re.compile(r'^\d{8}_\d{6}$')   # YYYYMMDD_HHMMSS, matches dev-scripts/backup.sh|.ps1
+_BACKUP_RETENTION_DAYS = 14                        # matches dev-scripts/backup.sh|.ps1 pruning
 os.makedirs(_MIWI_DIR, exist_ok=True)
 _MIWI_DEPARTMENTS = {d.value for d in UserDepartments}
 # PTW listing itself only restricts USER/GUEST (MainWindow.refreshPtwUserGUI passes
@@ -55,6 +63,114 @@ def _resolveMiwiPath(filename: str, department: str = None) -> str:
         if os.path.isfile(filepath):
             return filepath
     return None
+
+
+def _dbConfig() -> tuple[str, str, str, str]:
+    return (
+        os.environ.get('DB_HOST', 'localhost'),
+        os.environ.get('DB_NAME', 'ptw_database'),
+        os.environ.get('DB_USER', 'postgres'),
+        os.environ.get('DB_PASSWORD'),
+    )
+
+
+def _backupTargets() -> list[str]:
+    """Paths (relative to _BASE_DIR) to include in a backup's files.tar.gz - mirrors
+    dev-scripts/backup.sh|.ps1's file-target selection exactly, so backups made from
+    either path are interchangeable."""
+    targets = ['.env']
+    if os.path.isdir(_MIWI_DIR):
+        targets.append('miwi')
+    for entry in sorted(os.listdir(_BASE_DIR)):
+        if re.match(r'^(ptw|ic)-.*-attachments$', entry) and os.path.isdir(os.path.join(_BASE_DIR, entry)):
+            targets.append(entry)
+    return targets
+
+
+def _backupRow(name: str) -> dict:
+    dest = os.path.join(_BACKUP_DIR, name)
+    _, dbName, _, _ = _dbConfig()
+    dumpPath = os.path.join(dest, f'{dbName}.dump')
+    filesPath = os.path.join(dest, 'files.tar.gz')
+    dumpSize = os.path.getsize(dumpPath) if os.path.isfile(dumpPath) else 0
+    filesSize = os.path.getsize(filesPath) if os.path.isfile(filesPath) else 0
+    return {
+        "name": name,
+        "created": datetime.strptime(name, '%Y%m%d_%H%M%S').isoformat(),
+        "dumpSizeBytes": dumpSize,
+        "filesSizeBytes": filesSize,
+        "totalSizeBytes": dumpSize + filesSize,
+        "complete": dumpSize > 0 and filesSize > 0,
+    }
+
+
+def _createBackup() -> dict:
+    """Dumps the database and archives file storage into a fresh
+    BACKUP_DIR/<timestamp>/ folder - same <dbname>.dump + files.tar.gz layout
+    dev-scripts/backup.sh|.ps1 produce, so restore.sh|.ps1 work on either."""
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    dest = os.path.join(_BACKUP_DIR, timestamp)
+    os.makedirs(dest, exist_ok=True)
+
+    host, dbName, dbUser, dbPassword = _dbConfig()
+    dumpPath = os.path.join(dest, f'{dbName}.dump')
+    try:
+        subprocess.run(
+            ['pg_dump', '-h', host, '-U', dbUser, '-d', dbName, '-Fc', '-f', dumpPath],
+            env={**os.environ, 'PGPASSWORD': dbPassword or ''},
+            check=True, capture_output=True, text=True,
+        )
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"pg_dump failed: {e.stderr.strip()}") from e
+    except FileNotFoundError as e:
+        raise RuntimeError("pg_dump not found on server PATH") from e
+
+    with tarfile.open(os.path.join(dest, 'files.tar.gz'), 'w:gz') as tf:
+        for target in _backupTargets():
+            tf.add(os.path.join(_BASE_DIR, target), arcname=target)
+
+    return _backupRow(timestamp)
+
+
+def _listBackups() -> dict:
+    rows = []
+    if os.path.isdir(_BACKUP_DIR):
+        for entry in os.listdir(_BACKUP_DIR):
+            if _BACKUP_NAME_RE.match(entry) and os.path.isdir(os.path.join(_BACKUP_DIR, entry)):
+                rows.append(_backupRow(entry))
+    rows.sort(key=lambda r: r["name"], reverse=True)
+    return {
+        "backups": rows,
+        "retentionDays": _BACKUP_RETENTION_DAYS,
+        "freeBytes": shutil.disk_usage(_BACKUP_DIR).free if os.path.isdir(_BACKUP_DIR) else None,
+        "lastBackupAt": rows[0]["created"] if rows else None,
+    }
+
+
+def _resolveBackupDir(name: str) -> str:
+    if not _BACKUP_NAME_RE.match(name or ''):
+        raise ValueError("Invalid backup name")
+    path = os.path.abspath(os.path.join(_BACKUP_DIR, name))
+    if not path.startswith(os.path.abspath(_BACKUP_DIR)):
+        raise ValueError("Invalid backup name")
+    return path
+
+
+def _deleteBackup(name: str):
+    path = _resolveBackupDir(name)
+    if not os.path.isdir(path):
+        raise ValueError("Backup not found")
+    shutil.rmtree(path)
+
+
+def _backupFilePath(name: str, which: str) -> str:
+    dest = _resolveBackupDir(name)
+    _, dbName, _, _ = _dbConfig()
+    if which == 'dump':
+        return os.path.join(dest, f'{dbName}.dump')
+    if which == 'files':
+        return os.path.join(dest, 'files.tar.gz')
+    raise ValueError("Invalid file requested")
 
 _LOG_FORMAT = "%(asctime)s [%(levelname)-8s] %(location)-35s - %(message)s"
 _LOG_DATE   = "%Y-%m-%d %H:%M:%S"
@@ -85,7 +201,6 @@ def _setup_logging():
 _setup_logging()
 log = logging.getLogger("app")
 
-load_dotenv()
 CommonDB.ensure_database_exists()
 app = Flask(__name__)
 app.config.update(
@@ -2237,6 +2352,56 @@ def getLogs():
             return jsonify({"success": True, "logs": filenames})
     except Exception as e:
         log.error("GET /logs failed: %s", e, exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+@app.route("/backups", methods=["GET", "POST", "DELETE"])
+def backups():
+    user = getVerifiedUser(request.authorization)
+    if user is None or user.getRole() != UserRoles.ADMIN:
+        log.warning("/backups unauthorized: requester='%s' (ip=%s)", user.getUsername() if user else "unauthenticated", request.remote_addr)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+
+    if request.method == "GET":
+        payload = request.get_json(silent=True) or {}
+        name = payload.get('name')
+        which = payload.get('which')
+        try:
+            if name:
+                filepath = _backupFilePath(name, which)
+                if not os.path.isfile(filepath):
+                    log.warning("GET /backups: file not found name='%s' which='%s' (admin='%s')", name, which, user.getUsername())
+                    return jsonify({"success": False, "error": "Backup file not found"}), 404
+                log.info("Backup file served: name='%s' which='%s' to admin='%s'", name, which, user.getUsername())
+                return send_file(os.path.abspath(filepath), as_attachment=True)
+            summary = _listBackups()
+            log.debug("GET /backups: %d backups listed for admin='%s'", len(summary["backups"]), user.getUsername())
+            return jsonify({"success": True, **summary})
+        except ValueError as e:
+            return jsonify({"success": False, "error": str(e)}), 400
+        except Exception as e:
+            log.error("GET /backups failed: %s", e, exc_info=True)
+            return jsonify({"success": False, "error": str(e)}), 400
+
+    if request.method == "POST":
+        try:
+            row = _createBackup()
+            log.info("Backup created: name='%s' by admin='%s'", row["name"], user.getUsername())
+            return jsonify({"success": True, "backup": row})
+        except Exception as e:
+            log.error("POST /backups failed: %s", e, exc_info=True)
+            return jsonify({"success": False, "error": str(e)}), 500
+
+    payload = request.get_json(silent=True) or {}
+    name = payload.get('name')
+    try:
+        _deleteBackup(name)
+        log.info("Backup deleted: name='%s' by admin='%s'", name, user.getUsername())
+        return jsonify({"success": True})
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        log.error("DELETE /backups failed: %s", e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
 
 

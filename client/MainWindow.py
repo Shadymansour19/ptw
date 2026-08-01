@@ -22,6 +22,7 @@ from dialogs.DialogIC import DialogIC
 from dialogs.DialogCompleteIsolation import DialogCompleteIsolation
 from models.Isolation import IC
 from widgets.TabServerLogs import TabServerLogs
+from tables.TableBackups import TableBackups
 from dialogs.DialogSettings import DialogSettings
 from widgets.RefreshOverlay import RefreshOverlay
 from network.clientRequests import ClientRequests
@@ -147,6 +148,7 @@ class MainWindow(QMainWindow):
         self.tabSanctionedICs = TableICs(self.stack, self.loggedUser, "Sanctioned ICs")
         self.tabClosedICs = TableICs(self.stack, self.loggedUser, "Closed ICs")
         self.tabServerLogs = TabServerLogs(self.stack, self.loggedUser, "Server Logs")
+        self.tabBackups = TableBackups(self.stack, self.loggedUser, "Backups")
 
         self._homeApprovalChart: DonutChart | None = None
         self._homeRunningChart: DonutChart | None = None
@@ -205,6 +207,7 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.tabSanctionedICs)
         self.stack.addWidget(self.tabClosedICs)
         self.stack.addWidget(self.tabServerLogs)
+        self.stack.addWidget(self.tabBackups)
 
         self.stack.currentChanged.connect(self.stackTabChanged)
 
@@ -256,6 +259,7 @@ class MainWindow(QMainWindow):
         self.btnLanguage = QPushButton(qta.icon('fa5s.language'), "")
         self.btnTheme = QPushButton(qta.icon('fa6s.circle-half-stroke'), "")
         self.btnServerLogs = QPushButton(qta.icon('fa6s.file-lines'), "")
+        self.btnBackups = QPushButton(qta.icon('fa6s.database'), "")
 
         self.btnWelcome.setToolTip("Home [Ctrl+H]")
         self.btnRequestedPTWs.setToolTip("Requested PTWs")
@@ -287,6 +291,7 @@ class MainWindow(QMainWindow):
         self.btnLanguage.setToolTip("Switch Language")
         self.btnTheme.setToolTip("Toggle Light/Dark Mode")
         self.btnServerLogs.setToolTip("Server Logs")
+        self.btnBackups.setToolTip("Backups")
 
         self._sideBarBtnMap = {
             self.btnWelcome:                    self.tabWelcome,
@@ -314,6 +319,7 @@ class MainWindow(QMainWindow):
             self.btnCertSanctioned:             self.tabSanctionedICs,
             self.btnCertClosed:                 self.tabClosedICs,
             self.btnServerLogs:                 self.tabServerLogs,
+            self.btnBackups:                    self.tabBackups,
             self.btnRefresh:                    None,
             self.btnSettings:                   None,
             self.btnLogout:                     None,
@@ -2011,10 +2017,10 @@ class AdminMainWindow(MainWindow):
         self.setAvailableTabs(
             [
                 [self.btnWelcome],
-                [self.btnUsers, self.btnServerLogs],
+                [self.btnUsers, self.btnServerLogs, self.btnBackups],
             ],
             {
-                '&Users': [self.btnUsers, self.btnServerLogs],
+                '&Users': [self.btnUsers, self.btnServerLogs, self.btnBackups],
                 '&View': [self.btnWelcome, *self._footerButtons()],
             },
         )
@@ -2090,6 +2096,7 @@ class AdminMainWindow(MainWindow):
         self._refreshOverlay.showBusy()
         globalData.refresh(self.loggedUser, None, refreshUsers=True, callback=on_done)
         self.tabServerLogs.refresh()
+        self.tabBackups.refresh()
 
 
 class IsolatorMainWindow(MainWindow):

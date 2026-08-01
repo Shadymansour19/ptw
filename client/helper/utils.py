@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 
 def resource_path(filename):
-    base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     return os.path.join(base, filename)
 
 
