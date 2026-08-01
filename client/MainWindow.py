@@ -10,29 +10,29 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QStackedWidget, QVBoxLayout, 
                               QMessageBox, QApplication, QGraphicsOpacityEffect, QStyle, QInputDialog)
 from PyQt6.QtGui import QFont, QIcon, QPalette, QKeySequence, QAction, QActionGroup, QShortcut
 
-from PTWData import PTWData, RiskAssessment
-from TablePTWs import TablePTWs
-from WidgetPTW import DialogPTW
-from DialogUser import DialogUser
-from DialogSelectHeldICs import DialogSelectHeldICs
-from TableUsers import TableUsers
-from TableRisks import TableRisks
-from TableICs import TableICs
-from DialogIC import DialogIC
-from DialogCompleteIsolation import DialogCompleteIsolation
-from Isolation import IC
-from TabServerLogs import TabServerLogs
-from DialogSettings import DialogSettings
-from RefreshOverlay import RefreshOverlay
-from clientRequests import ClientRequests
+from models.PTW import PTW, RiskAssessment
+from tables.TablePTWs import TablePTWs
+from dialogs.DialogPTW import DialogPTW
+from dialogs.DialogUser import DialogUser
+from dialogs.DialogSelectHeldICs import DialogSelectHeldICs
+from tables.TableUsers import TableUsers
+from tables.TableRisks import TableRisks
+from tables.TableICs import TableICs
+from dialogs.DialogIC import DialogIC
+from dialogs.DialogCompleteIsolation import DialogCompleteIsolation
+from models.Isolation import IC
+from widgets.TabServerLogs import TabServerLogs
+from dialogs.DialogSettings import DialogSettings
+from widgets.RefreshOverlay import RefreshOverlay
+from network.clientRequests import ClientRequests
 from GlobalData import globalData
-from ReportGenerator import ReportGenerator
-from SSEListener import SSEListener
-from User import User, UserRoles
-from DonutChart import DonutChart, DonutSegment, APPROVAL_CYCLE_COLORS, LOCATION_COLORS, DEPARTMENT_COLOR_CYCLE
+from reports.ReportGenerator import ReportGenerator
+from network.SSEListener import SSEListener
+from models.User import User, UserRoles
+from widgets.DonutChart import DonutChart, DonutSegment, APPROVAL_CYCLE_COLORS, LOCATION_COLORS, DEPARTMENT_COLOR_CYCLE
 from functools import partial
 import qtawesome as qta
-from utils import resource_path
+from helper.utils import resource_path
 
 
 class MainWindow(QMainWindow):
@@ -661,7 +661,7 @@ class MainWindow(QMainWindow):
         self.on_logout.emit()
         self.close()
     
-    def viewPTW(self, row: int, ptw: PTWData):
+    def viewPTW(self, row: int, ptw: PTW):
         self._refreshOverlay.showBusy()
         viewPTWDialog = DialogPTW(self, self.loggedUser, ptw, None, False, True, f'View Mode - PTW# {ptw.id}')
         self._refreshOverlay.hideBusy()
@@ -673,9 +673,9 @@ class MainWindow(QMainWindow):
         else:
             ClientRequests.deleteRiskAssessment(self.loggedUser, str(ptwId), ptwId, callback=callback)
 
-    def editPTW(self, row: int, ptw: PTWData):
+    def editPTW(self, row: int, ptw: PTW):
         toEditPtw = copy.deepcopy(ptw)
-        wasReturned = toEditPtw.approval_status == PTWData.ApprovalStatus.RETURNED
+        wasReturned = toEditPtw.approval_status == PTW.ApprovalStatus.RETURNED
         self._refreshOverlay.showBusy()
         editPTWDialog = DialogPTW(self, self.loggedUser, toEditPtw, None, False, False, f'Edit Mode - PTW# {ptw.id}')
         self._refreshOverlay.hideBusy()
@@ -692,8 +692,8 @@ class MainWindow(QMainWindow):
 
             self.stack.currentWidget().updatePTW(row, ptw)
 
-    def addPTWDialog(self, row: int = None, ptw: PTWData = None):
-        newPTW = copy.deepcopy(ptw) if ptw else PTWData()
+    def addPTWDialog(self, row: int = None, ptw: PTW = None):
+        newPTW = copy.deepcopy(ptw) if ptw else PTW()
         if ptw:
             newPTW.setId(None).clearApprovals()
         title = "Re-request PTW" if ptw else "New PTW"
@@ -737,13 +737,13 @@ class MainWindow(QMainWindow):
         ClientRequests.addPTW(self.loggedUser, newPTW, callback=on_addPTW_done)
 
 
-    def deletePTW(self, row: int, ptw: PTWData):
+    def deletePTW(self, row: int, ptw: PTW):
         self.stack.currentWidget().deletePTW(row)
     
-    def archivePTWs(self, rows: list, ptws: list[PTWData]):
+    def archivePTWs(self, rows: list, ptws: list[PTW]):
         ClientRequests.archivePTWs(self.loggedUser, [ptw.id for ptw in ptws], callback=self._on_request_done_generic)
     
-    def requestToRunPTW(self, row: int, ptw: PTWData):
+    def requestToRunPTW(self, row: int, ptw: PTW):
         for p in globalData.allPTWs:
             if p.getPerforming() == self.loggedUser.getUsername():
                 QMessageBox.warning(self, 'Not Allowed', f"You are already the PA for PTW# {p.id}.")
@@ -753,7 +753,7 @@ class MainWindow(QMainWindow):
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         ClientRequests.requestToRunPTW(self.loggedUser, ptw.id, pa, ts, callback=self._on_request_done_generic)
 
-    def runAcceptTW(self, row: int, ptw: PTWData):
+    def runAcceptTW(self, row: int, ptw: PTW):
         proceed, comment = self.getOptionalComment(f'Accept PTW#{ptw.id} Run', f"Are you sure you want to accept run request for PTW#{ptw.id}?")
         if not proceed:
             return
@@ -762,7 +762,7 @@ class MainWindow(QMainWindow):
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         ClientRequests.runResponsePTW(self.loggedUser, ptw.id, ia, ts, True, comment, callback=self._on_request_done_generic)
 
-    def runRejectTW(self, row: int, ptw: PTWData):
+    def runRejectTW(self, row: int, ptw: PTW):
         proceed, comment = self.getOptionalComment(f'Reject PTW#{ptw.id} Run', f"Are you sure you want to reject run request for PTW#{ptw.id}?")
         if not proceed:
             return
@@ -771,7 +771,7 @@ class MainWindow(QMainWindow):
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         ClientRequests.runResponsePTW(self.loggedUser, ptw.id, ia, ts, False, comment, callback=self._on_request_done_generic)
 
-    def requestToClsPTW(self, row: int, ptw: PTWData):
+    def requestToClsPTW(self, row: int, ptw: PTW):
         proceed, comment = self.getOptionalComment('Close PTW', f"Are you sure you want to close PTW#{ptw.id}?")
         if not proceed:
             return
@@ -780,7 +780,7 @@ class MainWindow(QMainWindow):
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         ClientRequests.requestToClsPTW(self.loggedUser, ptw.id, pa, ts, comment, callback=self._on_request_done_generic)
 
-    def clsAcceptPTW(self, row: int, ptw: PTWData):
+    def clsAcceptPTW(self, row: int, ptw: PTW):
         proceed, comment = self.getOptionalComment(f'Accept PTW#{ptw.id} Close', f"Are you sure you want to accept close request for PTW#{ptw.id}? This is irreversible")
         if not proceed:
             return
@@ -789,7 +789,7 @@ class MainWindow(QMainWindow):
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         ClientRequests.clsResponsePTW(self.loggedUser, ptw.id, ia, ts, True, comment, callback=self._on_request_done_generic)
 
-    def clsRejectPTW(self, row: int, ptw: PTWData):
+    def clsRejectPTW(self, row: int, ptw: PTW):
         proceed, comment = self.getOptionalComment(f'Reject PTW#{ptw.id} Close', f"Are you sure you want to reject close request for PTW#{ptw.id}?")
         if not proceed:
             return
@@ -798,11 +798,11 @@ class MainWindow(QMainWindow):
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         ClientRequests.clsResponsePTW(self.loggedUser, ptw.id, ia, ts, False, comment, callback=self._on_request_done_generic)
 
-    def _linkedICsFor(self, ptw: PTWData) -> list[IC]:
+    def _linkedICsFor(self, ptw: PTW) -> list[IC]:
         icsById = {str(ic.id): ic for ic in globalData.ics.values()}
         return [icsById[icId] for icId in ptw.linked_ics if icId in icsById]
 
-    def requestToHldPTW(self, row: int, ptw: PTWData):
+    def requestToHldPTW(self, row: int, ptw: PTW):
         heldICs = []
         linkedICs = self._linkedICsFor(ptw)
         if linkedICs:
@@ -818,18 +818,18 @@ class MainWindow(QMainWindow):
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         ClientRequests.requestToHldPTW(self.loggedUser, ptw.id, pa, ts, comment, heldICs, callback=self._on_request_done_generic)
 
-    def hldAcceptPTW(self, row: int, ptw: PTWData, comment: str = None):
+    def hldAcceptPTW(self, row: int, ptw: PTW, comment: str = None):
         ia = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         ClientRequests.hldResponsePTW(self.loggedUser, ptw.id, ia, ts, True, comment, callback=self._on_request_done_generic)
 
-    def hldRejectPTW(self, row: int, ptw: PTWData, comment: str = None):
+    def hldRejectPTW(self, row: int, ptw: PTW, comment: str = None):
         ia = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         ClientRequests.hldResponsePTW(self.loggedUser, ptw.id, ia, ts, False, comment, callback=self._on_request_done_generic)
 
-    def hldTakeAction(self, row: int, ptw: PTWData):
-        if ptw.running_status != PTWData.RunningStatus.WAITING_HLD_CONFIRM:
+    def hldTakeAction(self, row: int, ptw: PTW):
+        if ptw.running_status != PTW.RunningStatus.WAITING_HLD_CONFIRM:
             QMessageBox.warning(self, 'Not Allowed', f"PTW# {ptw.id} is not waiting for hold confirmation.")
             return
         dlg = DialogSelectHeldICs(self, self._linkedICsFor(ptw), held=ptw.getHeldICs(), selectable=False, review_mode=True, title=f"Hold Action - PTW# {ptw.id}")
@@ -845,7 +845,7 @@ class MainWindow(QMainWindow):
         elif dlg.action == 'reject':
             self.hldRejectPTW(row, ptw, comment)
 
-    def viewHeldICs(self, row: int, ptw: PTWData):
+    def viewHeldICs(self, row: int, ptw: PTW):
         dlg = DialogSelectHeldICs(
             self, self._linkedICsFor(ptw), held=ptw.getHeldICs(),
             selectable=False, view_only=True,
@@ -970,7 +970,7 @@ class MainWindow(QMainWindow):
             return
         ClientRequests.linkPTWToIC(self.loggedUser, ic.id, ptwId, callback=self._on_request_done_generic)
 
-    def linkICToPTW(self, row: int, ptw: PTWData):
+    def linkICToPTW(self, row: int, ptw: PTW):
         certIdText, ok = QInputDialog.getText(self, f'Link PTW #{ptw.id} to IC', 'IC #:')
         if not ok or not certIdText.strip():
             return
@@ -984,13 +984,13 @@ class MainWindow(QMainWindow):
             return
         ClientRequests.linkPTWToIC(self.loggedUser, icId, ptw.id, callback=self._on_request_done_generic)
 
-    def requestToSuctionTestPTW(self, row: int, ptw: PTWData):
+    def requestToSuctionTestPTW(self, row: int, ptw: PTW):
         pass
 
-    def suctionTestAcceptPTW(self, row: int, ptw: PTWData):
+    def suctionTestAcceptPTW(self, row: int, ptw: PTW):
         pass
 
-    def suctionTestRejectPTW(self, row: int, ptw: PTWData):
+    def suctionTestRejectPTW(self, row: int, ptw: PTW):
         pass
 
 
@@ -1003,16 +1003,16 @@ class MainWindow(QMainWindow):
             return
         DialogUser(self, True, False, self.loggedUser, globalData.allUsers[username], f"{role} - View Mode - User {username}").exec()
     
-    def viewRequestorPTW(self, row: int, ptw: PTWData):
+    def viewRequestorPTW(self, row: int, ptw: PTW):
         self.viewUser(ptw.requestor, 'Requestor')
 
-    def viewPerformingPTW(self, row: int, ptw: PTWData):
+    def viewPerformingPTW(self, row: int, ptw: PTW):
         self.viewUser(ptw.getPerforming(), 'PA')
 
-    def viewIssuing(self, row: int, ptw: PTWData):
+    def viewIssuing(self, row: int, ptw: PTW):
         self.viewUser(ptw.getIssuing(), 'IA')
     
-    def viewApprovals(self, row: int, ptw: PTWData):
+    def viewApprovals(self, row: int, ptw: PTW):
         dlg = QDialog(self)
         dlg.setWindowTitle(f"PTW# {ptw.id} Approval Cycle")
         dlg.resize(int(0.7 * self.width()), int(0.75 * self.height()))
@@ -1311,7 +1311,7 @@ class MainWindow(QMainWindow):
                     loc.value, counts.get(loc.value, 0), LOCATION_COLORS[i % len(LOCATION_COLORS)],
                     partial(self._openRunningFilteredByLocation, loc.value)
                 )
-                for i, loc in enumerate(PTWData.Locations)
+                for i, loc in enumerate(PTW.Locations)
             ])
 
     def _openRunningFilteredByLocation(self, location: str):
@@ -1450,24 +1450,24 @@ class MainWindow(QMainWindow):
                 mySt = ptw.getApprovalStatus(role=self.loggedUser.getRole(), department=self.loggedUser.getDepartment())
                 st = ptw.getApprovalStatus()
                 runSt = ptw.running_status
-                if runSt == PTWData.RunningStatus.WAITING_RUN_CONFIRM:
+                if runSt == PTW.RunningStatus.WAITING_RUN_CONFIRM:
                     self.tabWaitingRunConfirmationPTWs.addPTWToGUI(ptw)
-                elif runSt == PTWData.RunningStatus.WAITING_CLS_CONFIRM:
+                elif runSt == PTW.RunningStatus.WAITING_CLS_CONFIRM:
                     self.tabWaitingClsConfirmationPTWs.addPTWToGUI(ptw)
-                elif runSt == PTWData.RunningStatus.WAITING_HLD_CONFIRM:
+                elif runSt == PTW.RunningStatus.WAITING_HLD_CONFIRM:
                     self.tabWaitingHldConfirmationPTWs.addPTWToGUI(ptw)
-                elif runSt == PTWData.RunningStatus.RUNNING:
+                elif runSt == PTW.RunningStatus.RUNNING:
                     self.tabRunningPTWs.addPTWToGUI(ptw)
-                elif runSt == PTWData.RunningStatus.HELD:
+                elif runSt == PTW.RunningStatus.HELD:
                     self.tabHeldPTWs.addPTWToGUI(ptw)
-                elif runSt == PTWData.RunningStatus.CLOSED:
+                elif runSt == PTW.RunningStatus.CLOSED:
                     self.tabClosedPTWs.addPTWToGUI(ptw)
-                elif st == PTWData.ApprovalStatus.APPROVED:
+                elif st == PTW.ApprovalStatus.APPROVED:
                     self.tabApprovedPTWs.addPTWToGUI(ptw)
-                elif st == PTWData.ApprovalStatus.RETURNED:
+                elif st == PTW.ApprovalStatus.RETURNED:
                     self.tabReturnedPTWs.addPTWToGUI(ptw)
-                elif st == PTWData.ApprovalStatus.UNDER_REVIEW:
-                    if mySt == PTWData.ApprovalStatus.UNDER_REVIEW:
+                elif st == PTW.ApprovalStatus.UNDER_REVIEW:
+                    if mySt == PTW.ApprovalStatus.UNDER_REVIEW:
                         self.tabUnderReviewPTWs.addPTWToGUI(ptw)
                     else:
                         self.tabRequestedPTWs.addPTWToGUI(ptw)
@@ -1567,7 +1567,7 @@ class MainWindow(QMainWindow):
             callback=on_done,
         )
 
-    def acceptPTW(self, row: int, ptw: PTWData):
+    def acceptPTW(self, row: int, ptw: PTW):
         reply = QMessageBox.question(
             self, f'Accept PTW#{ptw.id}', f"Are you sure you want to approve request for PTW#{ptw.id}? This is irreversible", 
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
@@ -1575,7 +1575,7 @@ class MainWindow(QMainWindow):
         if reply != QMessageBox.StandardButton.Yes:
             return
         
-        approval = PTWData.Approval(PTWData.ApprovalActions.APPROVED, self.loggedUser.getUsername(), datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
+        approval = PTW.Approval(PTW.ApprovalActions.APPROVED, self.loggedUser.getUsername(), datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
         ClientRequests.updateApprovalPTW(self.loggedUser, ptw.id, approval, callback=self._on_request_done_generic)
         
     def getComment(self, title: str, emptyCommentErr: str = 'Empty comment not allowed'):
@@ -1592,14 +1592,14 @@ class MainWindow(QMainWindow):
         comment, ok = QInputDialog.getMultiLineText(self, title, prompt)
         return ok, (comment or None)
     
-    def requestEditsPTW(self, row: int, ptw: PTWData):
+    def requestEditsPTW(self, row: int, ptw: PTW):
         comment = self.getComment(f'Return PTW# {ptw.id} to be Edited')
         if not comment:
             return
-        approval = PTWData.Approval(PTWData.ApprovalActions.RETURNED, self.loggedUser.getUsername(), datetime.now().strftime('%d/%m/%Y %H:%M:%S'), comment)
+        approval = PTW.Approval(PTW.ApprovalActions.RETURNED, self.loggedUser.getUsername(), datetime.now().strftime('%d/%m/%Y %H:%M:%S'), comment)
         ClientRequests.updateApprovalPTW(self.loggedUser, ptw.id, approval, callback=self._on_request_done_generic)
 
-    def exportPTWs(self, rows: list, ptws: list[PTWData]):
+    def exportPTWs(self, rows: list, ptws: list[PTW]):
         if not ptws:
             QMessageBox.information(self, "No PTWs Selected", "Please select at least one PTW to export.")
             return
@@ -1607,7 +1607,7 @@ class MainWindow(QMainWindow):
         if err:
             QMessageBox.warning(self, "Export Failed", err)
 
-    def printPTW(self, row: int, ptw: PTWData):
+    def printPTW(self, row: int, ptw: PTW):
         self._refreshOverlay.showBusy()
         try:
             ReportGenerator.ptwReport(self.loggedUser, ptw)

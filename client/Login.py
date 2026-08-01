@@ -7,8 +7,8 @@ import keyring
 from keyring.errors import KeyringError
 import qtawesome as qta
 
-from SearchableComboBox import SearchableComboBox
-from RefreshOverlay import RefreshOverlay
+from widgets.SearchableComboBox import SearchableComboBox
+from widgets.RefreshOverlay import RefreshOverlay
 
 
 SERVICE_NAME = "PTW-login-credentials"
@@ -114,7 +114,7 @@ class ResetPasswordDialog(QDialog):
                 self._setFormEnabled(True)
                 self.boxCode.setFocus()
 
-        from clientRequests import ClientRequests
+        from network.clientRequests import ClientRequests
         self._refreshOverlay.showBusy()
         ClientRequests.requestResetPassword(username, callback=on_done)
 
@@ -303,7 +303,7 @@ class LoginWindow(QMainWindow):
             self.boxPassword.clear()
 
     def forgotPassword(self):
-        from clientRequests import ClientRequests
+        from network.clientRequests import ClientRequests
 
         username = self.boxUsername.currentText()
         if not username:
@@ -329,7 +329,7 @@ class LoginWindow(QMainWindow):
         self.boxUsername.setFocus()
 
     def login(self):
-        from clientRequests import ClientRequests
+        from network.clientRequests import ClientRequests
 
         username = self.boxUsername.currentText()
         password : str = self.boxPassword.text()
@@ -358,7 +358,7 @@ class LoginWindow(QMainWindow):
         ClientRequests.login(username, password, callback=on_done)
 
     def loginAsGuest(self):
-        from User import User, UserRoles, UserDepartments
+        from models.User import User, UserRoles, UserDepartments
 
         dlg = GuestDetailsDialog(list(UserDepartments), self)
         if dlg.exec() != QDialog.DialogCode.Accepted:

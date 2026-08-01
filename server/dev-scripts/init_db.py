@@ -87,7 +87,7 @@ def init_tables():
             print("Ensured table: ptws")
             # No `attachs` column: attachment filenames are never persisted here, only read
             # live from the ptw-{id}-attachments/ folder (see ReportGenerator.ptwReport).
-            # No `approval_status`/`running_status` column: PTWData.__updateStatus() recomputes
+            # No `approval_status`/`running_status` column: PTW.__updateStatus() recomputes
             # both from `approvals`/`run_cycles` on every read, so they're always correct
             # without being stored. `is_archived` is the one bit that IS stored — archiving
             # isn't something a run cycle's fields can encode.

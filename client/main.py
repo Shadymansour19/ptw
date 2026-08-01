@@ -8,11 +8,11 @@ from PyQt6.QtCore import QLocale, Qt
 from PyQt6.QtGui import QIcon
 from Login import LoginWindow
 from MainWindow import MainWindow, GuestMainWindow, AdminMainWindow, UserMainWindow, CoordinatorMainWindow, IssuingMainWindow, SafetyMainWindow, ManagerMainWindow, IsolatorMainWindow
-from User import UserRoles
-from utils import resource_path
+from models.User import UserRoles
+from helper.utils import resource_path
 from qdarktheme import load_palette, load_stylesheet
-from OcrConfig import configureTesseract
-import i18n
+from helper.OcrConfig import configureTesseract
+import helper.i18n as i18n
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("client")

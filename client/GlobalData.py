@@ -1,11 +1,11 @@
-from RequestWorker import async_request
+from network.RequestWorker import async_request
 
 class GlobalData:
     def __init__(self):
         self.allUsers: dict = {}                # dict[str, SecuredUser]
         self.allRiskAssessments: dict = {}      # dict[str, RiskAssessment]
-        self.allPTWs: list = []                 # list[PTWData] - non-archived PTWs
-        self.archivedPTWs: list = []            # list[PTWData]
+        self.allPTWs: list = []                 # list[PTW] - non-archived PTWs
+        self.archivedPTWs: list = []            # list[PTW]
         self.allMIWIs: list = []                # list[str]
         self.ics: dict = {}                     # dict[int, IC]
 
@@ -22,7 +22,7 @@ class GlobalData:
         refreshICs: bool = False,
         refreshAll: bool = False,
     ) -> str:
-        from clientRequests import ClientRequests
+        from network.clientRequests import ClientRequests
 
         if refreshUsers or refreshAll:
             err, allUsers = ClientRequests.getAllUsers(loggedUser)

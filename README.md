@@ -202,42 +202,53 @@ ptw/
 │   ├── Login.py                 # Login & password reset
 │   ├── MainWindow.py            # Role-based window router
 │   ├── GlobalData.py            # Client-side data cache
-│   ├── clientRequests.py        # HTTP API wrapper
-│   ├── RequestWorker.py         # @async_request decorator — runs requests off the GUI thread
-│   ├── SSEListener.py           # Real-time event listener (QThread)
-│   ├── PTWData.py               # Client-side data models
-│   ├── Isolation.py             # Client-side model (declarative Isolation + IC)
-│   ├── utils.py                 # Shared helpers (resource_path, objToDict, dictToObj)
-│   ├── WidgetPTW.py             # Full PTW form (create/view/edit)
-│   ├── TablePTWs.py             # PTW list with filters + Excel export
-│   ├── TableICs.py              # IC list (one instance per tab, mirrors TablePTWs)
-│   ├── DialogIC.py              # IC create/view dialog (new/readOnly modes)
-│   ├── TableIsolationItems.py   # Embedded editable isolation-item list inside the IC dialog
-│   ├── DialogIsolationItem.py   # Isolation-item add/edit/view dialog (tag/description/state/lock)
-│   ├── WidgetPidWiring.py       # P&ID/Wiring tab: document picker, preview, live highlight editing
-│   ├── PidWiringHighlighter.py  # Highlight detection (PDF text search + OCR) and file burn-in
-│   ├── OcrConfig.py             # Points pytesseract at the bundled Tesseract binary when frozen
-│   ├── TabServerLogs.py         # Admin log viewer tab (collapsible, color-coded, filterable)
-│   ├── CheckableComboBox.py     # Reusable multi-select checkbox combo box
-│   ├── SearchableComboBox.py    # Reusable fuzzy-autocomplete combo box that accepts free text
-│   ├── DonutChart.py            # Reusable donut-chart widget powering the home-page dashboard
-│   ├── ReportGenerator.py       # PDF and Excel report generation
+│   ├── models/                  # Data model classes
+│   │   ├── PTW.py               #   Client-side data models
+│   │   ├── Isolation.py         #   Declarative Isolation + IC
+│   │   └── User.py              #   User model
+│   ├── network/                 # HTTP + realtime plumbing
+│   │   ├── clientRequests.py    #   HTTP API wrapper
+│   │   ├── RequestWorker.py     #   @async_request decorator — runs requests off the GUI thread
+│   │   └── SSEListener.py       #   Real-time event listener (QThread)
+│   ├── dialogs/                 # Modal dialogs
+│   │   ├── DialogPTW.py         #   Full PTW form (create/view/edit)
+│   │   ├── DialogIC.py          #   IC create/view dialog (new/readOnly modes)
+│   │   ├── DialogIsolationItem.py
+│   │   └── ...                  #   DialogUser, DialogSettings, DialogIsolation, etc.
+│   ├── tables/                  # Embedded/tab list widgets
+│   │   ├── TablePTWs.py         #   PTW list with filters + Excel export
+│   │   ├── TableICs.py          #   IC list (one instance per tab, mirrors TablePTWs)
+│   │   ├── TableIsolationItems.py  # Embedded editable isolation-item list inside the IC dialog
+│   │   └── ...                  #   TableUsers, TableRisks, TableAttachments, TableIsolations
+│   ├── widgets/                 # Reusable standalone widgets
+│   │   ├── WidgetPidWiring.py   #   P&ID/Wiring tab: document picker, preview, live highlight editing
+│   │   ├── PidWiringHighlighter.py  # Highlight detection (PDF text search + OCR) and file burn-in
+│   │   ├── DonutChart.py        #   Reusable donut-chart widget powering the home-page dashboard
+│   │   └── ...                  #   TabServerLogs, CheckableComboBox, SearchableComboBox, UiUtils, RefreshOverlay
+│   ├── reports/
+│   │   ├── ReportGenerator.py   #   PDF and Excel report generation
+│   │   └── ImportUsersExcel.py  #   Bulk user Excel/CSV import
+│   ├── helper/                  # Small shared, stateless helpers
+│   │   ├── utils.py             #   resource_path, objToDict, dictToObj
+│   │   ├── i18n.py              #   Language/RTL init
+│   │   └── OcrConfig.py         #   Points pytesseract at the bundled Tesseract binary when frozen
 │   ├── assets/                  # Bundled images and icons
-│   ├── fonts/                   # Bundled fonts
-│   └── ...                      # Dialogs, tables
+│   └── fonts/                   # Bundled fonts
 │
 └── server/                      # Flask REST API
     ├── app.py                   # All route handlers + SSE broadcast
-    ├── PTWData.py               # Core data models & enums
-    ├── Isolation.py             # Server-side model (declarative Isolation + IC)
-    ├── User.py                  # User model (UserRoles enum, SecuredUser, User classes)
-    ├── utils.py                 # Shared helpers (objToDict, dictToObj)
-    ├── commonDb.py              # Shared DB base class (ThreadedConnectionPool, generic CRUD)
-    ├── ptwDb.py                 # PTW database operations
-    ├── usersDb.py               # User database operations
-    ├── ICDb.py                  # IC database operations (table `ics`)
-    ├── risksDb.py               # Risk assessment DB operations
     ├── GlobalData.py            # Server-side in-memory cache
+    ├── utils.py                 # Shared helpers (objToDict, dictToObj)
+    ├── models/
+    │   ├── PTW.py                #   Core data models & enums
+    │   ├── Isolation.py          #   Server-side model (declarative Isolation + IC)
+    │   └── User.py               #   User model (UserRoles enum, SecuredUser, User classes)
+    ├── db/
+    │   ├── commonDb.py           #   Shared DB base class (ThreadedConnectionPool, generic CRUD)
+    │   ├── ptwDb.py               #   PTW database operations
+    │   ├── usersDb.py             #   User database operations
+    │   ├── ICDb.py                #   IC database operations (table `ics`)
+    │   └── risksDb.py             #   Risk assessment DB operations
     ├── miwi/                    # MIWI PDFs, one subfolder per department (e.g. miwi/Turbo/)
     └── logs/                    # Rotating server log files (gitignored)
 ```

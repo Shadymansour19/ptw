@@ -15,7 +15,7 @@ client/nuitka*
 *.bin
 
 # Root-level duplicate/stale files (the real copies are in client/ and server/)
-/PTWData.py
+/PTW.py
 /User.py
 
 # Operational data — user uploads and company PDFs

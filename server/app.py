@@ -13,15 +13,15 @@ from flask_mail import Mail, Message
 from random import randint
 import shutil
 
-from commonDb import CommonDB
-from usersDb import UsersDb
-from ptwDb import PtwsDb
-from risksDb import RisksDb
-from ICDb import ICDb
-from User import User, UserRoles, UserDepartments
+from db.commonDb import CommonDB
+from db.usersDb import UsersDb
+from db.ptwDb import PtwsDb
+from db.risksDb import RisksDb
+from db.ICDb import ICDb
+from models.User import User, UserRoles, UserDepartments
 from GlobalData import globalData
-from PTWData import PTWData
-from Isolation import IC
+from models.PTW import PTW
+from models.Isolation import IC
 from utils import objToDict
 
 # Resolve the directory that contains this file (works both as a plain script and
@@ -207,9 +207,9 @@ def _checkAndAutoDeisolateICs(icIds: list, by: str = "system"):
             if linkedPtw is None:
                 allClear = False
                 break
-            if linkedPtw.running_status == PTWData.RunningStatus.CLOSED:
+            if linkedPtw.running_status == PTW.RunningStatus.CLOSED:
                 continue
-            if linkedPtw.running_status == PTWData.RunningStatus.HELD and str(icId) not in linkedPtw.getHeldICs():
+            if linkedPtw.running_status == PTW.RunningStatus.HELD and str(icId) not in linkedPtw.getHeldICs():
                 continue
             allClear = False
             break
@@ -250,7 +250,7 @@ def _auto_archive_closed_ptws():
         try:
             cutoff = datetime.now() - timedelta(days=_AUTO_ARCHIVE_AFTER_DAYS)
             with globalData.lock:
-                closed = [ptw for ptw in globalData.allPTWs.values() if ptw.running_status == PTWData.RunningStatus.CLOSED]
+                closed = [ptw for ptw in globalData.allPTWs.values() if ptw.running_status == PTW.RunningStatus.CLOSED]
             staleIds = []
             for ptw in closed:
                 lastCycle = ptw.lastRunCycle()
@@ -744,7 +744,7 @@ def deleteUserRequest():
         return jsonify({"success": False, "error": str(e)}), 400
 
 
-def _ptwVisibleToDepartment(ptw: PTWData, department: str) -> bool:
+def _ptwVisibleToDepartment(ptw: PTW, department: str) -> bool:
     """department=None means unrestricted (approver-type roles). Otherwise a PTW is
     visible if it belongs to that department, or if that department currently has
     a pending required-approver slot on it (see KNOWN_ISSUES.md § M12)."""
@@ -804,7 +804,7 @@ def addPTWRequest():
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     ptwDict = request.get_json(silent=True) or {}
     try:
-        ptw = PTWData(ptwDict)
+        ptw = PTW(ptwDict)
         err = ptw.validate()
         if err:
             log.warning("POST /ptws rejected: %s (by='%s')", err, user.getUsername())
@@ -839,11 +839,11 @@ def updatePTWRequest():
     if existing is None:
         log.warning("PUT /ptws: PTW #%s not found (user='%s')", ptwId, user.getUsername())
         return jsonify({"success": False, "error": "PTW not found"}), 404
-    if existing.department != user.getDepartment() or existing.approval_status != PTWData.ApprovalStatus.RETURNED:
+    if existing.department != user.getDepartment() or existing.approval_status != PTW.ApprovalStatus.RETURNED:
         log.warning("PUT /ptws: forbidden — PTW #%s status='%s' department='%s' user='%s' (dept='%s')", ptwId, existing.approval_status, existing.department, user.getUsername(), user.getDepartment())
         return jsonify({"success": False, "error": "Can only edit RETURNED PTWs from your own department"}), 403
     try:
-        ptw = PTWData(ptwDict)
+        ptw = PTW(ptwDict)
         err = ptw.validate()
         if err:
             log.warning("PUT /ptws rejected: %s (by='%s')", err, user.getUsername())
@@ -873,7 +873,7 @@ def deletePTWRequest():
     try:
         ptw_id = payload.get('ptw-id')
         ptw = globalData.allPTWs.get(ptw_id)
-        if ptw is not None and ptw.approval_status != PTWData.ApprovalStatus.RETURNED:
+        if ptw is not None and ptw.approval_status != PTW.ApprovalStatus.RETURNED:
             log.warning("DELETE /ptws: forbidden — PTW #%s status='%s' user='%s'", ptw_id, ptw.approval_status, user.getUsername())
             return jsonify({"success": False, "error": "Can only delete REJECTED or ARCHIVED PTWs"}), 403
         result = ptwDB.deletePTW(ptw_id)
@@ -906,10 +906,10 @@ def updatePTWApprovals():
     if ptw is None:
         log.warning("POST /ptws/approvals: PTW #%s not found (user='%s')", ptwId, user.getUsername())
         return jsonify({"success": False, "error": "PTW not found"}), 404
-    if ptw.getApprovalStatus(role=user.getRole(), department=user.getDepartment()) != PTWData.ApprovalStatus.UNDER_REVIEW:
+    if ptw.getApprovalStatus(role=user.getRole(), department=user.getDepartment()) != PTW.ApprovalStatus.UNDER_REVIEW:
         log.warning("POST /ptws/approvals: forbidden — user '%s' (role=%s, dept=%s) not an eligible approver for PTW #%s at its current stage", user.getUsername(), user.getRole(), user.getDepartment(), ptwId)
         return jsonify({"success": False, "error": "You are not an eligible approver for this PTW at its current stage"}), 403
-    approval = PTWData.Approval(**approvalData)
+    approval = PTW.Approval(**approvalData)
     try:
         result = ptwDB.updatePTWApprovals(ptwId, approval)
         _sync_ptw(ptwId)
@@ -940,7 +940,7 @@ def archivePTWs():
         if ptw is None:
             log.warning("POST /ptws/archive: PTW #%s not found (user='%s')", pid, user.getUsername())
             return jsonify({"success": False, "error": f"PTW# {pid} not found"}), 404
-        if ptw.running_status not in [PTWData.RunningStatus.CLOSED]:
+        if ptw.running_status not in [PTW.RunningStatus.CLOSED]:
             log.warning("POST /ptws/archive: forbidden — PTW #%s approval='%s' running='%s' user='%s'", pid, ptw.approval_status, ptw.running_status, user.getUsername())
             return jsonify({"success": False, "error": f"PTW# {pid} cannot be archived (must be CLOSED)"}), 403
     try:
