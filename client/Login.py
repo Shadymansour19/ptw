@@ -328,6 +328,10 @@ class LoginWindow(QMainWindow):
         self._populateRememberedUsers()
         self.boxUsername.setFocus()
 
+    def closeEvent(self, event):
+        event.accept()
+        QApplication.instance().quit()
+
     def login(self):
         from network.clientRequests import ClientRequests
 

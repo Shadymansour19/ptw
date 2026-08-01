@@ -38,7 +38,7 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 - **Risk assessment library** — Safety team maintains a reusable generic risk assessment library; each PTW gets its own editable, deduplicated risk item table — built by adding items manually, pulling from the generic library, or importing an Excel/CSV file — that becomes its permanent risk record, carried over automatically on re-request
 - **PDF permit reports** — Printable PDF generation for each PTW
 - **Excel export** — Export the PTW list to a formatted, color-coded `.xlsx` spreadsheet
-- **Real-time notifications** — Server-Sent Events (SSE) push PTW changes to all connected clients instantly; no polling required
+- **Real-time notifications** — Server-Sent Events (SSE) push PTW changes to all connected clients instantly; no polling required. Closing the window prompts to keep running in the system tray instead of quitting, so notifications keep arriving in the background; reopen from the tray icon straight back into the same session, no re-login needed
 - **Archived permits** — Closed PTWs can be archived manually, or automatically 7 days after closing via a server-side background sweep; archived data is fetched on-demand only to reduce server overhead
 - **File attachments** — Per-permit document uploads (medical certificates, tool checklists, technical drawings)
 - **MIWI documents** — Per-department Maintenance & Work Instruction PDFs referenced across permits; approver roles can view across all departments, other roles are confined to their own

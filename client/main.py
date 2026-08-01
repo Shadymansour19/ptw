@@ -74,6 +74,7 @@ def on_logout():
 
 
 app = QApplication([])
+app.setQuitOnLastWindowClosed(False)
 
 configureTesseract()
 

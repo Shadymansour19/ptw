@@ -772,6 +772,12 @@ The desktop client is structured around role-based main windows. After login, `M
 | `dialogs/DialogSettings.py`         | App settings (server URL, etc.)                                  |
 | `reports/ReportGenerator.py`        | Generates printable PDF permit reports and Excel exports         |
 
+### System Tray & Background Notifications
+
+`MainWindow.closeEvent()` intercepts the window's close button and asks (Yes/No/Cancel) whether to keep receiving notifications in the background. **Yes** ignores the event and `hide()`s the window instead of closing it — the `SSEListener` thread and `_trayIcon` (already created in `MainWindow.__init__`, independent of window visibility) keep running untouched, so notifications keep showing via `_trayIcon.showMessage()` exactly as before. **No** calls `_quitApp()` (stops `_sseListener`, hides the tray icon, `QApplication.quit()`). **Cancel** just re-ignores the event. The tray icon's context menu (**Open PTW** / **Quit**) and single/double-click (`_onTrayActivated`) restore the same still-logged-in window (`show()`/`raise_()`/`activateWindow()`) — since the process never exited, no re-login or state restore is needed, it's the same live instance.
+
+`logout()` sets a `_forceClose` flag before calling `self.close()` so it bypasses the tray prompt and does a real close (also stopping the SSE listener and hiding the tray icon, mirroring `_quitApp`). `main.py` sets `app.setQuitOnLastWindowClosed(False)` so hiding a window never implicitly quits the app; `Login.py`'s `LoginWindow` gets its own explicit `closeEvent` (`QApplication.instance().quit()`) since it has no tray/notification concept pre-login and would otherwise leave a windowless zombie process if closed.
+
 ### Role-Specific Windows (all inside `MainWindow.py`)
 
 All role-specific views are implemented as classes within `MainWindow.py`. After login, the file routes to the appropriate class based on the user's role:

@@ -465,7 +465,15 @@ class MainWindow(QMainWindow):
             }
         """)
 
+        self._forceClose = False
+
         self._trayIcon = QSystemTrayIcon(QIcon(resource_path("assets/sh-logo-trans.png")), self)
+        trayMenu = QMenu(self)
+        trayMenu.addAction("Open PTW").triggered.connect(self._restoreFromTray)
+        trayMenu.addSeparator()
+        trayMenu.addAction("Quit").triggered.connect(self._quitApp)
+        self._trayIcon.setContextMenu(trayMenu)
+        self._trayIcon.activated.connect(self._onTrayActivated)
         self._trayIcon.show()
 
         self._sseListener = SSEListener(ClientRequests.SERVER_URL, loggedUser.getUsername(), loggedUser.getPassword())
@@ -664,8 +672,56 @@ class MainWindow(QMainWindow):
     def logout(self):
         self._sseListener.stop()
         self._sseListener.wait(1000)
+        self._trayIcon.hide()
+        self._forceClose = True
         self.on_logout.emit()
         self.close()
+
+    def closeEvent(self, event):
+        if self._forceClose:
+            event.accept()
+            return
+
+        reply = QMessageBox.question(
+            self, "Close PTW",
+            "Do you want to keep receiving notifications in the background?\n\n"
+            "Yes - PTW keeps running in the system tray and notifies you of updates.\n"
+            "No - PTW closes completely and you stop receiving notifications.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Yes,
+        )
+
+        if reply == QMessageBox.StandardButton.Cancel:
+            event.ignore()
+            return
+
+        if reply == QMessageBox.StandardButton.No:
+            self._quitApp()
+            event.accept()
+            return
+
+        event.ignore()
+        self.hide()
+        self._trayIcon.showMessage(
+            "PTW", "Still running in the background. Click the tray icon to reopen.",
+            QSystemTrayIcon.MessageIcon.Information, 3000
+        )
+
+    def _onTrayActivated(self, reason):
+        if reason in (QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick):
+            self._restoreFromTray()
+
+    def _restoreFromTray(self):
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
+    def _quitApp(self):
+        self._sseListener.stop()
+        self._sseListener.wait(1000)
+        self._trayIcon.hide()
+        self._forceClose = True
+        QApplication.quit()
     
     def viewPTW(self, row: int, ptw: PTW):
         self._refreshOverlay.showBusy()
