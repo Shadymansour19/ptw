@@ -2,9 +2,9 @@ import copy
 from datetime import datetime
 from PyQt6.QtCore import Qt, QDir, QFileInfo
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
-                              QGridLayout, QStackedWidget, QWidget, QLineEdit, QComboBox,
+                              QGridLayout, QWidget, QLineEdit, QComboBox,
                               QTextEdit, QPushButton, QCheckBox, QRadioButton, QButtonGroup,
-                              QDialogButtonBox, QMessageBox, QApplication, QStyle,
+                              QDialogButtonBox, QMessageBox,
                               QFileDialog, QSizePolicy, QFrame, QLabel, QInputDialog)
 from PyQt6.QtGui import QFont, QKeySequence, QShortcut, QColor
 import re
@@ -19,13 +19,14 @@ from reports.ReportGenerator import ReportGenerator
 from network.clientRequests import ClientRequests
 from tables.TableIsolations import TablePTWIsolations
 from widgets.RiskPreview import RiskAssessmentPreview
-from widgets.UiUtils import TabButton, lightenColor, Timeline
+from widgets.UiUtils import Timeline
 from widgets.RefreshOverlay import RefreshOverlay
+from dialogs.TabbedDialog import TabbedDialog
 from functools import partial
 import qtawesome as qta
 from helper.i18n import t
 
-class DialogPTW(QDialog):
+class DialogPTW(TabbedDialog):
     GRID_LYT_COLS = 3
     CHECK_BOX_MAX_LINE_CHARS = 36
 
@@ -78,39 +79,11 @@ class DialogPTW(QDialog):
 
         lyt = QVBoxLayout()
         lyt.setContentsMargins(0, 0, 0, 0)
-        
-        self.tabsContainer = QWidget()
-        self.tabsContainer.setStyleSheet("""
-            QWidget {
-                background: palette(dark);
-                border-bottom: 4px solid rgba(128, 128, 128, 0.5);
-                border-right: 4px solid rgba(128, 128, 128, 0.5);
-                border-bottom-right-radius: 20px;
-            }
-        """)
-        lytTabs = QHBoxLayout(self.tabsContainer)
-        lytTabs.setSpacing(2)
-        lytTabs.setContentsMargins(8, 8, 8, 8)
-
-        lytBtns = QHBoxLayout()
-        lytBtns.setContentsMargins(8, 8, 8, 8)
-        
-        self.stack = QStackedWidget()
-        self.btnBack = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ArrowBack), t('Back'))
-        self.btnNext = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ArrowForward), t('Next'))
-        self.btnFinish = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_DialogOkButton), t('Finish'))
-        self.btnCancel = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_DialogCancelButton), t('Cancel'))
 
         self.setLayout(lyt)
         lyt.addWidget(self.tabsContainer)
         lyt.addWidget(self.stack)
-        lyt.addLayout(lytBtns)
-
-        lytBtns.addStretch()
-        lytBtns.addWidget(self.btnBack, stretch=0)
-        lytBtns.addWidget(self.btnNext, stretch=0)
-        lytBtns.addWidget(self.btnFinish, stretch=0)
-        lytBtns.addWidget(self.btnCancel, stretch=0)
+        lyt.addLayout(self.bottomButtonsLayout())
 
         self.tabBasicInfo = QWidget(self.stack)
         self.tabTools     = QWidget(self.stack)
@@ -140,34 +113,14 @@ class DialogPTW(QDialog):
         self.tabMiwiMos.setLayout(lytMiwiMos)
         self.tabAttachments.setLayout(lytAttachments)
 
-        # self.btnBasicInfo = QPushButton(qta.icon("mdi6.file-document-outline"), 'Basic Info')
-        # self.btnTools     = QPushButton(qta.icon("fa6s.wrench"), 'Tools')
-        # self.btnHazards   = QPushButton(qta.icon("mdi.alert-octagon-outline"), 'Hazards')
-        # self.btnControls  = QPushButton(qta.icon("fa6s.shield-halved"), 'Controls')
-        # self.btnRisks     = QPushButton(qta.icon("fa5s.exclamation-triangle"), 'Risks')
-        # self.btnIsolation = QPushButton(qta.icon("fa6s.unlock-keyhole"), 'Isolation')
-        # self.btnMiwiMos   = QPushButton(qta.icon("fa6.rectangle-list"), 'MIWI/MOS')
-        # self.btnAttachments = QPushButton(qta.icon("fa6s.paperclip"), 'Attachs')
-
-        self.btnBasicInfo = TabButton(self.stack, t("Basic Info"), "mdi6.file-document-outline")
-        self.btnTools     = TabButton(self.stack, t("Tools"), "fa6s.wrench")
-        self.btnHazards   = TabButton(self.stack, t("Hazards"), "mdi.alert-octagon-outline")
-        self.btnControls  = TabButton(self.stack, t("Controls"), "fa6s.shield-halved")
-        self.btnRisks     = TabButton(self.stack, t("Risks"), "fa5s.exclamation-triangle")
-        self.btnIsolation = TabButton(self.stack, t("Isolation"), "fa6s.unlock-keyhole")
-        self.btnMiwiMos   = TabButton(self.stack, t("MIWI/MOS"), "fa6.rectangle-list")
-        self.btnAttachments = TabButton(self.stack, t("Attachments"), "fa6s.paperclip")
-
-        self.tabsBtnsMap: dict[QPushButton, QWidget] = {
-            self.btnBasicInfo:      self.tabBasicInfo,
-            self.btnTools:          self.tabTools,
-            self.btnHazards:        self.tabHazards,
-            self.btnControls:       self.tabControls,
-            self.btnRisks:          self.tabRisks,
-            self.btnIsolation:      self.tabIsolation,
-            self.btnMiwiMos:        self.tabMiwiMos,
-            self.btnAttachments:    self.tabAttachments
-        }
+        self.btnBasicInfo   = self.addTab(t("Basic Info"), "mdi6.file-document-outline", self.tabBasicInfo)
+        self.btnTools       = self.addTab(t("Tools"), "fa6s.wrench", self.tabTools)
+        self.btnHazards     = self.addTab(t("Hazards"), "mdi.alert-octagon-outline", self.tabHazards)
+        self.btnControls    = self.addTab(t("Controls"), "fa6s.shield-halved", self.tabControls)
+        self.btnRisks       = self.addTab(t("Risks"), "fa5s.exclamation-triangle", self.tabRisks)
+        self.btnIsolation   = self.addTab(t("Isolation"), "fa6s.unlock-keyhole", self.tabIsolation)
+        self.btnMiwiMos     = self.addTab(t("MIWI/MOS"), "fa6.rectangle-list", self.tabMiwiMos)
+        self.btnAttachments = self.addTab(t("Attachments"), "fa6s.paperclip", self.tabAttachments)
 
         # History and IC Linkage are only meaningful once there's something to show,
         # so both are only offered in readonly mode (a brand-new PTW has neither
@@ -177,21 +130,12 @@ class DialogPTW(QDialog):
         if readOnly:
             self.tabHistory = QWidget(self.stack)
             lytHistoryPanes = QHBoxLayout(self.tabHistory)
-            self.btnHistory = TabButton(self.stack, t("History"), "fa6s.clock-rotate-left")
-            self.tabsBtnsMap[self.btnHistory] = self.tabHistory
+            self.btnHistory = self.addTab(t("History"), "fa6s.clock-rotate-left", self.tabHistory)
 
             self.tabLinkage = QWidget(self.stack)
             lytLinkage = QVBoxLayout(self.tabLinkage)
             lytLinkage.addWidget(QLabel(f"<b>{t('Linked ICs')}</b>", font=QFont("Helvetica", 14)))
-            self.btnLinkage = TabButton(self.stack, t("IC Linkage"), "mdi.link-variant")
-            self.tabsBtnsMap[self.btnLinkage] = self.tabLinkage
-
-        for btn, tab in self.tabsBtnsMap.items():
-            btn.clicked.connect(partial(self.stack.setCurrentWidget, tab))
-            self.stack.addWidget(tab)
-            lytTabs.addWidget(btn)
-        
-        # lytTabs.setSpacing(20)
+            self.btnLinkage = self.addTab(t("IC Linkage"), "mdi.link-variant", self.tabLinkage)
 
         self.boxPTWId = QLineEdit()
         self.boxPTWType = QComboBox(self.tabBasicInfo)
@@ -439,10 +383,6 @@ class DialogPTW(QDialog):
         for tabIdx in range(self.stack.count()):
             QShortcut(QKeySequence(f"Alt+{tabIdx + 1}"), self).activated.connect(partial(self.stack.setCurrentIndex, tabIdx))
 
-        self.btnNext.clicked.connect(lambda: self.stack.setCurrentIndex(self.stack.currentIndex() + 1))
-        self.btnBack.clicked.connect(lambda: self.stack.setCurrentIndex(self.stack.currentIndex() - 1))
-        self.btnCancel.clicked.connect(self.reject)
-        self.btnFinish.clicked.connect(self.accept)
         self.stack.currentChanged.connect(self.stackTabChanged)
         self.boxPTWType.currentIndexChanged.connect(self.ptwTypeChanged)
         self.stackTabChanged()
@@ -655,18 +595,7 @@ class DialogPTW(QDialog):
 
     def ptwTypeChanged(self):
         color = PTW.backgroundColorForType(self.boxPTWType.currentData())
-        accentColor = lightenColor(color)
-        textColor = PTW.foregroundColorForType(self.boxPTWType.currentData())
-        self.tabsContainer.setStyleSheet(f"""
-            QWidget {{
-                background: {color.name()};
-                border-bottom: 4px solid {accentColor.name()};
-                border-right: 4px solid {accentColor.name()};
-                border-bottom-right-radius: 20px;
-            }}
-        """)
-        for btn in self.tabsBtnsMap:
-            btn.setHighlightColor(accentColor, textColor)
+        self.setTabBarColor(color)
         self.stackTabChanged()
 
         if not self.readonly:
@@ -834,22 +763,6 @@ class DialogPTW(QDialog):
             return
 
         self.tableAttachments.addAttachment(Attachment(filepath, filename, False))
-
-    def stackTabChanged(self):
-        tabIdx = self.stack.currentIndex()
-
-        for i, btn in enumerate(self.tabsBtnsMap.keys()):
-            # btn.setStyleSheet('QPushButton { background-color: transparent; border: none; }')
-            btn.setProperty("selected", i == tabIdx)
-            btn.style().unpolish(btn)
-            btn.style().polish(btn)
-            btn.setIcon(isSelected=(i == tabIdx))
-            btn.update()
-        # self.tabsBtns[tabIdx].setStyleSheet('QPushButton { background-color: transparent; border: none; color: green; }')
-
-        self.btnNext.setEnabled(tabIdx < self.stack.count() - 1)
-        self.btnBack.setEnabled(tabIdx > 0)
-        # self.checkRequirement()
 
     def collectData(self):
         if self.readonly:

@@ -3,9 +3,9 @@ from functools import partial
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont
-from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGridLayout, QComboBox, QLineEdit,
-                              QTextEdit, QCheckBox, QLabel, QDialogButtonBox, QMessageBox,
-                              QWidget, QStackedWidget, QPushButton, QInputDialog)
+from PyQt6.QtWidgets import (QVBoxLayout, QHBoxLayout, QFormLayout, QGridLayout, QComboBox, QLineEdit,
+                              QTextEdit, QCheckBox, QLabel, QMessageBox,
+                              QWidget, QPushButton, QInputDialog)
 import qtawesome as qta
 
 from models.User import UserRoles, UserDepartments
@@ -13,11 +13,12 @@ from models.PTW import PTW
 from models.Isolation import IC
 from tables.TableIsolationItems import TableIsolationItems
 from widgets.WidgetPidWiring import WidgetPidWiring
-from widgets.UiUtils import TabButton, lightenColor, Timeline
+from widgets.UiUtils import Timeline
 from GlobalData import globalData
 from network.clientRequests import ClientRequests
 from helper.i18n import t
 from widgets.RefreshOverlay import RefreshOverlay
+from dialogs.TabbedDialog import TabbedDialog
 
 
 # PSIC ("Protective System IC") reason options - defined client-side only, not enforced
@@ -49,7 +50,7 @@ PSIC_TAG_SAMPLES = {
 }
 
 
-class DialogIC(QDialog):
+class DialogIC(TabbedDialog):
     def displayNameForUsername(username: str):
         if not username:
             return ''
@@ -69,13 +70,6 @@ class DialogIC(QDialog):
         lyt = QVBoxLayout(self)
         lyt.setContentsMargins(0, 0, 0, 0)
 
-        self.tabsContainer = QWidget()
-        lytTabs = QHBoxLayout(self.tabsContainer)
-        lytTabs.setSpacing(2)
-        lytTabs.setContentsMargins(8, 8, 8, 8)
-
-        self.stack = QStackedWidget()
-
         lyt.addWidget(self.tabsContainer)
         lyt.addWidget(self.stack, stretch=1)
 
@@ -91,17 +85,10 @@ class DialogIC(QDialog):
         lytPidWiring.setContentsMargins(0, 0, 0, 0)
         lytPsic = QVBoxLayout(self.tabPsic)
 
-        self.btnBasicInfo = TabButton(self.stack, t("Basic Info"), "mdi6.file-document-outline")
-        self.btnItems = TabButton(self.stack, t("Isolation Items"), "fa6s.unlock-keyhole")
-        self.btnPidWiring = TabButton(self.stack, t("P&&ID / Wiring"), "mdi6.pipe")
-        self.btnPsic = TabButton(self.stack, t("PSIC"), "mdi6.shield-check")
-
-        self.tabsBtnsMap: dict[TabButton, QWidget] = {
-            self.btnBasicInfo: self.tabBasicInfo,
-            self.btnItems: self.tabItems,
-            self.btnPidWiring: self.tabPidWiring,
-            self.btnPsic: self.tabPsic,
-        }
+        self.btnBasicInfo = self.addTab(t("Basic Info"), "mdi6.file-document-outline", self.tabBasicInfo)
+        self.btnItems = self.addTab(t("Isolation Items"), "fa6s.unlock-keyhole", self.tabItems)
+        self.btnPidWiring = self.addTab(t("P&&ID / Wiring"), "mdi6.pipe", self.tabPidWiring)
+        self.btnPsic = self.addTab(t("PSIC"), "mdi6.shield-check", self.tabPsic)
 
         # History and PTW Linkage are only meaningful once there's something to show,
         # so both are only offered in readonly mode (a brand-new IC has
@@ -110,19 +97,12 @@ class DialogIC(QDialog):
         if readOnly:
             self.tabHistory = QWidget(self.stack)
             lytHistoryPanes = QHBoxLayout(self.tabHistory)
-            self.btnHistory = TabButton(self.stack, t("History"), "fa6s.clock-rotate-left")
-            self.tabsBtnsMap[self.btnHistory] = self.tabHistory
+            self.btnHistory = self.addTab(t("History"), "fa6s.clock-rotate-left", self.tabHistory)
 
             self.tabLinkage = QWidget(self.stack)
             lytLinkage = QVBoxLayout(self.tabLinkage)
             lytLinkage.addWidget(QLabel(f"<b>{t('Linked PTWs')}</b>", font=QFont("Helvetica", 14)))
-            self.btnLinkage = TabButton(self.stack, t("PTW Linkage"), "mdi.link-variant")
-            self.tabsBtnsMap[self.btnLinkage] = self.tabLinkage
-
-        for btn, tab in self.tabsBtnsMap.items():
-            btn.clicked.connect(partial(self.stack.setCurrentWidget, tab))
-            self.stack.addWidget(tab)
-            lytTabs.addWidget(btn)
+            self.btnLinkage = self.addTab(t("PTW Linkage"), "mdi.link-variant", self.tabLinkage)
 
         self.boxId = QLineEdit()
         self.boxId.setReadOnly(True)
@@ -255,14 +235,7 @@ class DialogIC(QDialog):
         self._populate()
         self._applyReadOnly()
 
-        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        btns.accepted.connect(self.accept)
-        btns.rejected.connect(self.reject)
-        lytBtns = QHBoxLayout()
-        lytBtns.setContentsMargins(8, 8, 8, 8)
-        lytBtns.addStretch()
-        lytBtns.addWidget(btns)
-        lyt.addLayout(lytBtns)
+        lyt.addLayout(self.bottomButtonsLayout())
 
         self.stack.currentChanged.connect(self.stackTabChanged)
         self.stackTabChanged()
@@ -444,18 +417,7 @@ class DialogIC(QDialog):
     def _certTypeChanged(self, _=None):
         isPsic = self.boxIsPsic.isChecked()
         color = IC.backgroundColorForType(self.typeCombo.currentText(), isPsic)
-        accentColor = lightenColor(color)
-        textColor = IC.foregroundColorForType(self.typeCombo.currentText(), isPsic)
-        self.tabsContainer.setStyleSheet(f"""
-            QWidget {{
-                background: {color.name()};
-                border-bottom: 4px solid {accentColor.name()};
-                border-right: 4px solid {accentColor.name()};
-                border-bottom-right-radius: 20px;
-            }}
-        """)
-        for btn in self.tabsBtnsMap:
-            btn.setHighlightColor(accentColor, textColor)
+        self.setTabBarColor(color)
 
         if self.typeCombo.currentText() == IC.Types.SELF:
             idx = self.boxExecutionDepartment.findData(self.boxRequestorDepartment.text())
@@ -464,15 +426,6 @@ class DialogIC(QDialog):
                 self.boxExecutionDepartment.setEnabled(False)
         else:
             self.boxExecutionDepartment.setEnabled(not self.readonly)
-
-    def stackTabChanged(self):
-        tabIdx = self.stack.currentIndex()
-        for i, btn in enumerate(self.tabsBtnsMap.keys()):
-            btn.setProperty("selected", i == tabIdx)
-            btn.style().unpolish(btn)
-            btn.style().polish(btn)
-            btn.setIcon(isSelected=(i == tabIdx))
-            btn.update()
 
     def _populate(self):
         self.boxId.setText(str(self.ic.id) if self.ic.id else '')

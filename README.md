@@ -219,6 +219,7 @@ ptw/
 │   │   ├── RequestWorker.py     #   @async_request decorator — runs requests off the GUI thread
 │   │   └── SSEListener.py       #   Real-time event listener (QThread)
 │   ├── dialogs/                 # Modal dialogs
+│   │   ├── TabbedDialog.py      #   Base class for DialogPTW/DialogIC: tab bar + Back/Next/Finish/Cancel
 │   │   ├── DialogPTW.py         #   Full PTW form (create/view/edit)
 │   │   ├── DialogIC.py          #   IC create/view dialog (new/readOnly modes)
 │   │   ├── DialogIsolationItem.py
