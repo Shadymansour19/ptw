@@ -1415,7 +1415,15 @@ class MainWindow(QMainWindow):
                 "As an <b>Administrator</b>, you manage system users and their access roles. "
                 "Use the <b>Users</b> tab to create and edit user accounts. "
                 "Use the <b>Server Logs</b> tab to monitor server activity and audit system events. "
-                "You have full visibility over all registered users in the system."
+                "You have full visibility over all registered users in the system.<br><br>"
+                "<u>Server data location</u> — MIWI documents, logs, on-demand DB backups, and PTW/IC "
+                "attachments are stored on the server under a dedicated data directory, separate from "
+                "the application code:<br>"
+                "&nbsp;&nbsp;• Linux default: <code>~/.local/share/ptw-server/</code><br>"
+                "&nbsp;&nbsp;• Windows default: <code>%LOCALAPPDATA%\\PTW\\server\\</code><br>"
+                "&nbsp;&nbsp;• Grouped as: <code>miwi/</code>, <code>logs/</code>, <code>backups/</code>, "
+                "<code>ptws/</code>, <code>ics/</code><br>"
+                "&nbsp;&nbsp;• Override on the server via the <code>PTW_DATA_DIR</code> environment variable."
             ),
         }
         role_text = role_descriptions.get(
