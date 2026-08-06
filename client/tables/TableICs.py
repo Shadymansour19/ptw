@@ -228,6 +228,37 @@ class TableICs(QWidget):
             self._populateFilters()
             self._applyFilters()
 
+    def updateICInGUI(self, row: int, ic: IC):
+        self.icsData[row] = ic
+        data = self.icToRecord(ic)
+        self.tbl.setSortingEnabled(False)
+        for i, d in enumerate(data):
+            cell = self._makeCell(i, d)
+            if i == 0:
+                cell.setData(Qt.ItemDataRole.UserRole, ic.id)
+            cell.setBackground(QBrush(ic.backgroundColor()))
+            cell.setForeground(QBrush(ic.foregroundColor()))
+            self.tbl.setItem(row, i, cell)
+            if i == self._ltCol:
+                self.tbl.setCellWidget(row, i, self._longTermIconWidget(ic.long_term))
+        self.tbl.setSortingEnabled(True)
+        self._syncICsData()
+        if self._filterBar.isVisible():
+            self._populateFilters()
+            self._applyFilters()
+
+    def removeICById(self, icId) -> bool:
+        """Remove the row for icId if this tab currently holds it. Used for SSE-driven
+        targeted updates, where the caller doesn't know in advance which tab has the row."""
+        for row, ic in enumerate(self.icsData):
+            if ic.id == icId:
+                self.icsData.pop(row)
+                self.tbl.removeRow(row)
+                if self._filterBar.isVisible():
+                    self._populateFilters()
+                return True
+        return False
+
     def addOption(self, option):
         self.options.append(option)
 

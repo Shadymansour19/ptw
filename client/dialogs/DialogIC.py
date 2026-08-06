@@ -279,8 +279,7 @@ class DialogIC(QDialog):
         return box
 
     def _viewLinkedPTW(self, ptwId):
-        ptw = next((p for p in globalData.allPTWs if str(p.id) == str(ptwId)), None) or \
-              next((p for p in globalData.archivedPTWs if str(p.id) == str(ptwId)), None)
+        ptw = globalData.allPTWs.get(int(ptwId)) or globalData.archivedPTWs.get(int(ptwId))
         if ptw is None:
             QMessageBox.warning(self, t("PTW Not Found"), t("PTW #{0} could not be found (it may be archived).").format(ptwId))
             return
@@ -328,8 +327,7 @@ class DialogIC(QDialog):
         ClientRequests.linkPTWToIC(self.loggedUser, self.ic.id, ptwId, callback=on_done)
 
     def _ptwLinkRow(self, ptwId) -> QWidget:
-        ptw = next((p for p in globalData.allPTWs if str(p.id) == str(ptwId)), None) or \
-              next((p for p in globalData.archivedPTWs if str(p.id) == str(ptwId)), None)
+        ptw = globalData.allPTWs.get(int(ptwId)) or globalData.archivedPTWs.get(int(ptwId))
         label = f"PTW #{ptwId} — {ptw.running_status}" if ptw else f"PTW #{ptwId}"
 
         row = QWidget()

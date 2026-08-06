@@ -4,8 +4,8 @@ class GlobalData:
     def __init__(self):
         self.allUsers: dict = {}                # dict[str, SecuredUser]
         self.allRiskAssessments: dict = {}      # dict[str, RiskAssessment]
-        self.allPTWs: list = []                 # list[PTW] - non-archived PTWs
-        self.archivedPTWs: list = []            # list[PTW]
+        self.allPTWs: dict = {}                 # dict[int, PTW] - non-archived PTWs
+        self.archivedPTWs: dict = {}            # dict[int, PTW]
         self.allMIWIs: list = []                # list[str]
         self.ics: dict = {}                     # dict[int, IC]
 
@@ -61,5 +61,19 @@ class GlobalData:
             self.allMIWIs = allMIWIs
 
         return None
+
+    def upsertPTW(self, ptw):
+        """Patch a single PTW into the cache without a full refresh (SSE-driven update)."""
+        self.allPTWs[ptw.id] = ptw
+
+    def removePTW(self, ptwId):
+        self.allPTWs.pop(ptwId, None)
+
+    def upsertIC(self, ic):
+        """Patch a single IC into the cache without a full refresh (SSE-driven update)."""
+        self.ics[ic.id] = ic
+
+    def removeIC(self, icId):
+        self.ics.pop(icId, None)
 
 globalData = GlobalData()

@@ -490,6 +490,7 @@ New-user invitation email (`POST /users`) and the password-reset verification em
 | Method | Endpoint                    | Description                                |
 |--------|-----------------------------|--------------------------------------------|
 | GET    | `/ptws`                     | Get all PTWs (filterable by dept/requestor)|
+| GET    | `/ptws/<id>`                | Get a single PTW by id (same visibility rule as `GET /ptws`, `404` if not found/not visible) — used for SSE-driven targeted refreshes instead of re-fetching everything |
 | POST   | `/ptws`                     | Create new PTW                             |
 | DELETE | `/ptws`                     | Delete a PTW                               |
 | POST   | `/ptws/approvals`           | Submit an approval action                  |
@@ -511,25 +512,31 @@ New-user invitation email (`POST /users`) and the password-reset verification em
 |--------|------------|----------------------------------------------------------|
 | GET    | `/events`  | SSE stream; pushes PTW change events to the client       |
 
-The server broadcasts role-filtered events over this stream. The client connects via `SSEListener` (a QThread). Event types:
+The server broadcasts role-filtered events over this stream. The client connects via `SSEListener` (a QThread), which forwards any event generically — dispatch happens entirely on the `data` payload, not the SSE `event:` name.
 
-| Event               | Triggered by                                 |
-|---------------------|----------------------------------------------|
-| `new_ptw`           | New PTW created                              |
-| `ptw_deleted`       | PTW deleted                                  |
-| `ptw_approval`      | Approval action submitted                    |
-| `ptw_archived`      | PTW archived                                 |
-| `ptw_run_request`   | PA sends run request                         |
-| `ptw_run`           | IA accepts/rejects run request               |
-| `ptw_hold_request`  | PA sends hold request                        |
-| `ptw_hold`          | IA accepts/rejects hold request              |
-| `ptw_close_request` | PA sends close request                       |
-| `ptw_close`         | IA accepts/rejects close request             |
-| `new_ic`            | New IC created (broadcast to `ISSUING` only — the creator's own view updates via a local optimistic add instead, see [Isolation Management](#isolation-management)) |
-| `ic_approval`       | Approve/reject action recorded on an IC's approval chain (unrestricted broadcast, like `ptw_approval`) |
-| `ic_isolate_request` / `ic_isolate_confirm` / `ic_isolate_execute` | Isolate cycle: request / IA confirm-or-return / isolator execute |
-| `ic_deisolate_request` / `ic_deisolate_confirm` / `ic_deisolate_execute` | De-isolate cycle: request / IA confirm-or-return / isolator execute |
-| `ic_link_ptw` / `ic_unlink_ptw` | A PTW was linked to / unlinked from an IC (either side can have initiated it) |
+**Envelope.** Every broadcast is a fixed `{object, object_id, action, by}` shape (`server/models/SSE.py` — `SSEObject`, `SSEAction`; mirrored in `client/models/SSE.py`), built by `_broadcast(obj, object_id, action, by, roles=None)`. `object` is `PTW` or `IC`; `action` values are themselves the human-readable phrase (e.g. `"run rejected"`, `"isolate requested"`), so `MainWindow._onSSEEvent` renders the notification as a plain `f"{object} #{object_id} {action} by {by}"` with no per-event branching. Archiving multiple PTWs at once (manual or the auto-archive daemon) broadcasts one `PTW … archived` event per id rather than a single batch event, so every broadcast stays one-object-per-message. Linking/unlinking a PTW and IC broadcasts twice — once as `IC … linked/unlinked`, once as `PTW … linked/unlinked` — since both records actually change.
+
+On receipt, the client does **not** do a full `globalData.refresh()` — `MainWindow._applyPTWEvent`/`_applyICEvent` fetch just the one touched record (`GET /ptws/<id>` / `GET /ics/<id>`, added specifically for this — see [PTWs](#ptws)/[ICs](#ics) above) and patch it into `GlobalData` (`upsertPTW`/`removePTW`/`upsertIC`/`removeIC`) and into whichever single tab it belongs in (`MainWindow._ptwTargetTab`/`_icTargetTab` — the same categorization the full-refresh loops use, extracted once so both paths agree; `TablePTWs.removePTWById`/`TableICs.removeICById` drop the row from wherever it currently sits first). A `404` from the lookup (not visible / no longer exists) removes the record locally instead of erroring. The manual Refresh button and the initial post-login load are unchanged — they still do a full `refreshGUI()`.
+
+| Object / action | Triggered by |
+|------------------|--------------|
+| `PTW created`                        | New PTW created (`new_ptw`) |
+| `PTW deleted`                        | PTW deleted |
+| `PTW updated`                        | Returned PTW edited and resubmitted |
+| `PTW approved` / `PTW returned`      | Approval action submitted |
+| `PTW archived`                       | PTW archived (one event per id, manual or automatic) |
+| `PTW run requested`                  | PA sends run request |
+| `PTW run accepted` / `PTW run rejected` | IA accepts/rejects run request |
+| `PTW hold requested`                 | PA sends hold request |
+| `PTW held` / `PTW hold rejected`     | IA accepts/rejects hold request |
+| `PTW close requested`                | PA sends close request |
+| `PTW closed` / `PTW close rejected`  | IA accepts/rejects close request |
+| `PTW linked` / `PTW unlinked`        | The PTW side of an IC link/unlink (see below) |
+| `IC created`                         | New IC created (broadcast to `ISSUING` only — the creator's own view updates via a local optimistic add instead, see [Isolation Management](#isolation-management)) |
+| `IC approved` / `IC returned`        | Approve/reject action recorded on an IC's approval chain (unrestricted broadcast, like `PTW approved`/`returned`) |
+| `IC isolate requested` / `IC isolate confirmed` / `IC isolate rejected` / `IC isolated` | Isolate cycle: request / IA confirm / IA return / isolator execute |
+| `IC deisolate requested` / `IC deisolate confirmed` / `IC deisolate rejected` / `IC deisolated` | De-isolate cycle: request / IA confirm / IA return / isolator execute |
+| `IC linked` / `IC unlinked`          | A PTW was linked to / unlinked from an IC (either side can have initiated it; also broadcasts the `PTW linked`/`unlinked` counterpart above) |
 
 ### Attachments
 | Method | Endpoint                    | Description                          |
@@ -543,6 +550,7 @@ The server broadcasts role-filtered events over this stream. The client connects
 | Method | Endpoint                | Description                                                              | Auth Required   |
 |--------|-------------------------|---------------------------------------------------------------------------|-----------------|
 | GET    | `/ics`                  | Get all ICs (department-scoped for `USER` role against `requestor_department`, unrestricted for others) | Any authenticated user |
+| GET    | `/ics/<id>`             | Get a single IC by id (same visibility rule as `GET /ics`, `404` if not found/not visible) — used for SSE-driven targeted refreshes instead of re-fetching everything | Any authenticated user |
 | POST   | `/ics`                  | Create a new IC (`requestor_department`/`requestor`/`requestor_timestamp` are stamped server-side from the caller, not trusted from the payload; `execution_department` is required from the client — 400 if missing, or if `Self`-type and it doesn't match `requestor_department`; if `is_psic`, 400 if `psic_reasons` is empty or any of `psic_system_description`/`psic_isolation_method`/`psic_control_measures` is blank) | Any non-guest   |
 | POST   | `/ics/approvals`        | Submit an approve/reject action on the IC's approval chain (mirrors `/ptws/approvals`) | Caller's `getApprovalStatus(role, department)` must currently be `Requested` (i.e. it's their turn) |
 | POST   | `/ics/isolate-request`  | User requests the approved IC's isolation be carried out (`Approved`→`Isolate Confirming`) | Any non-guest |

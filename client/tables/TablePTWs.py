@@ -291,6 +291,18 @@ class TablePTWs(QWidget):
         if reply == QMessageBox.StandardButton.Yes:
             ClientRequests.deletePTW(self.loggedUser, ptw.id, callback=on_done)
 
+    def removePTWById(self, ptwId) -> bool:
+        """Remove the row for ptwId if this tab currently holds it. Used for SSE-driven
+        targeted updates, where the caller doesn't know in advance which tab has the row."""
+        for row, ptw in enumerate(self.ptwsData):
+            if ptw.id == ptwId:
+                self.ptwsData.pop(row)
+                self.tbl.removeRow(row)
+                if self._filterBar.isVisible():
+                    self._populateFilters()
+                return True
+        return False
+
     def clear(self):
         self.tbl.clearContents()
         self.ptwsData.clear()

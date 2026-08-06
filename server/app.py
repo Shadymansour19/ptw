@@ -25,6 +25,7 @@ from models.User import User, UserRoles, UserDepartments
 from GlobalData import globalData
 from models.PTW import PTW
 from models.Isolation import IC
+from models.SSE import SSEObject, SSEAction
 from utils import objToDict
 
 load_dotenv()
@@ -230,9 +231,10 @@ def _log_request():
     log.debug("%s %s", request.method, request.path)
 
 
-def _broadcast(event_type: str, data: dict, roles: list[UserRoles] = None):
-    """Broadcast an SSE event. roles=None sends to all connected roles."""
-    msg = f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
+def _broadcast(obj: SSEObject, object_id, action: SSEAction, by: str, roles: list[UserRoles] = None):
+    """Broadcast an SSE event: <object> <object-id> <action> by <actor>. roles=None sends to all connected roles."""
+    data = {"object": obj.value, "object_id": object_id, "action": action.value, "by": by}
+    msg = f"event: {obj.value.lower()}\ndata: {json.dumps(data)}\n\n"
     dropped = 0
     with _sse_lock:
         targets = roles if roles is not None else list(_sse_clients.keys())
@@ -244,9 +246,9 @@ def _broadcast(event_type: str, data: dict, roles: list[UserRoles] = None):
                     _sse_clients[role].remove(q)
                     dropped += 1
     if dropped:
-        log.warning("SSE broadcast '%s': dropped %d full client queue(s)", event_type, dropped)
+        log.warning("SSE broadcast '%s #%s %s': dropped %d full client queue(s)", obj.value, object_id, action.value, dropped)
     else:
-        log.debug("SSE broadcast '%s' data=%s", event_type, data)
+        log.debug("SSE broadcast '%s #%s %s' by='%s'", obj.value, object_id, action.value, by)
 
 
 try:
@@ -289,7 +291,7 @@ def _setDeisolateRequested(icId, by: str):
     if updated:
         with globalData.lock:
             globalData.ics[updated.id] = updated
-    _broadcast("ic_deisolate_request", {"ic_id": icId, "by": by})
+    _broadcast(SSEObject.IC, icId, SSEAction.DEISOLATE_REQUESTED, by)
 
 
 def _checkAndAutoDeisolateICs(icIds: list, by: str = "system"):
@@ -384,7 +386,8 @@ def _auto_archive_closed_ptws():
                 with globalData.lock:
                     for pid in staleIds:
                         globalData.allPTWs.pop(pid, None)
-                _broadcast("ptw_archived", {"ptw_ids": staleIds, "by": "system"})
+                for pid in staleIds:
+                    _broadcast(SSEObject.PTW, pid, SSEAction.ARCHIVED, "system")
                 log.info("Auto-archived %d closed PTW(s) older than %d days: ids=%s", len(staleIds), _AUTO_ARCHIVE_AFTER_DAYS, staleIds)
         except Exception as e:
             log.error("Auto-archive sweep failed: %s", e, exc_info=True)
@@ -894,6 +897,22 @@ def getAllPTWs():
         return jsonify({"success": False, "error": str(e)}), 400
 
 
+@app.route("/ptws/<int:ptwId>", methods=["GET"])
+def getPTWByIdRoute(ptwId):
+    """Single-record lookup for SSE-driven targeted refreshes — same visibility rule as GET /ptws."""
+    user = getVerifiedUser(request.authorization)
+    if user is None:
+        log.warning("GET /ptws/%s unauthorized (ip=%s)", ptwId, request.remote_addr)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    dep = user.getDepartment() if user.getRole() in _RESTRICTED_PTW_ROLES else None
+    with globalData.lock:
+        ptw = globalData.allPTWs.get(ptwId)
+    if ptw is None or not _ptwVisibleToDepartment(ptw, dep):
+        log.debug("GET /ptws/%s: not found or not visible to user='%s'", ptwId, user.getUsername())
+        return jsonify({"success": False, "error": "PTW not found"}), 404
+    return jsonify({"success": True, "ptw": objToDict(ptw)})
+
+
 @app.route("/ptws/archive", methods=["GET"])
 def getArchivedPTWs():
     user = getVerifiedUser(request.authorization)
@@ -929,7 +948,7 @@ def addPTWRequest():
         if new_ptw:
             with globalData.lock:
                 globalData.allPTWs[new_ptw.id] = new_ptw
-        _broadcast("new_ptw", {"ptw_id": ptw_id, "type": ptwDict.get("type", ""), "by": user.getUsername()}, roles=[UserRoles.USER, UserRoles.COORDINATOR])
+        _broadcast(SSEObject.PTW, ptw_id, SSEAction.CREATED, user.getUsername(), roles=[UserRoles.USER, UserRoles.COORDINATOR])
         log.info("PTW created: id=%s type='%s' by='%s'", ptw_id, ptwDict.get("type"), user.getUsername())
         return jsonify({"success": True, "ptw-id": ptw_id})
     except Exception as e:
@@ -967,7 +986,7 @@ def updatePTWRequest():
         if dbErr:
             raise dbErr
         _sync_ptw(ptwId)
-        _broadcast("ptw_updated", {"ptw_id": ptwId, "by": user.getUsername()}, roles=[UserRoles.USER, UserRoles.COORDINATOR])
+        _broadcast(SSEObject.PTW, ptwId, SSEAction.UPDATED, user.getUsername(), roles=[UserRoles.USER, UserRoles.COORDINATOR])
         log.info("PTW updated: id=%s by='%s'", ptwId, user.getUsername())
         return jsonify({"success": True, "ptw-id": ptwId})
     except Exception as e:
@@ -994,7 +1013,7 @@ def deletePTWRequest():
         result = ptwDB.deletePTW(ptw_id)
         with globalData.lock:
             globalData.allPTWs.pop(ptw_id, None)
-        _broadcast("ptw_deleted", {"ptw_id": ptw_id, "by": user.getUsername()})
+        _broadcast(SSEObject.PTW, ptw_id, SSEAction.DELETED, user.getUsername())
         log.info("PTW deleted: id=%s by='%s'", ptw_id, user.getUsername())
         return jsonify({"success": True, "ptw": result})
     except Exception as e:
@@ -1028,7 +1047,8 @@ def updatePTWApprovals():
     try:
         result = ptwDB.updatePTWApprovals(ptwId, approval)
         _sync_ptw(ptwId)
-        _broadcast("ptw_approval", {"ptw_id": ptwId, "action": str(approval.action), "by": user.getUsername()})
+        sseAction = SSEAction.APPROVED if approval.action == PTW.ApprovalActions.APPROVED else SSEAction.RETURNED
+        _broadcast(SSEObject.PTW, ptwId, sseAction, user.getUsername())
         log.info("PTW approval updated: id=%s action='%s' by='%s'", ptwId, approval.action, user.getUsername())
         return jsonify({"success": True, "ptw": result})
     except Exception as e:
@@ -1063,7 +1083,8 @@ def archivePTWs():
         with globalData.lock:
             for pid in ptwIds:
                 globalData.allPTWs.pop(pid, None)
-        _broadcast("ptw_archived", {"ptw_ids": ptwIds, "by": user.getUsername()})
+        for pid in ptwIds:
+            _broadcast(SSEObject.PTW, pid, SSEAction.ARCHIVED, user.getUsername())
         log.info("PTWs archived: ids=%s by='%s'", ptwIds, user.getUsername())
         return jsonify({"success": True, "ptw": result})
     except Exception as e:
@@ -1105,7 +1126,7 @@ def requestToRunPTW():
     try:
         result = ptwDB.requestToRunPTW(ptwId, pa, ts)
         _sync_ptw(ptwId)
-        _broadcast("ptw_run_request", {"ptw_id": ptwId, "by": pa}, roles=[UserRoles.USER, UserRoles.ISSUING])
+        _broadcast(SSEObject.PTW, ptwId, SSEAction.RUN_REQUESTED, pa, roles=[UserRoles.USER, UserRoles.ISSUING])
         log.info("PTW run requested: id=%s by PA='%s'", ptwId, pa)
         return jsonify({"success": True, "message": result})
     except Exception as e:
@@ -1149,13 +1170,13 @@ def runPTW():
                 return jsonify({"success": False, "error": f"Cannot run: IC(s) #{', '.join(unisolatedICs)} are not isolated"}), 403
             ptwDB.runAcceptPTW(ptwId, ia, ts, comment)
             _sync_ptw(ptwId)
-            _broadcast("ptw_run", {"ptw_id": ptwId, "accepted": True, "by": ia})
+            _broadcast(SSEObject.PTW, ptwId, SSEAction.RUN_ACCEPTED, ia)
             log.info("PTW run accepted: id=%s by IA='%s'", ptwId, ia)
             return jsonify({"success": True})
         else:
             ptwDB.runRejectPTW(ptwId, ia, ts, comment)
             _sync_ptw(ptwId)
-            _broadcast("ptw_run", {"ptw_id": ptwId, "accepted": False, "by": ia})
+            _broadcast(SSEObject.PTW, ptwId, SSEAction.RUN_REJECTED, ia)
             log.info("PTW run rejected: id=%s by IA='%s'", ptwId, ia)
             return jsonify({"success": True})
     except Exception as e:
@@ -1184,7 +1205,7 @@ def requestToHldPTW():
     try:
         ptwDB.requestToHldPTW(ptwId, pa, ts, comment, heldICs)
         _sync_ptw(ptwId)
-        _broadcast("ptw_hold_request", {"ptw_id": ptwId, "by": pa}, roles=[UserRoles.USER, UserRoles.ISSUING])
+        _broadcast(SSEObject.PTW, ptwId, SSEAction.HOLD_REQUESTED, pa, roles=[UserRoles.USER, UserRoles.ISSUING])
         log.info("PTW hold requested: id=%s by PA='%s' held_ics=%s", ptwId, pa, heldICs)
         return jsonify({"success": True})
     except Exception as e:
@@ -1221,13 +1242,13 @@ def hldPTW():
             ptwDB.hldAcceptPTW(ptwId, ia, ts, comment)
             _sync_ptw(ptwId)
             _checkAndAutoDeisolateICs(ptw.linked_ics)
-            _broadcast("ptw_hold", {"ptw_id": ptwId, "accepted": True, "by": ia})
+            _broadcast(SSEObject.PTW, ptwId, SSEAction.HELD, ia)
             log.info("PTW hold accepted: id=%s by IA='%s'", ptwId, ia)
             return jsonify({"success": True})
         else:
             ptwDB.hldRejectPTW(ptwId, ia, ts, comment)
             _sync_ptw(ptwId)
-            _broadcast("ptw_hold", {"ptw_id": ptwId, "accepted": False, "by": ia})
+            _broadcast(SSEObject.PTW, ptwId, SSEAction.HOLD_REJECTED, ia)
             log.info("PTW hold rejected: id=%s by IA='%s'", ptwId, ia)
             return jsonify({"success": True})
     except Exception as e:
@@ -1255,7 +1276,7 @@ def requestToClsPTW():
     try:
         result = ptwDB.requestToClsPTW(ptwId, pa, ts, comment)
         _sync_ptw(ptwId)
-        _broadcast("ptw_close_request", {"ptw_id": ptwId, "by": pa}, roles=[UserRoles.USER, UserRoles.ISSUING])
+        _broadcast(SSEObject.PTW, ptwId, SSEAction.CLOSE_REQUESTED, pa, roles=[UserRoles.USER, UserRoles.ISSUING])
         log.info("PTW close requested: id=%s by PA='%s'", ptwId, pa)
         return jsonify({"success": True, "message": result})
     except Exception as e:
@@ -1292,13 +1313,13 @@ def clsPTW():
             ptwDB.clsAcceptPTW(ptwId, ia, ts, comment)
             _sync_ptw(ptwId)
             _checkAndAutoDeisolateICs(ptw.linked_ics)
-            _broadcast("ptw_close", {"ptw_id": ptwId, "accepted": True, "by": ia})
+            _broadcast(SSEObject.PTW, ptwId, SSEAction.CLOSED, ia)
             log.info("PTW closed (accepted): id=%s by IA='%s'", ptwId, ia)
             return jsonify({"success": True})
         else:
             ptwDB.clsRejectPTW(ptwId, ia, ts, comment)
             _sync_ptw(ptwId)
-            _broadcast("ptw_close", {"ptw_id": ptwId, "accepted": False, "by": ia})
+            _broadcast(SSEObject.PTW, ptwId, SSEAction.CLOSE_REJECTED, ia)
             log.info("PTW close rejected: id=%s by IA='%s'", ptwId, ia)
             return jsonify({"success": True})
     except Exception as e:
@@ -1641,6 +1662,22 @@ def getAllICs():
         return jsonify({"success": False, "error": str(e)}), 400
 
 
+@app.route("/ics/<int:icId>", methods=["GET"])
+def getICByIdRoute(icId):
+    """Single-record lookup for SSE-driven targeted refreshes — same visibility rule as GET /ics."""
+    user = getVerifiedUser(request.authorization)
+    if user is None:
+        log.warning("GET /ics/%s unauthorized (ip=%s)", icId, request.remote_addr)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    dep = user.getDepartment() if user.getRole() == UserRoles.USER else None
+    with globalData.lock:
+        ic = globalData.ics.get(icId)
+    if ic is None or (dep is not None and (ic.requestor_department or '').casefold() != dep.casefold()):
+        log.debug("GET /ics/%s: not found or not visible to user='%s'", icId, user.getUsername())
+        return jsonify({"success": False, "error": "IC not found"}), 404
+    return jsonify({"success": True, "ic": objToDict(ic)})
+
+
 @app.route("/ics", methods=["POST"])
 def addICRequest():
     user = getVerifiedUser(request.authorization)
@@ -1677,11 +1714,7 @@ def addICRequest():
         if new_ic:
             with globalData.lock:
                 globalData.ics[new_ic.id] = new_ic
-        _broadcast(
-            "new_ic",
-            {"ic_id": ic_id, "type": ic.type, "by": user.getUsername()},
-            roles=[UserRoles.ISSUING],
-        )
+        _broadcast(SSEObject.IC, ic_id, SSEAction.CREATED, user.getUsername(), roles=[UserRoles.ISSUING])
         log.info("IC created: id=%s type='%s' by='%s'", ic_id, ic.type, user.getUsername())
         return jsonify({"success": True, "ic-id": ic_id})
     except Exception as e:
@@ -1732,7 +1765,8 @@ def updateICApprovals():
         if updated:
             with globalData.lock:
                 globalData.ics[updated.id] = updated
-        _broadcast("ic_approval", {"ic_id": icId, "action": str(approval.action), "by": user.getUsername()})
+        sseAction = SSEAction.APPROVED if approval.action == IC.ApprovalActions.APPROVED else SSEAction.RETURNED
+        _broadcast(SSEObject.IC, icId, sseAction, user.getUsername())
         log.info("IC approval updated: id=%s action='%s' by='%s'", icId, approval.action, user.getUsername())
         return jsonify({"success": True})
     except Exception as e:
@@ -1780,7 +1814,7 @@ def requestIsolateIC():
         if updated:
             with globalData.lock:
                 globalData.ics[updated.id] = updated
-        _broadcast("ic_isolate_request", {"ic_id": icId, "by": user.getUsername()})
+        _broadcast(SSEObject.IC, icId, SSEAction.ISOLATE_REQUESTED, user.getUsername())
         log.info("IC isolate requested: id=%s by='%s'", icId, user.getUsername())
         return jsonify({"success": True})
     except Exception as e:
@@ -1826,7 +1860,8 @@ def confirmIsolateIC():
         if updated:
             with globalData.lock:
                 globalData.ics[updated.id] = updated
-        _broadcast("ic_isolate_confirm", {"ic_id": icId, "action": str(action), "by": user.getUsername()})
+        sseAction = SSEAction.ISOLATE_CONFIRMED if action == IC.ApprovalActions.APPROVED else SSEAction.ISOLATE_REJECTED
+        _broadcast(SSEObject.IC, icId, sseAction, user.getUsername())
         log.info("IC isolate confirmation: id=%s action='%s' by='%s'", icId, action, user.getUsername())
         return jsonify({"success": True})
     except Exception as e:
@@ -1886,7 +1921,7 @@ def executeIsolateIC():
         if updated:
             with globalData.lock:
                 globalData.ics[updated.id] = updated
-        _broadcast("ic_isolate_execute", {"ic_id": icId, "by": user.getUsername()})
+        _broadcast(SSEObject.IC, icId, SSEAction.ISOLATED, user.getUsername())
         log.info("IC isolate execution: id=%s by='%s'", icId, user.getUsername())
         return jsonify({"success": True})
     except Exception as e:
@@ -1966,7 +2001,8 @@ def confirmDeisolateIC():
         if updated:
             with globalData.lock:
                 globalData.ics[updated.id] = updated
-        _broadcast("ic_deisolate_confirm", {"ic_id": icId, "action": str(action), "by": user.getUsername()})
+        sseAction = SSEAction.DEISOLATE_CONFIRMED if action == IC.ApprovalActions.APPROVED else SSEAction.DEISOLATE_REJECTED
+        _broadcast(SSEObject.IC, icId, sseAction, user.getUsername())
         log.info("IC de-isolate confirmation: id=%s action='%s' by='%s'", icId, action, user.getUsername())
         return jsonify({"success": True})
     except Exception as e:
@@ -2015,7 +2051,7 @@ def executeDeisolateIC():
         if updated:
             with globalData.lock:
                 globalData.ics[updated.id] = updated
-        _broadcast("ic_deisolate_execute", {"ic_id": icId, "by": user.getUsername()})
+        _broadcast(SSEObject.IC, icId, SSEAction.DEISOLATED, user.getUsername())
         log.info("IC de-isolate execution: id=%s by='%s'", icId, user.getUsername())
         return jsonify({"success": True})
     except Exception as e:
@@ -2070,7 +2106,8 @@ def linkPTWToIC():
             with globalData.lock:
                 globalData.ics[updated.id] = updated
         _sync_ptw(ptwId)
-        _broadcast("ic_link_ptw", {"ic_id": icId, "ptw_id": ptwId, "by": user.getUsername()})
+        _broadcast(SSEObject.IC, icId, SSEAction.LINKED, user.getUsername())
+        _broadcast(SSEObject.PTW, ptwId, SSEAction.LINKED, user.getUsername())
         log.info("IC linked to PTW: id=%s ptw=%s by='%s'", icId, ptwId, user.getUsername())
         return jsonify({"success": True})
     except Exception as e:
@@ -2116,7 +2153,8 @@ def unlinkPTWFromIC():
             with globalData.lock:
                 globalData.ics[updated.id] = updated
         _sync_ptw(ptwId)
-        _broadcast("ic_unlink_ptw", {"ic_id": icId, "ptw_id": ptwId, "by": user.getUsername()})
+        _broadcast(SSEObject.IC, icId, SSEAction.UNLINKED, user.getUsername())
+        _broadcast(SSEObject.PTW, ptwId, SSEAction.UNLINKED, user.getUsername())
         log.info("IC unlinked from PTW: id=%s ptw=%s by='%s'", icId, ptwId, user.getUsername())
         _checkAndAutoDeisolateICs([icId], user.getUsername())
         return jsonify({"success": True})

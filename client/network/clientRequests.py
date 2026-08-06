@@ -5,7 +5,6 @@ from models.User import User, SecuredUser, UserDepartments
 from models.PTW import PTW, RiskAssessment, Attachment
 from models.Isolation import IC
 from helper.utils import dictToObj, objToDict
-from typing import Iterable
 import tempfile
 from network.RequestWorker import async_request
 
@@ -168,7 +167,7 @@ class ClientRequests:
             return f"Failed to delete user!\n{err}"
 
     @async_request
-    def getAllPTWs(loggedUser: User, department: UserDepartments = None, requestorUsername: str = None) -> tuple[str, Iterable[PTW]]:
+    def getAllPTWs(loggedUser: User, department: UserDepartments = None, requestorUsername: str = None) -> tuple[str, dict[int, PTW]]:
         response = None
         try:
             response = requests.get(
@@ -181,16 +180,42 @@ class ClientRequests:
             data = response.json()
         except requests.exceptions.RequestException as e:
             err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
-            return f"Failed to fetch PTWs\n{err}", []
+            return f"Failed to fetch PTWs\n{err}", {}
 
         if data.get("success"):
-            return None, [PTW().setAll(namespace=dictToObj(ptwDict)) for ptwDict in data["ptws"]]
+            ptws = [PTW().setAll(namespace=dictToObj(ptwDict)) for ptwDict in data["ptws"]]
+            return None, {ptw.id: ptw for ptw in ptws}
         else:
             err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
-            return f"Failed to fetch PTWs\n{err}", []
+            return f"Failed to fetch PTWs\n{err}", {}
 
     @async_request
-    def getArchivedPTWs(loggedUser: User, department: UserDepartments = None) -> tuple[str, Iterable[PTW]]:
+    def getPTWById(loggedUser: User, ptwId) -> tuple[str, PTW]:
+        """Single-record lookup used for SSE-driven targeted refreshes. A 404 means the PTW
+        no longer exists or isn't visible to this user — returned as (None, None), not an error."""
+        response = None
+        try:
+            response = requests.get(
+                f'{ClientRequests.SERVER_URL}/ptws/{ptwId}',
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
+            )
+            if response.status_code == 404:
+                return None, None
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to fetch PTW #{ptwId}\n{err}", None
+
+        if not data.get("success"):
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to fetch PTW #{ptwId}\n{err}", None
+
+        return None, PTW().setAll(namespace=dictToObj(data["ptw"]))
+
+    @async_request
+    def getArchivedPTWs(loggedUser: User, department: UserDepartments = None) -> tuple[str, dict[int, PTW]]:
         response = None
         try:
             response = requests.get(
@@ -203,13 +228,14 @@ class ClientRequests:
             data = response.json()
         except requests.exceptions.RequestException as e:
             err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
-            return f"Failed to fetch archived PTWs\n{err}", []
+            return f"Failed to fetch archived PTWs\n{err}", {}
 
         if data.get("success"):
-            return None, [PTW().setAll(namespace=dictToObj(ptwDict)) for ptwDict in data["ptws"]]
+            ptws = [PTW().setAll(namespace=dictToObj(ptwDict)) for ptwDict in data["ptws"]]
+            return None, {ptw.id: ptw for ptw in ptws}
         else:
             err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
-            return f"Failed to fetch archived PTWs\n{err}", []
+            return f"Failed to fetch archived PTWs\n{err}", {}
 
     @async_request
     def addPTW(loggedUser: User, ptw: PTW) -> tuple[str, str]:
@@ -607,6 +633,31 @@ class ClientRequests:
             return f"Failed to get ICs\n{err}", None
 
         return None, {ic['id']: IC().setAll(namespace=dictToObj(ic)) for ic in data.get("ics", [])}
+
+    @async_request
+    def getICById(loggedUser: User, icId) -> tuple[str, IC]:
+        """Single-record lookup used for SSE-driven targeted refreshes. A 404 means the IC
+        no longer exists or isn't visible to this user — returned as (None, None), not an error."""
+        response = None
+        try:
+            response = requests.get(
+                f'{ClientRequests.SERVER_URL}/ics/{icId}',
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                timeout=ClientRequests.TIMEOUT
+            )
+            if response.status_code == 404:
+                return None, None
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to fetch IC #{icId}\n{err}", None
+
+        if not data.get("success"):
+            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            return f"Failed to fetch IC #{icId}\n{err}", None
+
+        return None, IC().setAll(namespace=dictToObj(data["ic"]))
 
     @async_request
     def addIC(loggedUser: User, ic: IC) -> tuple[str, str]:

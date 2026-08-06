@@ -29,6 +29,7 @@ from network.clientRequests import ClientRequests
 from GlobalData import globalData
 from reports.ReportGenerator import ReportGenerator
 from network.SSEListener import SSEListener
+from models.SSE import SSEObject, SSEAction
 from models.User import User, UserRoles
 from widgets.DonutChart import DonutChart, DonutSegment, APPROVAL_CYCLE_COLORS, LOCATION_COLORS, DEPARTMENT_COLOR_CYCLE
 from functools import partial
@@ -806,7 +807,7 @@ class MainWindow(QMainWindow):
         ClientRequests.archivePTWs(self.loggedUser, [ptw.id for ptw in ptws], callback=self._on_request_done_generic)
     
     def requestToRunPTW(self, row: int, ptw: PTW):
-        for p in globalData.allPTWs:
+        for p in globalData.allPTWs.values():
             if p.getPerforming() == self.loggedUser.getUsername():
                 QMessageBox.warning(self, 'Not Allowed', f"You are already the PA for PTW# {p.id}.")
                 return
@@ -1441,44 +1442,145 @@ class MainWindow(QMainWindow):
         pass
 
     def _onSSEEvent(self, event_type: str, data: dict):
-        self.refreshGUI()
-        msg = self._formatSSEMessage(event_type, data)
+        obj = data.get("object")
+        objectId = data.get("object_id")
+        action = data.get("action")
+        by = data.get("by", "?")
+        msg = f"{obj} #{objectId} {action} by {by}" if obj and objectId is not None and action else f"Update: {event_type}"
+
         QApplication.beep()
         self._trayIcon.showMessage("PTW Update", msg, QSystemTrayIcon.MessageIcon.Information, 5000)
         self.statusBar().showMessage(msg, 6000)
 
-    def _formatSSEMessage(self, event_type: str, data: dict) -> str:
-        ptw_id = data.get("ptw_id", "?")
-        ptw_ids = data.get("ptw_ids", "?")
-        by = data.get("by", "?")
-        if event_type == "new_ptw":
-            return f"New PTW #{ptw_id} created by {by} (type: {data.get('type', '?')})"
-        if event_type == "ptw_deleted":
-            return f"PTW #{ptw_id} deleted by {by}"
-        if event_type == "ptw_approval":
-            return f"PTW #{ptw_id}: {data.get('action', 'status update')} by {by}"
-        if event_type == "ptw_updated":
-            return f"PTW #{ptw_id}: edited and resubmitted by {by}"
-        if event_type == "ptw_run_request":
-            return f"PTW #{ptw_id}: run requested by {by}"
-        if event_type == "ptw_run":
-            verb = "now RUNNING" if data.get("accepted") else "run rejected"
-            return f"PTW #{ptw_id}: {verb} (by {by})"
-        if event_type == "ptw_hold_request":
-            return f"PTW #{ptw_id}: hold requested by {by}"
-        if event_type == "ptw_hold":
-            verb = "now HELD" if data.get("accepted") else "hold rejected"
-            return f"PTW #{ptw_id}: {verb} (by {by})"
-        if event_type == "ptw_close_request":
-            return f"PTW #{ptw_id}: close requested by {by}"
-        if event_type == "ptw_close":
-            verb = "CLOSED" if data.get("accepted") else "close rejected"
-            return f"PTW #{ptw_id}: {verb} (by {by})"
-        if event_type == "ptw_archived":
-            return f"PTWs #{ptw_ids} archived by {by}"
-        if event_type == "new_ic":
-            return f"New IC created by {by} (type: {data.get('type', '?')})"
-        return f"Update: {event_type} for PTW #{ptw_id}"
+        if obj == SSEObject.PTW:
+            self._applyPTWEvent(objectId, action)
+        elif obj == SSEObject.IC:
+            self._applyICEvent(objectId, action)
+
+    def _allPTWTabs(self) -> list[TablePTWs]:
+        return [
+            self.tabRequestedPTWs,
+            self.tabUnderReviewPTWs,
+            self.tabApprovedPTWs,
+            self.tabReturnedPTWs,
+            self.tabWaitingRunConfirmationPTWs,
+            self.tabRunningPTWs,
+            self.tabWaitingHldConfirmationPTWs,
+            self.tabHeldPTWs,
+            self.tabWaitingClsConfirmationPTWs,
+            self.tabClosedPTWs,
+        ]
+
+    def _ptwTargetTab(self, ptw: PTW) -> TablePTWs:
+        """Which tab a PTW belongs in, given its current status. Shared by the full-refresh
+        loop and the single-record SSE update path, so the categorization only lives once."""
+        mySt = ptw.getApprovalStatus(role=self.loggedUser.getRole(), department=self.loggedUser.getDepartment())
+        st = ptw.getApprovalStatus()
+        runSt = ptw.running_status
+        if runSt == PTW.RunningStatus.WAITING_RUN_CONFIRM:
+            return self.tabWaitingRunConfirmationPTWs
+        if runSt == PTW.RunningStatus.WAITING_CLS_CONFIRM:
+            return self.tabWaitingClsConfirmationPTWs
+        if runSt == PTW.RunningStatus.WAITING_HLD_CONFIRM:
+            return self.tabWaitingHldConfirmationPTWs
+        if runSt == PTW.RunningStatus.RUNNING:
+            return self.tabRunningPTWs
+        if runSt == PTW.RunningStatus.HELD:
+            return self.tabHeldPTWs
+        if runSt == PTW.RunningStatus.CLOSED:
+            return self.tabClosedPTWs
+        if st == PTW.ApprovalStatus.APPROVED:
+            return self.tabApprovedPTWs
+        if st == PTW.ApprovalStatus.RETURNED:
+            return self.tabReturnedPTWs
+        return self.tabUnderReviewPTWs if mySt == PTW.ApprovalStatus.UNDER_REVIEW else self.tabRequestedPTWs
+
+    def _removePTWFromTabs(self, ptwId):
+        for tab in self._allPTWTabs():
+            tab.removePTWById(ptwId)
+
+    def _applyPTWEvent(self, ptwId, action: str):
+        """Patch the single touched PTW into the cache/GUI instead of a full refresh."""
+        if action in (SSEAction.DELETED, SSEAction.ARCHIVED):
+            self._removePTWFromTabs(ptwId)
+            globalData.removePTW(ptwId)
+            self.updateHomeDashboard()
+            return
+
+        def on_done(err, ptw):
+            if err:
+                return   # transient network error — leave the cache as-is
+            self._removePTWFromTabs(ptwId)
+            if ptw is not None:
+                globalData.upsertPTW(ptw)
+                self._ptwTargetTab(ptw).addPTWToGUI(ptw)
+            else:
+                globalData.removePTW(ptwId)   # no longer visible to us / gone
+            self.updateHomeDashboard()
+
+        ClientRequests.getPTWById(self.loggedUser, ptwId, callback=on_done)
+
+    def _allICTabs(self) -> list[TableICs]:
+        return [
+            self.tabRequestedICs,
+            self.tabUnderReviewICs,
+            self.tabApprovedICs,
+            self.tabIsolateConfirmingICs,
+            self.tabPendingICs,
+            self.tabActiveICs,
+            self.tabDeisolateConfirmingICs,
+            self.tabClosingICs,
+            self.tabSanctionedICs,
+            self.tabClosedICs,
+        ]
+
+    def _icTargetTab(self, ic: IC) -> TableICs | None:
+        """Which tab an IC belongs in, given its current status — or None if this viewer
+        shouldn't see it at all (isolator outside the IC's execution department). Shared by
+        the full-refresh loop and the single-record SSE update path."""
+        status = ic.getStatus()
+        isIsolator = self.loggedUser.getRole() == UserRoles.ISOLATOR
+        myTurn = ic.getApprovalStatus(role=self.loggedUser.getRole(), department=self.loggedUser.getDepartment()) == IC.Status.REQUESTED
+        # Physical isolate/de-isolate work is routed to isolators of the IC's own
+        # execution department only — an isolator elsewhere doesn't see it queued at all.
+        notMyExecutionDept = isIsolator and (ic.execution_department or '').casefold() != (self.loggedUser.getDepartment() or '').casefold()
+        if status == IC.Status.CLOSED:
+            return self.tabClosedICs
+        if status == IC.Status.SANCTIONED:
+            return self.tabSanctionedICs
+        if status == IC.Status.CLOSING:
+            return None if notMyExecutionDept else self.tabClosingICs
+        if status == IC.Status.DEISOLATE_CONFIRMING:
+            return self.tabDeisolateConfirmingICs
+        if status == IC.Status.ACTIVE:
+            return self.tabActiveICs
+        if status == IC.Status.PENDING:
+            return None if notMyExecutionDept else self.tabPendingICs
+        if status == IC.Status.ISOLATE_CONFIRMING:
+            return self.tabIsolateConfirmingICs
+        if status == IC.Status.APPROVED:
+            return self.tabApprovedICs
+        return self.tabUnderReviewICs if myTurn else self.tabRequestedICs
+
+    def _removeICFromTabs(self, icId):
+        for tab in self._allICTabs():
+            tab.removeICById(icId)
+
+    def _applyICEvent(self, icId, action: str):
+        """Patch the single touched IC into the cache/GUI instead of a full refresh."""
+        def on_done(err, ic):
+            if err:
+                return   # transient network error — leave the cache as-is
+            self._removeICFromTabs(icId)
+            if ic is not None:
+                globalData.upsertIC(ic)
+                tab = self._icTargetTab(ic)
+                if tab is not None:
+                    tab.addICToGUI(ic)
+            else:
+                globalData.removeIC(icId)   # no longer visible to us / gone
+
+        ClientRequests.getICById(self.loggedUser, icId, callback=on_done)
 
     def refreshWelcomePage(self):
         def on_done(err, _):
@@ -1492,47 +1594,13 @@ class MainWindow(QMainWindow):
 
     def refreshPtwUserGUI(self, refreshArchivedPTWs: bool = False):
         def on_done(err, _):
-            tabs: list[TablePTWs] = [
-                self.tabRequestedPTWs,
-                self.tabUnderReviewPTWs,
-                self.tabApprovedPTWs,
-                self.tabReturnedPTWs,
-                self.tabWaitingRunConfirmationPTWs,
-                self.tabRunningPTWs,
-                self.tabWaitingHldConfirmationPTWs,
-                self.tabHeldPTWs,
-                self.tabWaitingClsConfirmationPTWs,
-                self.tabClosedPTWs,
-            ]
+            tabs = self._allPTWTabs()
 
             for tab in tabs:
                 tab.clear()
 
-            for ptw in globalData.allPTWs:
-                mySt = ptw.getApprovalStatus(role=self.loggedUser.getRole(), department=self.loggedUser.getDepartment())
-                st = ptw.getApprovalStatus()
-                runSt = ptw.running_status
-                if runSt == PTW.RunningStatus.WAITING_RUN_CONFIRM:
-                    self.tabWaitingRunConfirmationPTWs.addPTWToGUI(ptw)
-                elif runSt == PTW.RunningStatus.WAITING_CLS_CONFIRM:
-                    self.tabWaitingClsConfirmationPTWs.addPTWToGUI(ptw)
-                elif runSt == PTW.RunningStatus.WAITING_HLD_CONFIRM:
-                    self.tabWaitingHldConfirmationPTWs.addPTWToGUI(ptw)
-                elif runSt == PTW.RunningStatus.RUNNING:
-                    self.tabRunningPTWs.addPTWToGUI(ptw)
-                elif runSt == PTW.RunningStatus.HELD:
-                    self.tabHeldPTWs.addPTWToGUI(ptw)
-                elif runSt == PTW.RunningStatus.CLOSED:
-                    self.tabClosedPTWs.addPTWToGUI(ptw)
-                elif st == PTW.ApprovalStatus.APPROVED:
-                    self.tabApprovedPTWs.addPTWToGUI(ptw)
-                elif st == PTW.ApprovalStatus.RETURNED:
-                    self.tabReturnedPTWs.addPTWToGUI(ptw)
-                elif st == PTW.ApprovalStatus.UNDER_REVIEW:
-                    if mySt == PTW.ApprovalStatus.UNDER_REVIEW:
-                        self.tabUnderReviewPTWs.addPTWToGUI(ptw)
-                    else:
-                        self.tabRequestedPTWs.addPTWToGUI(ptw)
+            for ptw in globalData.allPTWs.values():
+                self._ptwTargetTab(ptw).addPTWToGUI(ptw)
 
             for tab in tabs:
                 tab.sort()
@@ -1559,52 +1627,14 @@ class MainWindow(QMainWindow):
         )
 
     def refreshICsGUI(self):
-        tabs: list[TableICs] = [
-            self.tabRequestedICs,
-            self.tabUnderReviewICs,
-            self.tabApprovedICs,
-            self.tabIsolateConfirmingICs,
-            self.tabPendingICs,
-            self.tabActiveICs,
-            self.tabDeisolateConfirmingICs,
-            self.tabClosingICs,
-            self.tabSanctionedICs,
-            self.tabClosedICs,
-        ]
+        tabs = self._allICTabs()
         for tab in tabs:
             tab.clear()
 
-        isIsolator = self.loggedUser.getRole() == UserRoles.ISOLATOR
         for ic in globalData.ics.values():
-            status = ic.getStatus()
-            myTurn = ic.getApprovalStatus(role=self.loggedUser.getRole(), department=self.loggedUser.getDepartment()) == IC.Status.REQUESTED
-            # Physical isolate/de-isolate work is routed to isolators of the IC's own
-            # execution department only — an isolator elsewhere doesn't see it queued at all.
-            notMyExecutionDept = isIsolator and (ic.execution_department or '').casefold() != (self.loggedUser.getDepartment() or '').casefold()
-            if status == IC.Status.CLOSED:
-                self.tabClosedICs.addICToGUI(ic)
-            elif status == IC.Status.SANCTIONED:
-                self.tabSanctionedICs.addICToGUI(ic)
-            elif status == IC.Status.CLOSING:
-                if notMyExecutionDept:
-                    continue
-                self.tabClosingICs.addICToGUI(ic)
-            elif status == IC.Status.DEISOLATE_CONFIRMING:
-                self.tabDeisolateConfirmingICs.addICToGUI(ic)
-            elif status == IC.Status.ACTIVE:
-                self.tabActiveICs.addICToGUI(ic)
-            elif status == IC.Status.PENDING:
-                if notMyExecutionDept:
-                    continue
-                self.tabPendingICs.addICToGUI(ic)
-            elif status == IC.Status.ISOLATE_CONFIRMING:
-                self.tabIsolateConfirmingICs.addICToGUI(ic)
-            elif status == IC.Status.APPROVED:
-                self.tabApprovedICs.addICToGUI(ic)
-            elif myTurn:
-                self.tabUnderReviewICs.addICToGUI(ic)
-            else:
-                self.tabRequestedICs.addICToGUI(ic)
+            tab = self._icTargetTab(ic)
+            if tab is not None:
+                tab.addICToGUI(ic)
 
         for tab in tabs:
             tab.sort()
@@ -1617,7 +1647,7 @@ class MainWindow(QMainWindow):
             if err:
                 QMessageBox.warning(self, "Error", f"Failed to refresh archived PTWs: {err}")
                 return
-            for ptw in globalData.archivedPTWs:
+            for ptw in globalData.archivedPTWs.values():
                 self.tabArchivedPTWs.addPTWToGUI(ptw)
             self.tabArchivedPTWs.sort()
 
