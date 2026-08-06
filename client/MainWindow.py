@@ -2,11 +2,11 @@ from datetime import datetime
 from collections import Counter
 import copy
 import re
-from PyQt6.QtCore import Qt, QSize, QEvent, QPropertyAnimation, QEasingCurve, QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, QSize, QEvent, QPropertyAnimation, QEasingCurve, QTimer, QSettings, pyqtSignal
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QStackedWidget, QVBoxLayout, QHBoxLayout,
                               QFormLayout, QLabel, QPushButton, QToolButton,
                               QToolBar, QDialog, QDialogButtonBox, QTextEdit, QListWidget,
-                              QListWidgetItem, QMenu, QSizePolicy, QSystemTrayIcon,
+                              QListWidgetItem, QMenu, QSizePolicy, QSystemTrayIcon, QCheckBox,
                               QMessageBox, QApplication, QGraphicsOpacityEffect, QStyle, QInputDialog)
 from PyQt6.QtGui import QFont, QIcon, QPalette, QKeySequence, QAction, QActionGroup, QShortcut
 
@@ -36,6 +36,8 @@ from widgets.DonutChart import DonutChart, DonutSegment, APPROVAL_CYCLE_COLORS, 
 from functools import partial
 import qtawesome as qta
 from helper.utils import resource_path
+
+SETTINGS_CLOSE_BEHAVIOR_KEY = "app/closeBehavior"
 
 
 class MainWindow(QMainWindow):
@@ -684,18 +686,39 @@ class MainWindow(QMainWindow):
             event.accept()
             return
 
-        reply = QMessageBox.question(
-            self, "Close PTW",
+        behavior = QSettings("PTW", "PTW").value(SETTINGS_CLOSE_BEHAVIOR_KEY, "", type=str)
+
+        if behavior == "tray":
+            event.ignore()
+            self._minimizeToTray()
+            return
+
+        if behavior == "exit":
+            self._quitApp()
+            event.accept()
+            return
+
+        msgBox = QMessageBox(self)
+        msgBox.setWindowTitle("Close PTW")
+        msgBox.setText(
             "Do you want to keep receiving notifications in the background?\n\n"
             "Yes - PTW keeps running in the system tray and notifies you of updates.\n"
-            "No - PTW closes completely and you stop receiving notifications.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Yes,
+            "No - PTW closes completely and you stop receiving notifications."
         )
+        msgBox.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel)
+        msgBox.setDefaultButton(QMessageBox.StandardButton.Yes)
+        chkRemember = QCheckBox("Remember my choice (change anytime in Settings)")
+        msgBox.setCheckBox(chkRemember)
+        reply = msgBox.exec()
 
         if reply == QMessageBox.StandardButton.Cancel:
             event.ignore()
             return
+
+        if chkRemember.isChecked():
+            QSettings("PTW", "PTW").setValue(
+                SETTINGS_CLOSE_BEHAVIOR_KEY, "exit" if reply == QMessageBox.StandardButton.No else "tray"
+            )
 
         if reply == QMessageBox.StandardButton.No:
             self._quitApp()
@@ -703,6 +726,9 @@ class MainWindow(QMainWindow):
             return
 
         event.ignore()
+        self._minimizeToTray()
+
+    def _minimizeToTray(self):
         self.hide()
         self._trayIcon.showMessage(
             "PTW", "Still running in the background. Click the tray icon to reopen.",
@@ -1177,6 +1203,8 @@ class MainWindow(QMainWindow):
             if err:
                 QMessageBox.warning(self, "Fail", err)
                 return
+            if not user.getPassword():
+                user.setPassword(self.loggedUser.getPassword())
             self.loggedUser = user
             MainWindow.refreshWelcomePage(self)
             if dlg.new_theme != old_theme:

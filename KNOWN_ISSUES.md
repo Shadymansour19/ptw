@@ -38,6 +38,13 @@ The server binds to plain HTTP on port 5000. Every request sends the username an
 
 ## Fixed
 
+### ~~M15 — Leaving the password field blank in Settings could corrupt the session's stored credentials~~ ✓
+**File:** `client/MainWindow.py` — `dlgSettings`
+
+`DialogSettings.collectData()` sets a blank password field to Python `None` (`self.loggedUser.setPassword(new_pass or None)` — intentional, so a no-op password field isn't resubmitted), but `dlgSettings`'s `on_update_done` callback then promoted that edited copy straight into the live session object (`self.loggedUser = user`) unconditionally. Every authenticated request builds `auth=(loggedUser.getUsername(), loggedUser.getPassword())`, and a `None` password isn't rejected client-side — `requests` silently base64-encodes the literal string `"None"` as the password. That fails `bcrypt.checkpw` server-side, so every subsequent authenticated call (not just the triggering one) returned `401 Unauthorized` until the user logged out and back in — the only place a real password is re-supplied. Fixed by restoring the current password onto the edited copy before promoting it whenever the field was left blank: `if not user.getPassword(): user.setPassword(self.loggedUser.getPassword())`.
+
+---
+
 ### ~~M14 — Unhandled exception in a Qt slot aborts the whole application~~ ✓
 **File:** `client/main.py`
 

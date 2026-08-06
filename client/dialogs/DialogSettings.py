@@ -1,10 +1,15 @@
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSettings
 from PyQt6.QtWidgets import QDialog, QFormLayout, QLineEdit, QComboBox, QDialogButtonBox, QMessageBox
 from models.User import User, UserRoles, UserDepartments
 
 _THEME_OPTIONS = ["Default (System)", "Light", "Dark"]
 _THEME_MAP = {None: "Default (System)", "light": "Light", "dark": "Dark"}
 _THEME_REVERSE = {"Default (System)": None, "Light": "light", "Dark": "dark"}
+
+SETTINGS_CLOSE_BEHAVIOR_KEY = "app/closeBehavior"
+_CLOSE_BEHAVIOR_OPTIONS = ["Always ask", "Minimize to tray", "Exit completely"]
+_CLOSE_BEHAVIOR_MAP = {"": "Always ask", "tray": "Minimize to tray", "exit": "Exit completely"}
+_CLOSE_BEHAVIOR_REVERSE = {v: k for k, v in _CLOSE_BEHAVIOR_MAP.items()}
 
 
 class DialogSettings(QDialog):
@@ -27,10 +32,12 @@ class DialogSettings(QDialog):
         self.txtEmail = QLineEdit()
         self.txtExt = QLineEdit()
         self.cmbTheme = QComboBox()
+        self.cmbCloseBehavior = QComboBox()
 
         self.txtRole.addItems([role for role in UserRoles])
         self.txtDepartment.addItems([dept for dept in UserDepartments])
         self.cmbTheme.addItems(_THEME_OPTIONS)
+        self.cmbCloseBehavior.addItems(_CLOSE_BEHAVIOR_OPTIONS)
         self.txtPassword.setEchoMode(QLineEdit.EchoMode.Password)
 
         self.txtUsername.setText(loggedUser.getUsername())
@@ -41,6 +48,8 @@ class DialogSettings(QDialog):
         self.txtEmail.setText(loggedUser.getEmail())
         self.txtExt.setText(loggedUser.getExt())
         self.cmbTheme.setCurrentText(_THEME_MAP.get(loggedUser.getTheme(), "Default (System)"))
+        savedCloseBehavior = QSettings("PTW", "PTW").value(SETTINGS_CLOSE_BEHAVIOR_KEY, "", type=str)
+        self.cmbCloseBehavior.setCurrentText(_CLOSE_BEHAVIOR_MAP.get(savedCloseBehavior, "Always ask"))
 
         lyt.addRow("Username:", self.txtUsername)
         lyt.addRow("Password:", self.txtPassword)
@@ -50,6 +59,7 @@ class DialogSettings(QDialog):
         lyt.addRow("Email:", self.txtEmail)
         lyt.addRow("EXT:", self.txtExt)
         lyt.addRow("Theme:", self.cmbTheme)
+        lyt.addRow("On close:", self.cmbCloseBehavior)
 
         self.txtUsername.setEnabled(False)
         self.txtRole.setEnabled(False)
@@ -74,4 +84,7 @@ class DialogSettings(QDialog):
         if not self.loggedUser.getName():
             QMessageBox.critical(self, "Error", "Name can't be empty!")
         else:
+            QSettings("PTW", "PTW").setValue(
+                SETTINGS_CLOSE_BEHAVIOR_KEY, _CLOSE_BEHAVIOR_REVERSE[self.cmbCloseBehavior.currentText()]
+            )
             self.accept()
