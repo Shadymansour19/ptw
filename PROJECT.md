@@ -95,7 +95,7 @@ A PTW no longer adds PDH/PGM/SOD/DFGM stages for a protective isolation — that
 
 Each approval action is recorded with the approver's username, timestamp, action taken, and an optional comment. Any `RETURNED` action anywhere in the log immediately marks the whole PTW `RETURNED`, regardless of position — this matters once parallel approvers exist, since a later `APPROVED` from a sibling approver must not paper over an earlier return.
 
-A required `Approver` with a department different from the PTW's own `department` still sees it: `GET /ptws` filters the server's in-memory PTW cache so a department sees a PTW if it either owns it or currently has a pending required-approver slot on it (`server/app.py` — `_ptwVisibleToDepartment`, `PTW.pendingApprovers()`). See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) (Fixed § M12) for the history.
+A required `Approver` with a department different from the PTW's own `department` still sees it: `GET /ptws` filters the server's in-memory PTW cache so a department sees a PTW if it either owns it or currently has a pending required-approver slot on it (`server/routes/ptws.py` — `_ptwVisibleToDepartment`, `PTW.pendingApprovers()`). See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) (Fixed § M12) for the history.
 
 **Approval Statuses:**
 
@@ -176,7 +176,7 @@ WAITING_RUN_CONFIRM
 
 **`running_status` is computed, not stored** — `PTW.__updateRunningStatus()` (both `client`/`server` `models/PTW.py`) replays `run_cycles` forward on every read (same pattern as `approval_status`/`approvals`, see [Database Schema](#database-schema)): a stop request (`stop_pa_request`/`stop_ia_action`) is checked ahead of `run_ia_action` so a cycle still resolves correctly even where `run_ia_action` didn't survive the old flat-columns migration (see `RunCycle` below); a rejected run/stop request simply leaves the replay's running status wherever it already was, which is what makes a separate `prev_running_status` snapshot unnecessary — it no longer exists.
 
-**Archiving is a separate `is_archived` boolean, not a `running_status` value** — a `CLOSED` PTW can be archived manually (`POST /ptws/archive`, any authenticated non-guest user) or automatically. A daemon thread (`server/app.py` — `_auto_archive_closed_ptws`) sweeps `globalData.allPTWs` every `_AUTO_ARCHIVE_CHECK_INTERVAL` (1 hour) and archives any `CLOSED` PTW whose last `RunCycle.stop_ia_timestamp` is `_AUTO_ARCHIVE_AFTER_DAYS` (7 days) or older. Both paths call the same `PtwsDb.archivePTWs()` (`UPDATE ptws SET is_archived = TRUE`) and broadcast the same `ptw_archived` SSE event with `"by"` set to the acting user (manual) or `"system"` (automatic). `running_status` keeps showing the real last state (`CLOSED`) forever, even once archived — `is_archived` is checked independently wherever code needs to know that (e.g. `PtwsDb.getAllPTWs()`/`getArchivedPTWs()` filter on it, not on `running_status`).
+**Archiving is a separate `is_archived` boolean, not a `running_status` value** — a `CLOSED` PTW can be archived manually (`POST /ptws/archive`, any authenticated non-guest user) or automatically. A daemon thread (`server/routes/ptws.py` — `_auto_archive_closed_ptws`) sweeps `globalData.allPTWs` every `_AUTO_ARCHIVE_CHECK_INTERVAL` (1 hour) and archives any `CLOSED` PTW whose last `RunCycle.stop_ia_timestamp` is `_AUTO_ARCHIVE_AFTER_DAYS` (7 days) or older. Both paths call the same `PtwsDb.archivePTWs()` (`UPDATE ptws SET is_archived = TRUE`) and broadcast the same `ptw_archived` SSE event with `"by"` set to the acting user (manual) or `"system"` (automatic). `running_status` keeps showing the real last state (`CLOSED`) forever, even once archived — `is_archived` is checked independently wherever code needs to know that (e.g. `PtwsDb.getAllPTWs()`/`getArchivedPTWs()` filter on it, not on `running_status`).
 
 **`RunCycle` — full audit trail for the running cycle** (`PTW.RunCycle`, `client`/`server` `models/PTW.py`, kept in sync): `PTW.run_cycles` is an ordered list of `RunCycle` records, one per pass through the state machine above — a fresh `RunCycle` is appended every time a PA sends a run request (including resuming from `HELD`), and its `stop_*` fields are filled in later, in place, as that same cycle progresses. Each `RunCycle` has:
 
@@ -431,13 +431,13 @@ Each PTW has its own attachment directory on the server: `ptw-{id}-attachments/`
 
 ## MIWI Documents
 
-Maintenance and Work Instructions (MIWI) are PDF documents describing the steps for a specific job, stored per-department on the server: `server/miwi/<department>/` (e.g. `server/miwi/Turbo/`). MIWIs are not copied for every PTW, instead a PTW is linked to the MIWI to minimize used space.
+Maintenance and Work Instructions (MIWI) are PDF documents describing the steps for a specific job, stored per-department on the server under `paths.DATA_DIR/miwi/<department>/` (e.g. `miwi/Turbo/`; see `server/paths.py`). MIWIs are not copied for every PTW, instead a PTW is linked to the MIWI to minimize used space.
 
 **Uploads** always land in the uploading user's own department folder — `POST /miwi` takes the department from the client-supplied field (the uploader's own department), whitelisted against the `UserDepartments` enum, and creates the folder on demand.
 
-**Reading is unrestricted by role** — any authenticated user can list (`GET /miwis`) or download (`GET /miwi`) a MIWI from any department, including the legacy flat files, since a PTW may need review by people outside its own department. `department` only narrows/prefers results when supplied (`server/app.py` — `_resolveMiwiPath`); it's never enforced against the caller's own department for these read endpoints. Only **uploading** (`POST /miwi`) is confined to the uploader's own department, per above.
+**Reading is unrestricted by role** — any authenticated user can list (`GET /miwis`) or download (`GET /miwi`) a MIWI from any department, including the legacy flat files, since a PTW may need review by people outside its own department. `department` only narrows/prefers results when supplied (`server/paths.py` — `resolveMiwiPath`); it's never enforced against the caller's own department for these read endpoints. Only **uploading** (`POST /miwi`) is confined to the uploader's own department, per above.
 
-A handful of legacy files still sit directly under `server/miwi/` (uploaded before the per-department layout existed) and are only reachable by approver-type roles until sorted into department folders manually.
+A handful of legacy files still sit directly under `DATA_DIR/miwi/` (uploaded before the per-department layout existed) and are only reachable by approver-type roles until sorted into department folders manually.
 
 ---
 
@@ -813,4 +813,4 @@ Each role-specific window's `__init__` calls `MainWindow.setAvailableTabs(sideba
 
 See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for the full backlog of open bugs and security items with fix guidance.
 
-- **File storage is local filesystem** — attachments and MIWI documents are stored on the server's local disk. Regular backups of `server/miwi/` (per-department subfolders) and `server/ptw-*-attachments/` are recommended.
+- **File storage is local filesystem** — attachments and MIWI documents are stored on the server's local disk, under `paths.DATA_DIR` (an OS-appropriate per-machine directory outside the repo by default, overridable via `PTW_DATA_DIR` — see `server/paths.py`), not beside the code. Regular backups of `DATA_DIR/miwi/` (per-department subfolders) and `DATA_DIR/ptw-*-attachments/` are recommended — `server/dev-scripts/backup.sh`/`.ps1` already do this.

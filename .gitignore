@@ -18,9 +18,13 @@ client/nuitka*
 /PTW.py
 /User.py
 
-# Operational data — user uploads and company PDFs
+# Operational data — as of the DATA_DIR migration (see server/paths.py) this lives outside
+# the repo by default; these rules are a safety net for the pre-migration layout and for
+# PTW_DATA_DIR ever being pointed back under server/.
 server/miwi/
 server/ptw-*-attachments/
+server/ic-*-attachments/
+server/backups/
 test_data
 
 # Server logs

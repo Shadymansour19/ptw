@@ -18,6 +18,9 @@ param(
 $ErrorActionPreference = "Stop"
 
 $ServerDir = Split-Path -Parent $PSScriptRoot
+Push-Location $ServerDir
+try { $DataDir = (python -c "from paths import DATA_DIR; print(DATA_DIR)") }
+finally { Pop-Location }
 $RetentionDays = 14
 $Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $Dest = Join-Path $BackupRoot $Timestamp
@@ -41,14 +44,18 @@ $env:PGPASSWORD = $DbPassword
 & pg_dump.exe -h $DbHost -U $DbUser -d $DbName -Fc -f (Join-Path $Dest "$DbName.dump")
 if ($LASTEXITCODE -ne 0) { Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue; throw "pg_dump failed" }
 
+# .env lives beside the code (ServerDir); MIWI docs + grouped PTW/IC attachment folders
+# (ptws/, ics/) live under DataDir (server/paths.py) - tar.exe (bsdtar) accepts multiple -C
+# switches to pull members from different real directories into one archive, and adding a
+# directory pulls in its contents recursively.
 Write-Host "[$Timestamp] Archiving file storage..."
-Push-Location $ServerDir
+Push-Location $DataDir
 try {
-    $targets = @(".env")
-    if (Test-Path "miwi") { $targets += "miwi" }
-    $targets += (Get-ChildItem -Directory -Filter "ptw-*-attachments" -ErrorAction SilentlyContinue).Name
-    $targets += (Get-ChildItem -Directory -Filter "ic-*-attachments" -ErrorAction SilentlyContinue).Name
-    & tar.exe -czf (Join-Path $Dest "files.tar.gz") @targets
+    $dataTargets = @()
+    if (Test-Path "miwi") { $dataTargets += "miwi" }
+    if (Test-Path "ptws") { $dataTargets += "ptws" }
+    if (Test-Path "ics") { $dataTargets += "ics" }
+    & tar.exe -czf (Join-Path $Dest "files.tar.gz") -C $ServerDir ".env" -C $DataDir @dataTargets
     if ($LASTEXITCODE -ne 0) { throw "tar failed" }
 }
 finally {

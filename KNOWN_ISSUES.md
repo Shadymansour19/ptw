@@ -7,7 +7,7 @@ Issues are grouped by severity. Fixed items are noted at the bottom for traceabi
 ## High
 
 ### H2 — No HTTPS — Basic Auth credentials sent unencrypted
-**File:** `server/app.py:1141`
+**File:** `server/app.py` — `app.run()`
 
 The server binds to plain HTTP on port 5000. Every request sends the username and password base64-encoded (not encrypted) in the `Authorization` header. Anyone on the local network path can capture credentials with a packet sniffer.
 
@@ -16,7 +16,7 @@ The server binds to plain HTTP on port 5000. Every request sends the username an
 --- 
 
 ### H3 — No rate limiting on login or password-reset code
-**File:** `server/app.py` — `/login` (line ~197), `/reset-password` (line ~307)
+**File:** `server/routes/auth.py` — `/login`, `/reset-password`
 
 `/login` has no lockout or delay — unlimited brute-force attempts allowed. `/reset-password` accepts unlimited guesses against a 6-digit code (1,000,000 combinations). The global `_request_lock` slows sequential attempts but is not a security control and has no per-IP/per-user memory.
 
@@ -27,7 +27,7 @@ The server binds to plain HTTP on port 5000. Every request sends the username an
 ## Medium
 
 ### M1 — Username enumeration via password-reset endpoint
-**File:** `server/app.py:228`
+**File:** `server/routes/auth.py` — `requestResetPassword`
 
 `POST /reset-password-request` returns `"Can't find a mail associated to username {username}"` when the username does not exist (or has no email). An unauthenticated caller can probe for valid usernames by watching which error is returned.
 
@@ -48,19 +48,19 @@ PyQt6's default behavior when a Python exception escapes a slot invoked from the
 ### ~~M13 — No timeout on any client HTTP request~~ ✓
 **File:** `client/network/clientRequests.py`
 
-Every `requests.get/post/put/patch/delete` call in the file was unbounded — a hung or unresponsive server left that specific request waiting indefinitely, with no way to recover short of restarting the client. Fixed by adding `ClientRequests.TIMEOUT` (15s, generic) and `ClientRequests.FILE_TIMEOUT` (60s, for the five upload/download endpoints: PTW attachments upload/download/copy, MIWI upload/download) and passing one or the other to every call.
+Every `requests.get/post/put/patch/delete` call in the file was unbounded — a hung or unresponsive server left that specific request waiting indefinitely, with no way to recover short of restarting the client. Fixed by adding `TIMEOUT` (15s, generic) and `FILE_TIMEOUT` (60s, for the five upload/download endpoints: PTW attachments upload/download/copy, MIWI upload/download) — now in `client/network/requestConfig.py` — and passing one or the other to every call.
 
 ---
 
 ### ~~M12 — Department-scoped required approvers can't see the PTW they're required to approve~~ ✓
-**Files:** `server/app.py` (`getAllPTWs`, `getArchivedPTWs`)
+**Files:** `server/routes/ptws.py` (`getAllPTWs`, `getArchivedPTWs`)
 
 `requiredApprovers()` can require a `USER`-role approver from a specific department to sign off (e.g. `EX`-type permits require one `USER` approver from each of Turbo, Mech, Instrumentation, Telecom, Project, Civil, and Cathodic Protection, in parallel). But PTW *visibility* for `USER`/`GUEST` roles was scoped to the logged-in user's own department with no exception for "PTW where I'm a named required approver," so a required approver from another department could never even fetch the PTW — it would stay stuck `UNDER_REVIEW` forever. Fixed by having `GET /ptws` filter the server's in-memory `globalData.allPTWs` cache (rather than re-querying the DB) through a new `_ptwVisibleToDepartment()` check: a PTW is visible to a department if it belongs to that department *or* that department currently has a pending required-approver slot on it (via `PTW.pendingApprovers()`). This also closed a related gap while touching the same code: the `department` filter on `GET /ptws` and `GET /ptws/archive` was previously whatever the client sent in the request body, with no server-side check against the caller's real department for `USER`/`GUEST` — both routes now force `department = user.getDepartment()` for those roles instead of trusting the client value. (`ISOLATOR` was deliberately left unrestricted, matching `MainWindow.refreshPtwUserGUI`'s existing behavior of always requesting all departments for that role.)
 
 ---
 
 ### ~~M11 — PTW-specific risk assessments were visible/selectable across all other PTWs~~ ✓
-**Files:** `server/db/risksDb.py`, `server/app.py`, `client/dialogs/DialogPTW.py`, `client/MainWindow.py`, `client/reports/ReportGenerator.py`
+**Files:** `server/db/risksDb.py`, `server/routes/risks.py`, `client/dialogs/DialogPTW.py`, `client/MainWindow.py`, `client/reports/ReportGenerator.py`
 
 Risk assessment rows only had a `title` column, and the convention was that a numeric `title` meant "specific to the PTW with that number." Nothing in the schema or the `GET /risks` handler enforced or filtered on that convention — every client received every PTW's specific risk rows on every fetch, and the PTW create/edit dialog then displayed *all* of them (not just its own) in the selectable risk list, letting a user accidentally attach another PTW's specific risk data to their own submission. Fixed by adding a real `ptw_id INTEGER` column (indexed as `idx_risks_ptw_id`): `GET /risks` now only ever returns generic rows (`ptw_id IS NULL`); a new `GET /risks/ptw` fetches one PTW's own row set on demand, department-scoped like MIWI access; and the `POST`/`PUT`/`DELETE /risks` authorization checks use `ptw_id is not None` instead of guessing from `title.isdigit()`. This was then superseded by the Preview-based materialized-table redesign — see [PROJECT.md § Risk Assessments](PROJECT.md#risk-assessments).
 
@@ -68,7 +68,7 @@ Risk assessment rows only had a `title` column, and the convention was that a nu
 
 ### ~~M9 — `POST /ptws` never validated incoming PTW data~~ ✓
 
-**File:** `server/app.py` — `addPTWRequest`
+**File:** `server/routes/ptws.py` — `addPTWRequest`
 
 The server persisted whatever `tools`/`hazards`/`controls`/`attachs` a client sent, with no check against the type-specific required/restricted rules or required attachments defined in `PTW`. A buggy or malicious client (or a stale build) could submit a PTW violating those rules and the server would store it as-is. Fixed by constructing a `PTW` from the payload and calling `validate()` before persisting; a failing submission is rejected with `400` and the reason, and nothing is written to the database. The server only validates — it does not call `updateRequirements()` or otherwise rewrite the submitted selections.
 
@@ -106,7 +106,7 @@ Rewrote to execute DELETE and all INSERTs on a single shared connection with one
 ---
 
 ### ~~M7 — Multi-file attachment upload returns mid-loop on path-traversal, leaving orphaned files on disk~~ ✓
-**File:** `server/app.py` — `addPtwAttachments`
+**File:** `server/routes/ptws.py` — `addPtwAttachments`
 
 Restructured into a two-pass approach: all filenames are validated first (empty name, path traversal, duplicate), and files are only written to disk if the entire validation pass is clean. The hard `return` on path traversal was replaced with an `errors.append` + `continue`, eliminating both the orphaned-file and silent-drop issues.
 
@@ -141,28 +141,28 @@ Seed password is now generated with `secrets.token_urlsafe(12)` on first boot   
 ---
 
 ### ~~L1 — Redundant path-traversal check in `getPtwAttachment`~~ ✓
-**File:** `server/app.py` — `getPtwAttachment`
+**File:** `server/routes/ptws.py` — `getPtwAttachment`
 
 Removed the duplicate `filepath` reconstruction and second path-traversal check that immediately followed the first one.
 
 ---
 
 ### ~~L2 — Global `_request_lock` is a DoS amplifier~~ ✓
-**File:** `server/app.py`
+**File:** `server/core.py`
 
 Resolved as a direct consequence of the M3 fix. `_request_lock` and its `before_request`/`teardown_request` hooks were removed entirely. Requests now run concurrently; the `ThreadedConnectionPool` handles DB concurrency and `globalData.lock` (an `RLock`) serialises only the brief in-memory cache mutations.
 
 ---
 
 ### ~~M3 — psycopg2 connection shared across threads~~ ✓
-**Files:** `server/db/commonDb.py`, `server/db/usersDb.py`, `server/db/ptwDb.py`, `server/db/risksDb.py`, `server/IsolationDb.py`, `server/GlobalData.py`, `server/app.py`
+**Files:** `server/db/commonDb.py`, `server/db/usersDb.py`, `server/db/ptwDb.py`, `server/db/risksDb.py`, `server/IsolationDb.py`, `server/GlobalData.py`, `server/core.py`, `server/routes/*.py`
 
 Replaced the single shared `self.conn` in every `*Db` class with a `ThreadedConnectionPool` in `CommonDB`. Each method now borrows a connection via `CommonDB.get_conn()` and returns it automatically. The global `_request_lock` was removed entirely; `GlobalData` now owns an `RLock` that protects only its in-memory cache mutations. The `_periodic_refresh` daemon and all route handlers that mutate `globalData` acquire this fine-grained lock for the minimum critical section only.
 
 ---
 
 ### ~~M2 — Missing role checks on PTW state-change operations~~ ✓
-**File:** `server/app.py`
+**File:** `server/routes/ptws.py`
 
 - `/ptws/run`, `/ptws/hold`, `/ptws/close` — now require `ISSUING` role; returns 403 for any other role.
 - `DELETE /ptws` — state guard added: active PTWs must have `approval_status == REJECTED`; PTWs not in the active cache (i.e. already archived) are also allowed through.
@@ -171,7 +171,7 @@ Replaced the single shared `self.conn` in every `*Db` class with a `ThreadedConn
 ---
 
 ### ~~L3 — `resetCodes` dict is never proactively pruned~~ ✓
-**File:** `server/app.py`
+**File:** `server/routes/auth.py`
 
 Added `_RESET_CODE_TTL` and `_RESET_CODE_PRUNE_INTERVAL` constants. A daemon thread now prunes expired entries every `_RESET_CODE_PRUNE_INTERVAL` seconds. The inline `15 * 60` in `resetPassword` was replaced with `_RESET_CODE_TTL`.
 

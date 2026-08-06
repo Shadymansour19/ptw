@@ -26,6 +26,7 @@ from tables.TableBackups import TableBackups
 from dialogs.DialogSettings import DialogSettings
 from widgets.RefreshOverlay import RefreshOverlay
 from network.clientRequests import ClientRequests
+from network.requestConfig import SERVER_URL
 from GlobalData import globalData
 from reports.ReportGenerator import ReportGenerator
 from network.SSEListener import SSEListener
@@ -477,7 +478,7 @@ class MainWindow(QMainWindow):
         self._trayIcon.activated.connect(self._onTrayActivated)
         self._trayIcon.show()
 
-        self._sseListener = SSEListener(ClientRequests.SERVER_URL, loggedUser.getUsername(), loggedUser.getPassword())
+        self._sseListener = SSEListener(SERVER_URL, loggedUser.getUsername(), loggedUser.getPassword())
         self._sseListener.eventReceived.connect(self._onSSEEvent)
         self._sseListener.start()
 

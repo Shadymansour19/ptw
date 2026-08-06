@@ -9,6 +9,7 @@
 set -euo pipefail
 
 SERVER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DATA_DIR="$(cd "$SERVER_DIR" && python3 -c "from paths import DATA_DIR; print(DATA_DIR)")"
 BACKUP_ROOT="${1:-/home/shady/ptw-backups}"
 RETENTION_DAYS=14
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
@@ -25,14 +26,17 @@ mkdir -p "$DEST"
 echo "[$TIMESTAMP] Dumping database $DB_NAME..."
 PGPASSWORD="$DB_PASSWORD" pg_dump -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -Fc -f "$DEST/${DB_NAME}.dump"
 
+# .env lives beside the code (SERVER_DIR); MIWI docs + grouped PTW/IC attachment folders
+# (ptws/, ics/) live under DATA_DIR (server/paths.py) - GNU tar accepts multiple -C switches
+# to pull members from different real directories into one archive, and adding a directory
+# pulls in its contents recursively.
 echo "[$TIMESTAMP] Archiving file storage..."
-cd "$SERVER_DIR"
-FILE_TARGETS=(.env)
-[ -d miwi ] && FILE_TARGETS+=(miwi)
-for d in ptw-*-attachments ic-*-attachments; do
-    [ -d "$d" ] && FILE_TARGETS+=("$d")
-done
-tar -czf "$DEST/files.tar.gz" "${FILE_TARGETS[@]}"
+cd "$DATA_DIR"
+DATA_TARGETS=()
+[ -d miwi ] && DATA_TARGETS+=(miwi)
+[ -d ptws ] && DATA_TARGETS+=(ptws)
+[ -d ics ] && DATA_TARGETS+=(ics)
+tar -czf "$DEST/files.tar.gz" -C "$SERVER_DIR" .env -C "$DATA_DIR" "${DATA_TARGETS[@]}"
 
 echo "[$TIMESTAMP] Backup complete: $DEST"
 du -sh "$DEST"

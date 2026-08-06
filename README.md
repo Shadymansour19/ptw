@@ -207,7 +207,15 @@ ptw/
 │   │   ├── Isolation.py         #   Declarative Isolation + IC
 │   │   └── User.py              #   User model
 │   ├── network/                 # HTTP + realtime plumbing
-│   │   ├── clientRequests.py    #   HTTP API wrapper
+│   │   ├── clientRequests.py    #   ClientRequests — composes the *Requests mixins below
+│   │   ├── requestConfig.py     #   SERVER_URL, TIMEOUT, FILE_TIMEOUT
+│   │   ├── authRequests.py      #   AuthRequests mixin — login, password reset
+│   │   ├── userRequests.py      #   UserRequests mixin — user CRUD, theme, active status
+│   │   ├── ptwRequests.py       #   PTWRequests mixin — PTW CRUD, attachments, run/hold/close
+│   │   ├── icRequests.py        #   ICRequests mixin — IC CRUD, attachments, isolate/deisolate, link
+│   │   ├── riskRequests.py      #   RiskRequests mixin — risk assessment CRUD
+│   │   ├── documentRequests.py  #   DocumentRequests mixin — MIWI documents
+│   │   ├── adminRequests.py     #   AdminRequests mixin — logs, backups
 │   │   ├── RequestWorker.py     #   @async_request decorator — runs requests off the GUI thread
 │   │   └── SSEListener.py       #   Real-time event listener (QThread)
 │   ├── dialogs/                 # Modal dialogs
@@ -236,22 +244,37 @@ ptw/
 │   └── fonts/                   # Bundled fonts
 │
 └── server/                      # Flask REST API
-    ├── app.py                   # All route handlers + SSE broadcast
+    ├── app.py                   # Thin entrypoint — registers blueprints, app.run()
+    ├── core.py                  # Flask/Mail app, DB singletons, globalData init, syncPtwCache
+    ├── paths.py                 # BASE_DIR (code) vs DATA_DIR (miwi/logs/backups/attachments), resolveMiwiPath
+    ├── loggingSetup.py          # Logging handlers/format
+    ├── sse.py                   # SSE client registry + broadcast()
+    ├── backupService.py         # DB dump + file archive backup helpers
+    ├── routes/                  # One Blueprint per resource
+    │   ├── auth.py               #   /login, /reset-password*, /events (SSE) + getVerifiedUser
+    │   ├── users.py               #   /user(s), /users/theme, /users/active
+    │   ├── ptws.py                #   /ptws* — CRUD, approvals, run/hold/close, attachments
+    │   ├── ics.py                 #   /ics* — CRUD, approvals, isolate/deisolate, link/unlink, attachments
+    │   ├── risks.py               #   /risks*
+    │   ├── documents.py           #   /miwi(s)
+    │   └── admin.py               #   /logs, /backups
     ├── GlobalData.py            # Server-side in-memory cache
     ├── utils.py                 # Shared helpers (objToDict, dictToObj)
     ├── models/
     │   ├── PTW.py                #   Core data models & enums
     │   ├── Isolation.py          #   Server-side model (declarative Isolation + IC)
     │   └── User.py               #   User model (UserRoles enum, SecuredUser, User classes)
-    ├── db/
-    │   ├── commonDb.py           #   Shared DB base class (ThreadedConnectionPool, generic CRUD)
-    │   ├── ptwDb.py               #   PTW database operations
-    │   ├── usersDb.py             #   User database operations
-    │   ├── ICDb.py                #   IC database operations (table `ics`)
-    │   └── risksDb.py             #   Risk assessment DB operations
-    ├── miwi/                    # MIWI PDFs, one subfolder per department (e.g. miwi/Turbo/)
-    └── logs/                    # Rotating server log files (gitignored)
+    └── db/
+        ├── commonDb.py           #   Shared DB base class (ThreadedConnectionPool, generic CRUD)
+        ├── ptwDb.py               #   PTW database operations
+        ├── usersDb.py             #   User database operations
+        ├── ICDb.py                #   IC database operations (table `ics`)
+        └── risksDb.py             #   Risk assessment DB operations
 ```
+
+Generated content (MIWI PDFs, logs, on-demand DB backups, PTW/IC attachment folders) is **not**
+under `server/` — it lives in `paths.DATA_DIR`, an OS-appropriate per-machine directory outside
+the repo by default (override with the `PTW_DATA_DIR` env var). See `server/paths.py`.
 
 ---
 
