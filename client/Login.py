@@ -194,7 +194,7 @@ class LoginWindow(QMainWindow):
         self.btnRememberMe = QCheckBox('Remember me')
         self.btnForgotPassword = QPushButton('Forgot Password?')
         
-        # self.btnRememberMe.setChecked(True)
+        self.btnRememberMe.setChecked(True)
         self.boxUsername.setPlaceholderText("Enter username")
         self.boxPassword.setPlaceholderText("Enter password")
         self.btnForgotPassword.setStyleSheet('''

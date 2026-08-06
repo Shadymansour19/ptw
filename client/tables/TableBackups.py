@@ -101,6 +101,7 @@ class TableBackups(QWidget):
             if err:
                 self._statusLabel.setText(err)
                 self._statusLabel.setStyleSheet(f"color: {_CRIT_COLOR}; font-weight: bold;")
+                QMessageBox.warning(self, "Backups", f"Failed to refresh backups: {err}")
                 return
             self._populate(summary)
 

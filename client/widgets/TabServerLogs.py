@@ -2,7 +2,7 @@ import re
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QColor, QTextCharFormat, QTextCursor
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                              QPushButton, QScrollArea, QFrame, QTextEdit)
+                              QPushButton, QScrollArea, QFrame, QTextEdit, QMessageBox)
 import qtawesome as qta
 
 from network.clientRequests import ClientRequests
@@ -124,6 +124,7 @@ class TabServerLogs(QWidget):
             self.window()._refreshOverlay.hideBusy()
             if err:
                 self._statusLabel.setText(err)
+                QMessageBox.warning(self, "Server Logs", f"Failed to refresh logs: {err}")
                 return
             if not filenames:
                 self._statusLabel.setText("No log files found.")

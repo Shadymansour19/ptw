@@ -64,8 +64,12 @@ class RefreshOverlay(QWidget):
         self.setStyleSheet("background-color: rgba(0, 0, 0, 115);")
         self.setCursor(Qt.CursorShape.WaitCursor)
         self._count = 0
+        self._pendingHide = False
 
         self._logo = _BouncingLogo(self)
+        # Fires once per completed bounce loop (~2.5s) - lets a refresh that finishes
+        # mid-bounce play out to the end of that loop instead of cutting it off.
+        self._logo._anim.currentLoopChanged.connect(self._onCycleBoundary)
 
         text = QLabel("Refreshing...", self)
         text.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -88,6 +92,7 @@ class RefreshOverlay(QWidget):
 
     def showBusy(self):
         self._count += 1
+        self._pendingHide = False  # a fresh refresh cancels any hide the last one queued up
         self.setGeometry(self.parent().rect())
         self.show()
         self.raise_()
@@ -98,7 +103,18 @@ class RefreshOverlay(QWidget):
 
     def hideBusy(self):
         self._count = max(0, self._count - 1)
-        if self._count == 0:
+        if self._count != 0 or not self.isVisible():
+            return
+        # Don't yank the animation off mid-bounce: queue the hide and let
+        # _onCycleBoundary() apply it at the next loop edge, so a refresh that
+        # finishes inside one cycle still plays that cycle out to completion -
+        # the overlay's total visible time is always a whole multiple of the
+        # ~2.5s bounce cycle instead of an abrupt, flickery cutoff.
+        self._pendingHide = True
+
+    def _onCycleBoundary(self, _loop=None):
+        if self._pendingHide and self._count == 0:
+            self._pendingHide = False
             self.hide()
 
     def showEvent(self, event):

@@ -2170,6 +2170,11 @@ class AdminMainWindow(MainWindow):
 
     def refreshGUI(self, refreshArchivedPTWs: bool = False):
         def on_done(err, _):
+            self._refreshOverlay.hideBusy()
+            if err:
+                QMessageBox.warning(self, "Error", f"Failed to refresh data: {err}")
+                return
+
             self.tabAllUsers.clear()
             for user in globalData.allUsers.values():
                 self.tabAllUsers.addUserToGUI(user)
@@ -2178,7 +2183,6 @@ class AdminMainWindow(MainWindow):
 
             QApplication.beep()
             self.statusBar().showMessage("GUI refreshed successfully.", 2000)
-            self._refreshOverlay.hideBusy()
 
         self._refreshOverlay.showBusy()
         globalData.refresh(self.loggedUser, None, refreshUsers=True, callback=on_done)
