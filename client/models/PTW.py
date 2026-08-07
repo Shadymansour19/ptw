@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import enum
 from PyQt6.QtGui import QFont, QColor
 from typing import Iterable
@@ -1432,7 +1432,33 @@ class PTW:
         CLOSED = 'Closed'
         WAITING_HLD_CONFIRM = 'Waiting Hold Confirm'
         HELD = 'Held'
-    
+
+    # A shift is 12 hours, starting either 07:00 or 19:00 — a run cycle is only ever valid
+    # for the one shift it started in (see RunCycle.runShiftEnd()), and a fully-approved PTW
+    # is only valid for VALIDITY_SHIFTS shifts counted from the next shift after its approval
+    # (see validityExpiry()) — neither limit closes/stops anything by itself, they only drive
+    # the client-side alarm that nags a department to act (see MainWindow._checkPtwAlarms).
+    TIMESTAMP_FORMAT = "%d/%m/%Y %H:%M:%S"
+    SHIFT_START_HOURS = (7, 19)
+    SHIFT_DURATION_HOURS = 12
+    VALIDITY_SHIFTS = 14
+
+    @staticmethod
+    def shiftStart(dt: datetime) -> datetime:
+        """Start (07:00 or 19:00) of the 12-hour shift containing dt."""
+        morning = dt.replace(hour=PTW.SHIFT_START_HOURS[0], minute=0, second=0, microsecond=0)
+        evening = dt.replace(hour=PTW.SHIFT_START_HOURS[1], minute=0, second=0, microsecond=0)
+        if dt >= evening:
+            return evening
+        if dt >= morning:
+            return morning
+        return evening - timedelta(days=1)  # still in the night shift that started yesterday evening
+
+    @staticmethod
+    def shiftEnd(dt: datetime) -> datetime:
+        """End of the 12-hour shift containing dt — equivalently, the start of the next shift."""
+        return PTW.shiftStart(dt) + timedelta(hours=PTW.SHIFT_DURATION_HOURS)
+
     class Approval:
         def __init__(self, action = None, username: str = None, timestamp: str = None, comment: str = None):
             self.action = action
@@ -1557,6 +1583,15 @@ class PTW:
         def isOpen(self) -> bool:
             """Still awaiting further action: the run wasn't rejected, and any stop request hasn't been approved."""
             return self.run_ia_action != PTW.RunCycle.Actions.REJECTED and self.stop_ia_action != PTW.RunCycle.Actions.APPROVED
+
+        def runShiftEnd(self) -> datetime:
+            """End of the single 12-hour shift this run cycle is valid for — based on when the
+            IA actually approved the run (run_ia_timestamp), not a full 12 hours from then, so
+            a run accepted at 8 AM is only valid until 7 PM, not 8 PM. None if this cycle was
+            never accepted to run at all."""
+            if self.run_ia_action != PTW.RunCycle.Actions.APPROVED or not self.run_ia_timestamp:
+                return None
+            return PTW.shiftEnd(datetime.strptime(self.run_ia_timestamp, PTW.TIMESTAMP_FORMAT))
 
 
     __backgroundColors = {
@@ -1984,15 +2019,20 @@ class PTW:
         for cycle in self.run_cycles:
             if cycle.run_ia_action == PTW.RunCycle.Actions.REJECTED:
                 continue
-            # A stop request is only ever recorded once a cycle is running, so its
-            # presence is authoritative on its own — checked ahead of run_ia_action so a
-            # cycle whose run_ia_action didn't survive the old flat-columns migration (see
+            # A stop request is usually only recorded once a cycle is running, so its presence
+            # is normally authoritative on its own — checked ahead of run_ia_action so a cycle
+            # whose run_ia_action didn't survive the old flat-columns migration (see
             # migrate_ptw_run_cycles.py; a hold/close accept used to blank performing/issuing)
-            # still resolves correctly from its stop_* fields.
+            # still resolves correctly from its stop_* fields. The one exception: a PTW closed
+            # without ever having been run at all (PtwsDb.requestToClsPTW appends a cycle with
+            # stop_pa_request=CLOSE and no run_ia_action set) — wasRunning below tells a
+            # rejected close on *that* cycle apart from a rejected close on a cycle that really
+            # was running, since they must revert to different states.
             if cycle.stop_pa_request == PTW.RunCycle.StopTypes.CLOSE:
+                wasRunning = cycle.run_ia_action == PTW.RunCycle.Actions.APPROVED
                 status = (
                     PTW.RunningStatus.CLOSED if cycle.stop_ia_action == PTW.RunCycle.Actions.APPROVED else
-                    PTW.RunningStatus.RUNNING if cycle.stop_ia_action == PTW.RunCycle.Actions.REJECTED else
+                    (PTW.RunningStatus.RUNNING if wasRunning else PTW.RunningStatus.NOT_RUNNING) if cycle.stop_ia_action == PTW.RunCycle.Actions.REJECTED else
                     PTW.RunningStatus.WAITING_CLS_CONFIRM
                 )
             elif cycle.stop_pa_request == PTW.RunCycle.StopTypes.HOLD:
@@ -2036,3 +2076,62 @@ class PTW:
         """The PTW-side half of IC.canLinkPTW(ptw): this PTW must be approved, and not
         yet running/held/closed (or requested to be)."""
         return self.approval_status == PTW.ApprovalStatus.APPROVED and self.running_status == PTW.RunningStatus.NOT_RUNNING
+
+    def isRunCycleShiftExpired(self, now: datetime = None) -> bool:
+        """True once the current run cycle's shift has ended while still RUNNING. Nothing
+        reacts to this by itself — it's only read by whoever alarms the department that the
+        PTW needs a hold/close decision (see MainWindow._checkPtwAlarms)."""
+        if self.running_status != PTW.RunningStatus.RUNNING:
+            return False
+        cycle = self.currentRunCycle()
+        end = cycle.runShiftEnd() if cycle else None
+        return end is not None and (now or datetime.now()) >= end
+
+    def fullApprovalTimestamp(self) -> datetime:
+        """When the approval chain actually completed — the timestamp of the approval action
+        that brought approval_status to APPROVED — or None if it isn't (yet) fully approved."""
+        if self.approval_status != PTW.ApprovalStatus.APPROVED or not self.approvals:
+            return None
+        return datetime.strptime(self.approvals[-1].timestamp, PTW.TIMESTAMP_FORMAT)
+
+    def validityExpiry(self) -> datetime:
+        """The PTW may no longer be run once this passes: VALIDITY_SHIFTS shifts (14), counted
+        from the start of the *next* shift after it was fully approved — not from the approval
+        moment itself. None if it isn't (yet) fully approved."""
+        approvedAt = self.fullApprovalTimestamp()
+        if approvedAt is None:
+            return None
+        nextShiftStart = PTW.shiftEnd(approvedAt)
+        return nextShiftStart + timedelta(hours=PTW.SHIFT_DURATION_HOURS * PTW.VALIDITY_SHIFTS)
+
+    def isValidityExpired(self, now: datetime = None) -> bool:
+        """True once the PTW's whole 14-shift validity window has passed. Once true it can no
+        longer be run (enforced in POST /ptws/run-request and the accept branch of POST
+        /ptws/run) — but if it's already running/held it is never closed automatically; see
+        needsCloseAlarm()."""
+        expiry = self.validityExpiry()
+        return expiry is not None and (now or datetime.now()) >= expiry
+
+    def needsCloseAlarm(self, now: datetime = None) -> bool:
+        """Past its 14-shift validity and still open (not CLOSED) — a human has to close it
+        manually, this only flags that they should be alarmed to do so (see
+        MainWindow._checkPtwAlarms, which alarms this independently of isRunCycleShiftExpired
+        above — a PTW can be flagged by either, both, or neither)."""
+        return (
+            self.approval_status == PTW.ApprovalStatus.APPROVED
+            and self.running_status != PTW.RunningStatus.CLOSED
+            and self.isValidityExpired(now)
+        )
+
+    def runningStatusDisplay(self) -> str:
+        """Status text for reports/UI: RUNNING is expanded to 'Running <shift-start> -
+        <shift-end>' (from = the run approval time-of-day, until = that shift's end) per the
+        report-generation spec; every other status prints the plain status/approval string,
+        same as before this method existed."""
+        if self.running_status != PTW.RunningStatus.RUNNING:
+            return str(self.running_status if self.approval_status == PTW.ApprovalStatus.APPROVED and self.running_status is not None else self.approval_status)
+        cycle = self.currentRunCycle()
+        if cycle is None or not cycle.run_ia_timestamp:
+            return str(self.running_status)
+        started = datetime.strptime(cycle.run_ia_timestamp, PTW.TIMESTAMP_FORMAT)
+        return f"Running {started.strftime('%H:%M')} - {PTW.shiftEnd(started).strftime('%H:%M')}"

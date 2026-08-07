@@ -281,6 +281,10 @@ def requestToRunPTW():
         log.warning("POST /ptws/run-request: PTW #%s not found in active PTWs", ptwId)
         return jsonify({"success": False, "error": f"PTW# {ptwId} not found"}), 400
 
+    if ptw.isValidityExpired():
+        log.warning("POST /ptws/run-request: forbidden — PTW #%s exceeded its 14-shift validity period", ptwId)
+        return jsonify({"success": False, "error": f"Cannot request run: PTW #{ptwId} exceeded its 14-shift validity period"}), 403
+
     with globalData.lock:
         unisolatedICs = [
             icId for icId in ptw.linked_ics
@@ -327,6 +331,9 @@ def runPTW():
 
     try:
         if ok:
+            if ptw.isValidityExpired():
+                log.warning("POST /ptws/run: forbidden — PTW #%s exceeded its 14-shift validity period", ptwId)
+                return jsonify({"success": False, "error": f"Cannot run: PTW #{ptwId} exceeded its 14-shift validity period"}), 403
             with globalData.lock:
                 unisolatedICs = [
                     icId for icId in ptw.linked_ics
@@ -440,6 +447,19 @@ def requestToClsPTW():
     if ptwId is None or pa is None or ts is None:
         log.warning("POST /ptws/close-request: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
+
+    ptw = globalData.allPTWs.get(ptwId)
+    if ptw is None:
+        log.warning("POST /ptws/close-request: PTW #%s not found in active PTWs", ptwId)
+        return jsonify({"success": False, "error": f"PTW# {ptwId} not found"}), 400
+    if ptw.approval_status != PTW.ApprovalStatus.APPROVED:
+        # Defensive: PtwsDb.requestToClsPTW now appends a stop-only cycle when there's no open
+        # cycle to patch (see there) — that path must stay reachable only for an approved PTW
+        # that simply never ran, never for one still under review/returned (those have their
+        # own delete/edit-resubmit flows, not "close").
+        log.warning("POST /ptws/close-request: forbidden — PTW #%s approval_status='%s'", ptwId, ptw.approval_status)
+        return jsonify({"success": False, "error": f"Cannot close: PTW #{ptwId} is not approved"}), 403
+
     try:
         result = ptwDB.requestToClsPTW(ptwId, pa, ts, comment)
         syncPtwCache(ptwId)

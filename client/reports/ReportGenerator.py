@@ -53,7 +53,7 @@ class ReportGenerator:
         basicInfo = [
             ['PTW#', str(ptw.id)],
             ['Type', str(ptw.type)],
-            ['Status', str(ptw.running_status if ptw.approval_status == PTW.ApprovalStatus.APPROVED and ptw.running_status is not None else ptw.approval_status)],
+            ['Status', ptw.runningStatusDisplay()],
             ['Department', str(ptw.department)],
             ['Requestor', str(globalData.allUsers[ptw.requestor].getName()) if ptw.requestor in globalData.allUsers else 'None'],
             ['PA', str(globalData.allUsers[ptw.getPerforming()].getName()) if ptw.getPerforming() in globalData.allUsers else 'None'],
@@ -132,7 +132,7 @@ class ReportGenerator:
             ['PTW#', str(ptw.id)], 
             ['Type', str(ptw.type)], 
             ['Print Time', timestamp], 
-            ['Status', str(ptw.running_status if ptw.approval_status == PTW.ApprovalStatus.APPROVED and ptw.running_status is not None else ptw.approval_status)], 
+            ['Status', ptw.runningStatusDisplay()], 
             ['Request Date', str(ptw.request_date)], 
             ['Department', str(ptw.department)], 
             ['Requestor', str(globalData.allUsers[ptw.requestor].getName()) if ptw.requestor in globalData.allUsers else 'None'],
@@ -763,7 +763,7 @@ class ReportGenerator:
         cell_align = Alignment(vertical='center', wrap_text=True)
 
         for row_idx, ptw in enumerate(ptws, start=2):
-            status = str(ptw.running_status if ptw.approval_status == PTW.ApprovalStatus.APPROVED and ptw.running_status is not None else ptw.approval_status)
+            status = ptw.runningStatusDisplay()
             requestor = globalData.allUsers[ptw.requestor].getName() if ptw.requestor in globalData.allUsers else str(ptw.requestor or '')
             performing = ptw.getPerforming()
             pa = globalData.allUsers[performing].getName() if performing in globalData.allUsers else str(performing or '')

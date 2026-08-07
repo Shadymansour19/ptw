@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections import Counter
 import copy
 import re
@@ -15,6 +15,7 @@ from tables.TablePTWs import TablePTWs
 from dialogs.DialogPTW import DialogPTW
 from dialogs.DialogUser import DialogUser
 from dialogs.DialogSelectHeldICs import DialogSelectHeldICs
+from dialogs.DialogPtwAlarms import DialogPtwAlarms
 from tables.TableUsers import TableUsers
 from tables.TableRisks import TableRisks
 from tables.TableICs import TableICs
@@ -42,7 +43,12 @@ SETTINGS_CLOSE_BEHAVIOR_KEY = "app/closeBehavior"
 
 class MainWindow(QMainWindow):
     on_logout = pyqtSignal()
-    
+
+    # See _checkPtwAlarms(): condition is polled this often, but a dismissed popup is only
+    # re-shown after _PTW_ALARM_REPEAT_MINUTES — the two are independent.
+    _PTW_ALARM_CHECK_INTERVAL_MS = 60 * 1000
+    _PTW_ALARM_REPEAT_MINUTES = 5
+
     def __init__(self, loggedUser: User):
         super().__init__()
         self.loggedUser = loggedUser
@@ -484,6 +490,16 @@ class MainWindow(QMainWindow):
         self._sseListener.eventReceived.connect(self._onSSEEvent)
         self._sseListener.start()
 
+        # PA-side reminder: a RUNNING PTW whose shift ended, or any open PTW past its
+        # 14-shift validity, needs a human decision — see _checkPtwAlarms(). Nothing here
+        # ever acts on a PTW automatically, it only nags until someone does.
+        self._ptwAlarmSnoozeUntil = None
+        self._ptwAlarmDialogOpen = False
+        self._ptwAlarmTimer = QTimer(self)
+        self._ptwAlarmTimer.setInterval(self._PTW_ALARM_CHECK_INTERVAL_MS)
+        self._ptwAlarmTimer.timeout.connect(self._checkPtwAlarms)
+        self._ptwAlarmTimer.start()
+
     def _on_request_done_generic(self, err, _):
         if err:
             QMessageBox.warning(self, 'Fail', err)
@@ -861,14 +877,14 @@ class MainWindow(QMainWindow):
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         ClientRequests.runResponsePTW(self.loggedUser, ptw.id, ia, ts, False, comment, callback=self._on_request_done_generic)
 
-    def requestToClsPTW(self, row: int, ptw: PTW):
+    def requestToClsPTW(self, row: int, ptw: PTW, callback=None):
         proceed, comment = self.getOptionalComment('Close PTW', f"Are you sure you want to close PTW#{ptw.id}?")
         if not proceed:
             return
 
         pa = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        ClientRequests.requestToClsPTW(self.loggedUser, ptw.id, pa, ts, comment, callback=self._on_request_done_generic)
+        ClientRequests.requestToClsPTW(self.loggedUser, ptw.id, pa, ts, comment, callback=callback or self._on_request_done_generic)
 
     def clsAcceptPTW(self, row: int, ptw: PTW):
         proceed, comment = self.getOptionalComment(f'Accept PTW#{ptw.id} Close', f"Are you sure you want to accept close request for PTW#{ptw.id}? This is irreversible")
@@ -892,7 +908,7 @@ class MainWindow(QMainWindow):
         icsById = {str(ic.id): ic for ic in globalData.ics.values()}
         return [icsById[icId] for icId in ptw.linked_ics if icId in icsById]
 
-    def requestToHldPTW(self, row: int, ptw: PTW):
+    def requestToHldPTW(self, row: int, ptw: PTW, callback=None):
         heldICs = []
         linkedICs = self._linkedICsFor(ptw)
         if linkedICs:
@@ -906,7 +922,7 @@ class MainWindow(QMainWindow):
             return
         pa = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        ClientRequests.requestToHldPTW(self.loggedUser, ptw.id, pa, ts, comment, heldICs, callback=self._on_request_done_generic)
+        ClientRequests.requestToHldPTW(self.loggedUser, ptw.id, pa, ts, comment, heldICs, callback=callback or self._on_request_done_generic)
 
     def hldAcceptPTW(self, row: int, ptw: PTW, comment: str = None):
         ia = self.loggedUser.getUsername()
@@ -1493,6 +1509,40 @@ class MainWindow(QMainWindow):
             self._applyPTWEvent(objectId, action)
         elif obj == SSEObject.IC:
             self._applyICEvent(objectId, action)
+
+    def _checkPtwAlarms(self):
+        """PA-side reminder, polled every _PTW_ALARM_CHECK_INTERVAL_MS: any RUNNING PTW whose
+        current run cycle's shift has ended, or any open PTW past its 14-shift validity, needs
+        a human to hold/close it — nothing here does that automatically (see PTW.needsCloseAlarm/
+        isRunCycleShiftExpired). Only a USER-role viewer acts on run/hold/close, so only they
+        get nagged, and only for their own department's PTWs. Grouped into one two-section
+        dialog (DialogPtwAlarms); dismissing it just snoozes the *next* popup for
+        _PTW_ALARM_REPEAT_MINUTES — it doesn't clear the underlying condition, so anything
+        still unresolved comes right back."""
+        if self.loggedUser.getRole() != UserRoles.USER or self._ptwAlarmDialogOpen:
+            return
+        now = datetime.now()
+        if self._ptwAlarmSnoozeUntil is not None and now < self._ptwAlarmSnoozeUntil:
+            return
+        myDept = (self.loggedUser.getDepartment() or '').casefold()
+        myPtws = [ptw for ptw in globalData.allPTWs.values() if (ptw.department or '').casefold() == myDept]
+        validityExpired = [ptw for ptw in myPtws if ptw.needsCloseAlarm(now)]
+        shiftExpired = [ptw for ptw in myPtws if ptw.isRunCycleShiftExpired(now)]
+        if validityExpired or shiftExpired:
+            self._showPtwAlarms(validityExpired, shiftExpired)
+
+    def _showPtwAlarms(self, validityExpired: list[PTW], shiftExpired: list[PTW]):
+        total = len(validityExpired) + len(shiftExpired)
+        QApplication.beep()
+        self._trayIcon.showMessage(
+            "PTW Attention Required", f"{total} PTW(s) need your attention.",
+            QSystemTrayIcon.MessageIcon.Warning, 10000
+        )
+
+        self._ptwAlarmDialogOpen = True
+        DialogPtwAlarms(self, validityExpired, shiftExpired).exec()
+        self._ptwAlarmDialogOpen = False
+        self._ptwAlarmSnoozeUntil = datetime.now() + timedelta(minutes=self._PTW_ALARM_REPEAT_MINUTES)
 
     def _allPTWTabs(self) -> list[TablePTWs]:
         return [
