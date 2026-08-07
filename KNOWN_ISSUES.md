@@ -39,7 +39,7 @@ The server binds to plain HTTP on port 5000. Every request sends the username an
 ## Fixed
 
 ### ~~M15 — Leaving the password field blank in Settings could corrupt the session's stored credentials~~ ✓
-**File:** `client/MainWindow.py` — `dlgSettings`
+**File:** `client/windows/MainWindow.py` — `dlgSettings`
 
 `DialogSettings.collectData()` sets a blank password field to Python `None` (`self.loggedUser.setPassword(new_pass or None)` — intentional, so a no-op password field isn't resubmitted), but `dlgSettings`'s `on_update_done` callback then promoted that edited copy straight into the live session object (`self.loggedUser = user`) unconditionally. Every authenticated request builds `auth=(loggedUser.getUsername(), loggedUser.getPassword())`, and a `None` password isn't rejected client-side — `requests` silently base64-encodes the literal string `"None"` as the password. That fails `bcrypt.checkpw` server-side, so every subsequent authenticated call (not just the triggering one) returned `401 Unauthorized` until the user logged out and back in — the only place a real password is re-supplied. Fixed by restoring the current password onto the edited copy before promoting it whenever the field was left blank: `if not user.getPassword(): user.setPassword(self.loggedUser.getPassword())`.
 
@@ -67,7 +67,7 @@ Every `requests.get/post/put/patch/delete` call in the file was unbounded — a 
 ---
 
 ### ~~M11 — PTW-specific risk assessments were visible/selectable across all other PTWs~~ ✓
-**Files:** `server/db/risksDb.py`, `server/routes/risks.py`, `client/dialogs/DialogPTW.py`, `client/MainWindow.py`, `client/reports/ReportGenerator.py`
+**Files:** `server/db/risksDb.py`, `server/routes/risks.py`, `client/dialogs/DialogPTW.py`, `client/windows/MainWindow.py`, `client/reports/ReportGenerator.py`
 
 Risk assessment rows only had a `title` column, and the convention was that a numeric `title` meant "specific to the PTW with that number." Nothing in the schema or the `GET /risks` handler enforced or filtered on that convention — every client received every PTW's specific risk rows on every fetch, and the PTW create/edit dialog then displayed *all* of them (not just its own) in the selectable risk list, letting a user accidentally attach another PTW's specific risk data to their own submission. Fixed by adding a real `ptw_id INTEGER` column (indexed as `idx_risks_ptw_id`): `GET /risks` now only ever returns generic rows (`ptw_id IS NULL`); a new `GET /risks/ptw` fetches one PTW's own row set on demand, department-scoped like MIWI access; and the `POST`/`PUT`/`DELETE /risks` authorization checks use `ptw_id is not None` instead of guessing from `title.isdigit()`. This was then superseded by the Preview-based materialized-table redesign — see [PROJECT.md § Risk Assessments](PROJECT.md#risk-assessments).
 
@@ -141,7 +141,7 @@ Seed password is now generated with `secrets.token_urlsafe(12)` on first boot   
 ---
 
 ### ~~M4 — SSEListener not restarted after password change~~ ✓
-**File:** `client/MainWindow.py` — `dlgSettings`
+**File:** `client/windows/MainWindow.py` — `dlgSettings`
 
 `dlgSettings` now detects a password change, then stops and recreates `_sseListener` with the new credential before resuming.
 

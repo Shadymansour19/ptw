@@ -7,7 +7,15 @@ from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtCore import QLocale, Qt
 from PyQt6.QtGui import QIcon
 from Login import LoginWindow
-from MainWindow import MainWindow, GuestMainWindow, AdminMainWindow, UserMainWindow, CoordinatorMainWindow, IssuingMainWindow, SafetyMainWindow, ManagerMainWindow, IsolatorMainWindow
+from windows.MainWindow import MainWindow
+from windows.GuestMainWindow import GuestMainWindow
+from windows.UserMainWindow import UserMainWindow
+from windows.CoordinatorMainWindow import CoordinatorMainWindow
+from windows.IssuingMainWindow import IssuingMainWindow
+from windows.SafetyMainWindow import SafetyMainWindow
+from windows.ManagerMainWindow import ManagerMainWindow
+from windows.AdminMainWindow import AdminMainWindow
+from windows.IsolatorMainWindow import IsolatorMainWindow
 from models.User import UserRoles
 from helper.utils import resource_path
 from qdarktheme import load_palette, load_stylesheet

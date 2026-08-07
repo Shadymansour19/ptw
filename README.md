@@ -200,7 +200,10 @@ ptw/
 ├── client/                      # PyQt6 desktop application
 │   ├── main.py                  # Entry point
 │   ├── Login.py                 # Login & password reset
-│   ├── MainWindow.py            # Role-based window router
+│   ├── windows/                 # Main window classes — one file per role, all subclass MainWindow
+│   │   ├── MainWindow.py        #   Base class: chrome, PTW/IC action handlers, SSE sync, home dashboard
+│   │   ├── UserMainWindow.py    #   Requestor (PA) role window
+│   │   └── ...                  #   GuestMainWindow, CoordinatorMainWindow, IssuingMainWindow, SafetyMainWindow, ManagerMainWindow, AdminMainWindow, IsolatorMainWindow
 │   ├── GlobalData.py            # Client-side data cache
 │   ├── models/                  # Data model classes
 │   │   ├── PTW.py               #   Client-side data models

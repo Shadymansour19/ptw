@@ -750,7 +750,7 @@ ptw_id         INTEGER                -- NULL = generic library entry; set = tha
 
 ## Client Architecture
 
-The desktop client is structured around role-based main windows. After login, `MainWindow.py` routes the user to the appropriate role-specific window (e.g., `IssuingMainWindow`, `SafetyMainWindow`, `AdminMainWindow`, etc...).
+The desktop client is structured around role-based main windows. After login, `main.py` routes the user to the appropriate role-specific window class (`client/windows/`, e.g., `IssuingMainWindow`, `SafetyMainWindow`, `AdminMainWindow`, etc...), each subclassing the base `MainWindow` (`windows/MainWindow.py`).
 
 ### Global Data Cache
 
@@ -770,7 +770,7 @@ The desktop client is structured around role-based main windows. After login, `M
 |-----------------------------|------------------------------------------------------------------|
 | `main.py`                   | Entry point; launches QApplication                               |
 | `Login.py`                  | Login screen; handles password reset flow                        |
-| `MainWindow.py`             | Post-login router; loads role-specific window                    |
+| `windows/MainWindow.py`     | Base main-window class — chrome, PTW/IC action handlers, SSE sync; role-specific subclasses live alongside it in `windows/` |
 | `network/clientRequests.py`         | HTTP wrapper; all server calls return `(err, data)`              |
 | `network/RequestWorker.py`          | `@async_request` decorator — moves any request off the GUI thread via `QThread`; marshals result back via queued signal |
 | `widgets/RefreshOverlay.py`         | `RefreshOverlay` — dims a window/dialog and blocks input while a refresh is in flight; refcounted `showBusy()`/`hideBusy()`, auto-tracks its parent's size via an event filter, plays an animated bouncing-logo sprite (baked offline by `dev-scripts/generate_refresh_overlay_frames.py` into `assets/sh-logo-bounce-frames.png`) |
@@ -816,9 +816,9 @@ The remembered choice isn't a one-way trap: `DialogSettings` has an **"On close:
 
 `logout()` sets a `_forceClose` flag before calling `self.close()` so it bypasses the close-behavior check entirely and does a real close (also stopping the SSE listener and hiding the tray icon, mirroring `_quitApp`). `main.py` sets `app.setQuitOnLastWindowClosed(False)` so hiding a window never implicitly quits the app; `Login.py`'s `LoginWindow` gets its own explicit `closeEvent` (`QApplication.instance().quit()`) since it has no tray/notification concept pre-login and would otherwise leave a windowless zombie process if closed.
 
-### Role-Specific Windows (all inside `MainWindow.py`)
+### Role-Specific Windows (`client/windows/`)
 
-All role-specific views are implemented as classes within `MainWindow.py`. After login, the file routes to the appropriate class based on the user's role:
+All role-specific views are implemented as classes in `client/windows/` — one file per class, each subclassing the base `MainWindow` (`windows/MainWindow.py`). After login, `main.py` routes to the appropriate class based on the user's role:
 
 - `AdminMainWindow` — full access
 - `GuestMainWindow` — unauthenticated visitor; creates/views PTWs
