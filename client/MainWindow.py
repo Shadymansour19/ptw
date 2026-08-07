@@ -83,7 +83,6 @@ class MainWindow(QMainWindow):
         self.optionExportPTW = TablePTWs.MenuOption('Export', self.exportPTWs, qta.icon('fa6s.file-excel'), allAtOnce=True)
         self.optionPrintPTW = TablePTWs.MenuOption('Print', self.printPTW, qta.icon('fa6s.print'))
         self.viewHeldICsOption = TablePTWs.MenuOption('View Held ICs', self.viewHeldICs, qta.icon('fa6s.unlock-keyhole'))
-        self.viewApprovalsOption = TablePTWs.MenuOption('View Approvals', self.viewApprovals, qta.icon('fa6s.check-double'))
         self.optionViewRequestorPTW = TablePTWs.MenuOption('View Requestor', self.viewRequestorPTW, qta.icon('fa6s.user'))
         self.optionViewPerformingPTW = TablePTWs.MenuOption('View PA', self.viewPerformingPTW, qta.icon('mdi6.account-hard-hat'))
         self.viewIssuingOption = TablePTWs.MenuOption('View IA', self.viewIssuing, qta.icon('fa6s.user-tie'))
@@ -136,6 +135,7 @@ class MainWindow(QMainWindow):
         self.tabRegisteredPTWs = TablePTWs(self.stack, self.loggedUser, "Template PTWs")
         self.tabRequestedPTWs = TablePTWs(self.stack, self.loggedUser, "Requested PTWs")
         self.tabUnderReviewPTWs = TablePTWs(self.stack, self.loggedUser, "Under Review PTWs")
+        self.tabMeetingPTWs = TablePTWs(self.stack, self.loggedUser, "PTW in Meeting")
         self.tabReturnedPTWs = TablePTWs(self.stack, self.loggedUser, "Returned PTWs")
         self.tabApprovedPTWs = TablePTWs(self.stack, self.loggedUser, "Approved PTWs")
         self.tabWaitingRunConfirmationPTWs = TablePTWs(self.stack, self.loggedUser, "Waiting Run Confirmation PTWs")
@@ -195,6 +195,7 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.tabRegisteredPTWs)
         self.stack.addWidget(self.tabRequestedPTWs)
         self.stack.addWidget(self.tabUnderReviewPTWs)
+        self.stack.addWidget(self.tabMeetingPTWs)
         self.stack.addWidget(self.tabReturnedPTWs)
         self.stack.addWidget(self.tabApprovedPTWs)
         self.stack.addWidget(self.tabWaitingRunConfirmationPTWs)
@@ -241,6 +242,7 @@ class MainWindow(QMainWindow):
         self.btnWelcome = QPushButton(qta.icon('fa5s.home'), "")
         self.btnRequestedPTWs = QPushButton(qta.icon('fa6s.paper-plane'), "")
         self.btnUnderReviewPTWs = QPushButton(qta.icon('fa6s.magnifying-glass-chart'), "")
+        self.btnMeetingPTWs = QPushButton(qta.icon('fa6s.people-group'), "")
         self.btnReturnedPTWs = QPushButton(qta.icon('fa5s.undo'), "")
         self.btnApprovedPTWs = QPushButton(qta.icon('fa6s.check'), "")
         self.btnWaitingRunConfirmationPTWs = QPushButton(qta.icon('fa6.clock'), "")
@@ -274,6 +276,7 @@ class MainWindow(QMainWindow):
         self.btnWelcome.setToolTip("Home [Ctrl+H]")
         self.btnRequestedPTWs.setToolTip("Requested PTWs")
         self.btnUnderReviewPTWs.setToolTip("Under Review PTWs")
+        self.btnMeetingPTWs.setToolTip("PTW in Meeting")
         self.btnReturnedPTWs.setToolTip("Returned PTWs")
         self.btnApprovedPTWs.setToolTip("Approved PTWs")
         self.btnWaitingRunConfirmationPTWs.setToolTip("Waiting Run Confirmation PTWs")
@@ -307,6 +310,7 @@ class MainWindow(QMainWindow):
             self.btnWelcome:                    self.tabWelcome,
             self.btnRequestedPTWs:              self.tabRequestedPTWs,
             self.btnUnderReviewPTWs:            self.tabUnderReviewPTWs,
+            self.btnMeetingPTWs:                self.tabMeetingPTWs,
             self.btnReturnedPTWs:               self.tabReturnedPTWs,
             self.btnApprovedPTWs:               self.tabApprovedPTWs,
             self.btnWaitingRunConfirmationPTWs: self.tabWaitingRunConfirmationPTWs,
@@ -1118,84 +1122,6 @@ class MainWindow(QMainWindow):
     def viewIssuing(self, row: int, ptw: PTW):
         self.viewUser(ptw.getIssuing(), 'IA')
     
-    def viewApprovals(self, row: int, ptw: PTW):
-        dlg = QDialog(self)
-        dlg.setWindowTitle(f"PTW# {ptw.id} Approval Cycle")
-        dlg.resize(int(0.7 * self.width()), int(0.75 * self.height()))
-        dlg.setMaximumHeight(int(0.9 * self.screen().availableGeometry().height()))
-
-        lyt = QVBoxLayout()
-        dlg.setLayout(lyt)
-
-        def addSection(title: str, lst: QListWidget):
-            headerLyt = QHBoxLayout()
-            expandBtn = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ArrowUp), '')
-            expandBtn.setStyleSheet('QPushButton { border: none; }')
-
-            def toggle():
-                if lst.isVisible():
-                    lst.hide()
-                    expandBtn.setIcon(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ArrowDown))
-                else:
-                    lst.show()
-                    expandBtn.setIcon(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ArrowUp))
-
-            expandBtn.clicked.connect(toggle)
-            lbl = QLabel(
-                title, 
-                font=QFont("Helvetica", 16, QFont.Weight.Bold), 
-                alignment=Qt.AlignmentFlag.AlignCenter
-            )
-            headerLyt.addStretch()
-            headerLyt.addWidget(lbl)
-            headerLyt.addStretch()
-            headerLyt.addWidget(expandBtn)
-            lyt.addLayout(headerLyt)
-            lyt.addWidget(lst)
-
-        def addEmptyItem(lst: QListWidget, text: str):
-            item = QListWidgetItem()
-            widget = QLabel(text=text, font=QFont("Helvetica", 12))
-            item.setSizeHint(widget.sizeHint())
-            lst.addItem(item)
-            lst.setItemWidget(item, widget)
-
-        approvedLst = QListWidget()
-        if len(ptw.approvals) == 0:
-            addEmptyItem(approvedLst, "There's no approval history at the moment")
-        else:
-            for approval in ptw.approvals:
-                item = QListWidgetItem()
-                approvalWidget = approval.toWidget()
-                sizeHint = approvalWidget.sizeHint()
-                sizeHint = QSize(int(sizeHint.width() * 1.2), int(sizeHint.height() * 1.2))
-                item.setSizeHint(sizeHint)
-                approvedLst.addItem(item)
-                approvedLst.setItemWidget(item, approvalWidget)
-            approvedLst.setStyleSheet("QListWidget::item { border-bottom: 2px solid palette(mid); }")
-        addSection('Approved By', approvedLst)
-
-        pendingLst = QListWidget()
-        pendingApprovers = ptw.pendingApprovers()
-        if len(pendingApprovers) == 0:
-            addEmptyItem(pendingLst, "There are no pending approvers")
-        else:
-            for approver in pendingApprovers:
-                item = QListWidgetItem()
-                widget = QLabel(text=str(approver), font=QFont("Helvetica", 14))
-                item.setSizeHint(widget.sizeHint())
-                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
-                pendingLst.addItem(item)
-                pendingLst.setItemWidget(item, widget)
-            pendingLst.setStyleSheet("QListWidget::item { border-bottom: 2px solid palette(mid); }")
-        addSection('Pending Approvers', pendingLst)
-
-        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
-        btns.accepted.connect(dlg.close)
-        lyt.addWidget(btns)
-
-        dlg.exec()
-
     def chgLanguage(self):
         if self.language == 'en':
             self.language = 'ar'
@@ -1548,6 +1474,7 @@ class MainWindow(QMainWindow):
         return [
             self.tabRequestedPTWs,
             self.tabUnderReviewPTWs,
+            self.tabMeetingPTWs,
             self.tabApprovedPTWs,
             self.tabReturnedPTWs,
             self.tabWaitingRunConfirmationPTWs,
@@ -1582,6 +1509,15 @@ class MainWindow(QMainWindow):
             return self.tabReturnedPTWs
         return self.tabUnderReviewPTWs if mySt == PTW.ApprovalStatus.UNDER_REVIEW else self.tabRequestedPTWs
 
+    def _addPTWToGUI(self, ptw: PTW):
+        """Route ptw into its (single, exclusive) status tab, then additionally drop it into
+        the 'PTW in Meeting' overlay tab if it qualifies (see PTW.isInMeeting) — that tab isn't
+        part of the exclusive routing above, a PTW sits in it *alongside* whichever tab
+        _ptwTargetTab() picked."""
+        self._ptwTargetTab(ptw).addPTWToGUI(ptw)
+        if ptw.isInMeeting():
+            self.tabMeetingPTWs.addPTWToGUI(ptw)
+
     def _removePTWFromTabs(self, ptwId):
         for tab in self._allPTWTabs():
             tab.removePTWById(ptwId)
@@ -1600,7 +1536,7 @@ class MainWindow(QMainWindow):
             self._removePTWFromTabs(ptwId)
             if ptw is not None:
                 globalData.upsertPTW(ptw)
-                self._ptwTargetTab(ptw).addPTWToGUI(ptw)
+                self._addPTWToGUI(ptw)
             else:
                 globalData.removePTW(ptwId)   # no longer visible to us / gone
             self.updateHomeDashboard()
@@ -1687,7 +1623,7 @@ class MainWindow(QMainWindow):
                 tab.clear()
 
             for ptw in globalData.allPTWs.values():
-                self._ptwTargetTab(ptw).addPTWToGUI(ptw)
+                self._addPTWToGUI(ptw)
 
             for tab in tabs:
                 tab.sort()
@@ -1809,9 +1745,9 @@ class GuestMainWindow(MainWindow):
         super().__init__(loggedUser)
         self.setWindowTitle("PTW (Permit To Work) - Guest Window")
 
-        self.tabRequestedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
-        self.tabReturnedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
-        self.tabApprovedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabRequestedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabReturnedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabApprovedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
 
         self.setAvailableTabs(
             [
@@ -1850,17 +1786,18 @@ class UserMainWindow(MainWindow):
         self.setWindowTitle("PTW (Permit To Work) - User Window")
 
         self.tabRegisteredPTWs.addOptions([self.optionViewPTW, self.optionEditPTW, self.optionRequestPTW, self.optionViewRequestorPTW, self.optionDltPTW, self.optionExportPTW])
-        self.tabRequestedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
-        self.tabUnderReviewPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionAcceptPTW, self.optionPrintPTW, self.optionExportPTW])
-        self.tabReturnedPTWs.addOptions([self.optionViewPTW, self.optionEditPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionDltPTW, self.optionPrintPTW, self.optionExportPTW])
-        self.tabApprovedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionRunRequestPTW, self.optionLinkICToPTW, self.optionPrintPTW, self.optionExportPTW])
-        self.tabWaitingRunConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
-        self.tabRunningPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionClsRequestPTW, self.optionHldRequestPTW, self.optionPrintPTW, self.optionExportPTW])
-        self.tabWaitingClsConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
-        self.tabWaitingHldConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.viewHeldICsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
-        self.tabHeldPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.viewHeldICsOption, self.optionRequestPTW, self.optionRunRequestPTW, self.optionPrintPTW, self.optionExportPTW])
-        self.tabClosedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionArchivePTW, self.optionExportPTW])
-        self.tabArchivedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabRequestedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabUnderReviewPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionAcceptPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabMeetingPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabReturnedPTWs.addOptions([self.optionViewPTW, self.optionEditPTW, self.optionViewRequestorPTW, self.optionRequestPTW, self.optionDltPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabApprovedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestPTW, self.optionRunRequestPTW, self.optionLinkICToPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabWaitingRunConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabRunningPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.optionRequestPTW, self.optionClsRequestPTW, self.optionHldRequestPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabWaitingClsConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabWaitingHldConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewHeldICsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabHeldPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewHeldICsOption, self.optionRequestPTW, self.optionRunRequestPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabClosedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestPTW, self.optionPrintPTW, self.optionArchivePTW, self.optionExportPTW])
+        self.tabArchivedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
 
         self.tabRequestedICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionLinkPTWToIC])
         self.tabApprovedICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionRequestIsolateIC, self.optionLinkPTWToIC])
@@ -1875,14 +1812,14 @@ class UserMainWindow(MainWindow):
         self.setAvailableTabs(
             [   # sidebar: curated, most-used tabs for a requestor
                 [self.btnWelcome],
-                [self.btnRequestedPTWs, self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
+                [self.btnRequestedPTWs, self.btnUnderReviewPTWs, self.btnMeetingPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
                 [self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs],
                 [self.btnCertRequested, self.btnCertApproved, self.btnCertIsolateConfirming, self.btnCertPending,
                  self.btnCertActive, self.btnCertDeisolateConfirming, self.btnCertClosing, self.btnCertSanctioned, self.btnCertClosed],
             ],
             {   # topbar: full set
                 '&PTWs': [
-                    self.btnRequestedPTWs, self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs,
+                    self.btnRequestedPTWs, self.btnUnderReviewPTWs, self.btnMeetingPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs,
                     None,
                     self.btnWaitingRunConfirmationPTWs, self.btnRunningPTWs, self.btnWaitingHldConfirmationPTWs,
                     self.btnHeldPTWs, self.btnWaitingClsConfirmationPTWs, self.btnClosedPTWs, 
@@ -1928,15 +1865,16 @@ class CoordinatorMainWindow(MainWindow):
         self.setWindowTitle("PTW (Permit To Work) - Coordinator Window")
 
         self.tabUnderReviewPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestEditsPTW, self.optionAcceptPTW, self.optionPrintPTW, self.optionExportPTW])
-        self.tabReturnedPTWs.addOptions([self.optionViewPTW, self.viewApprovalsOption, self.optionViewRequestorPTW, self.optionPrintPTW, self.optionExportPTW])
-        self.tabApprovedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionLinkICToPTW, self.optionPrintPTW, self.optionExportPTW])
-        self.tabWaitingRunConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionExportPTW])
-        self.tabRunningPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionExportPTW])
-        self.tabWaitingClsConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionExportPTW])
-        self.tabWaitingHldConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.viewHeldICsOption, self.optionPrintPTW, self.optionExportPTW])
-        self.tabHeldPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.viewHeldICsOption, self.optionPrintPTW, self.optionExportPTW])
-        self.tabClosedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionArchivePTW, self.optionExportPTW])
-        self.tabArchivedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabMeetingPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabReturnedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabApprovedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionLinkICToPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabWaitingRunConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabRunningPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabWaitingClsConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabWaitingHldConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewHeldICsOption, self.optionPrintPTW, self.optionExportPTW])
+        self.tabHeldPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewHeldICsOption, self.optionPrintPTW, self.optionExportPTW])
+        self.tabClosedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionPrintPTW, self.optionArchivePTW, self.optionExportPTW])
+        self.tabArchivedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
 
         # View-only across every IC tab Issuing has (same breadth of visibility, less
         # privilege — no Accept/Request Edits/Confirm/Return/Execute actions), plus the
@@ -1963,13 +1901,13 @@ class CoordinatorMainWindow(MainWindow):
         self.setAvailableTabs(
             [
                 [self.btnWelcome],
-                [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
+                [self.btnUnderReviewPTWs, self.btnMeetingPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
                 [self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs, self.btnArchivedPTWs],
                 self._icTabs,
             ],
             {
                 '&PTWs': [
-                    self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs,
+                    self.btnUnderReviewPTWs, self.btnMeetingPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs,
                     None,
                     self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs, self.btnArchivedPTWs,
                 ],
@@ -2007,16 +1945,17 @@ class IssuingMainWindow(MainWindow):
         super().__init__(loggedUser)
         self.setWindowTitle("PTW (Permit To Work) - Issuing Window")
 
-        self.tabUnderReviewPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestEditsPTW, self.optionAcceptPTW, self.optionPrintPTW, self.optionExportPTW])
-        self.tabReturnedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionExportPTW])
-        self.tabApprovedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionLinkICToPTW, self.optionPrintPTW, self.optionExportPTW])
-        self.tabWaitingRunConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.optionRunAcceptPTW, self.optionRunRejectPTW, self.optionPrintPTW, self.optionExportPTW])
-        self.tabRunningPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionExportPTW])
-        self.tabWaitingHldConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.viewHeldICsOption, self.optionHldTakeActionPTW, self.optionPrintPTW, self.optionExportPTW])
-        self.tabHeldPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.viewHeldICsOption, self.optionPrintPTW, self.optionExportPTW])
-        self.tabWaitingClsConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.optionClsAcceptPTW, self.optionClsRejectPTW, self.optionPrintPTW, self.optionExportPTW])
-        self.tabClosedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionArchivePTW, self.optionExportPTW])
-        self.tabArchivedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabUnderReviewPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestEditsPTW, self.optionAcceptPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabMeetingPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestEditsPTW, self.optionAcceptPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabReturnedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabApprovedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionLinkICToPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabWaitingRunConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.optionRunAcceptPTW, self.optionRunRejectPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabRunningPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabWaitingHldConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewHeldICsOption, self.optionHldTakeActionPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabHeldPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewHeldICsOption, self.optionPrintPTW, self.optionExportPTW])
+        self.tabWaitingClsConfirmationPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.optionClsAcceptPTW, self.optionClsRejectPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabClosedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionPrintPTW, self.optionArchivePTW, self.optionExportPTW])
+        self.tabArchivedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
 
         self.tabUnderReviewICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionAcceptIC, self.optionRequestEditsIC, self.optionLinkPTWToIC])
         self.tabApprovedICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionLinkPTWToIC])
@@ -2044,13 +1983,13 @@ class IssuingMainWindow(MainWindow):
         self.setAvailableTabs(
             [   # sidebar: curated, run/hold/close confirmation is Issuing's core job
                 [self.btnWelcome],
-                [self.btnUnderReviewPTWs],
+                [self.btnUnderReviewPTWs, self.btnMeetingPTWs],
                 [self.btnWaitingRunConfirmationPTWs, self.btnRunningPTWs, self.btnWaitingHldConfirmationPTWs, self.btnHeldPTWs, self.btnWaitingClsConfirmationPTWs, self.btnClosedPTWs],
                 self._icTabs,
             ],
             {   # topbar: full set
                 '&PTWs': [
-                    self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs,
+                    self.btnUnderReviewPTWs, self.btnMeetingPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs,
                     None,
                     self.btnWaitingRunConfirmationPTWs, self.btnRunningPTWs, self.btnWaitingHldConfirmationPTWs,
                     self.btnHeldPTWs, self.btnWaitingClsConfirmationPTWs, self.btnClosedPTWs, self.btnArchivedPTWs,
@@ -2085,17 +2024,18 @@ class SafetyMainWindow(MainWindow):
         super().__init__(loggedUser)
         self.setWindowTitle("PTW (Permit To Work) - Safety Window")
 
-        self.tabUnderReviewPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestEditsPTW, self.optionAcceptPTW])
-        self.tabRunningPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.optionPrintPTW])
+        self.tabUnderReviewPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestEditsPTW, self.optionAcceptPTW])
+        self.tabMeetingPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestEditsPTW, self.optionAcceptPTW])
+        self.tabRunningPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.optionPrintPTW])
 
         self.setAvailableTabs(
             [
                 [self.btnWelcome],
-                [self.btnUnderReviewPTWs, self.btnRunningPTWs],
+                [self.btnUnderReviewPTWs, self.btnMeetingPTWs, self.btnRunningPTWs],
                 [self.btnRisks],
             ],
             {
-                '&PTWs': [self.btnUnderReviewPTWs, self.btnRunningPTWs],
+                '&PTWs': [self.btnUnderReviewPTWs, self.btnMeetingPTWs, self.btnRunningPTWs],
                 '&Risks': [self.btnRisks],
                 '&View': [self.btnWelcome, *self._footerButtons()],
             },
@@ -2132,13 +2072,13 @@ class ManagerMainWindow(MainWindow):
         super().__init__(loggedUser)
         self.setWindowTitle(f"PTW (Permit To Work) - {role} Window")
 
-        self.tabUnderReviewPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestEditsPTW, self.optionAcceptPTW, self.optionPrintPTW, self.optionExportPTW])
-        self.tabReturnedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionExportPTW])
-        self.tabApprovedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionExportPTW])
-        self.tabRunningPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionExportPTW])
-        self.tabHeldPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.viewHeldICsOption, self.optionPrintPTW, self.optionExportPTW])
-        self.tabClosedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionPrintPTW, self.optionArchivePTW, self.optionExportPTW])
-        self.tabArchivedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewApprovalsOption, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabUnderReviewPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestEditsPTW, self.optionAcceptPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabReturnedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabApprovedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabRunningPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.optionPrintPTW, self.optionExportPTW])
+        self.tabHeldPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.viewHeldICsOption, self.optionPrintPTW, self.optionExportPTW])
+        self.tabClosedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionPrintPTW, self.optionArchivePTW, self.optionExportPTW])
+        self.tabArchivedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
 
         # Managers are only ever involved in a PSIC's approval
         # chain (after Issuing), so Under Review is the only IC tab they need.

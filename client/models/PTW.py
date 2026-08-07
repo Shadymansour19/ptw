@@ -2072,6 +2072,18 @@ class PTW:
             return PTW.ApprovalStatus.UNDER_REVIEW
         return None
 
+    def isInMeeting(self) -> bool:
+        """True for the 'PTW in Meeting' overlay tab: non-fast-track and currently sitting
+        at the Issuing approver's stage, still waiting on Issuing specifically (regardless
+        of Safety's status in that same stage, and regardless of who is viewing) — i.e.
+        getApprovalStatus() for the fixed Issuing/Prod approver still reads UNDER_REVIEW.
+        This is additive, not a routing target: a PTW meeting this condition still lives in
+        whichever tab _ptwTargetTab() puts it in (Under Review) AND shows up here too."""
+        return (
+            not self.fast_track
+            and self.getApprovalStatus(role=UserRoles.ISSUING, department=UserDepartments.PROD) == PTW.ApprovalStatus.UNDER_REVIEW
+        )
+
     def canLinkIC(self) -> bool:
         """The PTW-side half of IC.canLinkPTW(ptw): this PTW must be approved, and not
         yet running/held/closed (or requested to be)."""
