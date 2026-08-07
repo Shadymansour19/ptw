@@ -55,12 +55,14 @@ class DialogPtwAlarms(QDialog):
         if validityExpired:
             self.btnCloseAll = QPushButton(qta.icon('fa6s.stop'), "Close All")
             self.btnCloseAll.clicked.connect(self._closeAll)
-            validityLyt.addWidget(self.btnCloseAll)
             for ptw in validityExpired:
                 validityLyt.addWidget(self._validityRow(ptw))
         else:
             validityLyt.addWidget(QLabel("None."))
-        contentLyt.addWidget(self._collapsibleSection(f"Exceeded 14-shift validity — needs closing ({len(validityExpired)})", validitySection))
+        contentLyt.addWidget(self._collapsibleSection(
+            f"Exceeded 14-shift validity — needs closing ({len(validityExpired)})", validitySection,
+            headerExtra=self.btnCloseAll,
+        ))
 
         contentLyt.addSpacing(16)
 
@@ -90,9 +92,12 @@ class DialogPtwAlarms(QDialog):
             self.setMinimumWidth(int(mainWindow.width() * 0.6))
         self.setMinimumHeight(500)
 
-    def _collapsibleSection(self, title: str, content: QWidget) -> QWidget:
-        """A header button toggling `content`'s visibility. Starts expanded — this dialog's
-        whole job is surfacing what needs attention, so nothing should start hidden."""
+    def _collapsibleSection(self, title: str, content: QWidget, headerExtra: QWidget = None) -> QWidget:
+        """A header row — toggle button, optionally with a trailing widget (e.g. "Close All")
+        pinned to its right — that shows/hides `content` below it. `headerExtra` stays in the
+        header row itself, so it's reachable even while `content` is collapsed. Starts
+        expanded — this dialog's whole job is surfacing what needs attention, so nothing
+        should start hidden."""
         section = QWidget()
         lyt = QVBoxLayout(section)
         lyt.setContentsMargins(0, 0, 0, 0)
@@ -112,7 +117,13 @@ class DialogPtwAlarms(QDialog):
             btnToggle.setIcon(qta.icon('fa6s.chevron-down' if expanded else 'fa6s.chevron-right'))
         btnToggle.toggled.connect(onToggled)
 
-        lyt.addWidget(btnToggle)
+        headerRow = QHBoxLayout()
+        headerRow.addWidget(btnToggle)
+        headerRow.addStretch(1)
+        if headerExtra:
+            headerRow.addWidget(headerExtra)
+
+        lyt.addLayout(headerRow)
         lyt.addWidget(content)
         return section
 
