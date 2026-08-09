@@ -1,3 +1,11 @@
+"""Generate printable reports for PTWs and ICs.
+
+Builds ReportLab PDF permit/certificate reports (each with an embedded QR-code
+payload and a printed watermark), the Method of Statement and specific risk
+assessment PDF supplements, and an openpyxl Excel export of a PTW list — opening
+each generated file in the system's default viewer once built.
+"""
+
 import html as _html
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import *
@@ -25,8 +33,22 @@ from helper.utils import resource_path
 
 
 class ReportGenerator:
+    """Namespace of report-building routines invoked directly on the class: PDF
+    PTW/IC reports, MOS and risk-assessment PDF supplements, and an Excel PTW
+    export."""
 
     def _qrWithLogoFromRows(basicInfo: list, filePrefix: str):
+        """Build a QR code encoding basicInfo, with the app logo composited over
+        its center in a white circle, and save it to a temporary PNG.
+
+        Args:
+            basicInfo: list of [label, value] pairs, joined into 'label: value'
+                lines to form the QR payload.
+            filePrefix: prefix used for the temp file name.
+
+        Returns:
+            str: path to the generated PNG file.
+        """
         data = '\n'.join([': '.join(row) for row in basicInfo])
         qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_Q, box_size=20, border=2)
         qr.add_data(data)
@@ -50,6 +72,13 @@ class ReportGenerator:
             return qrFile.name
 
     def _makeQrWithLogo(ptw: PTW):
+        """Build the logo QR code encoding a PTW's basic info (id, type, status via
+        `runningStatusDisplay()`, department, requestor, PA, location, equipment,
+        description).
+
+        Returns:
+            str: path to the generated PNG file.
+        """
         basicInfo = [
             ['PTW#', str(ptw.id)],
             ['Type', str(ptw.type)],
@@ -64,6 +93,12 @@ class ReportGenerator:
         return ReportGenerator._qrWithLogoFromRows(basicInfo, str(ptw.id))
 
     def _makeQrWithLogoIC(ic: IC):
+        """Build the logo QR code encoding an IC's basic info (id, type, status,
+        requestor/execution department, requestor, location, equipment, reason).
+
+        Returns:
+            str: path to the generated PNG file.
+        """
         basicInfo = [
             ['IC#', str(ic.id)],
             ['Type', str(ic.type)],
@@ -79,6 +114,28 @@ class ReportGenerator:
 
 
     def ptwReport(loggedUser, ptw: PTW):
+        """Build and open the PTW permit PDF, then open its related documents.
+
+        Lays out a landscape-A4 PDF with the logo QR code (see `_makeQrWithLogo`)
+        printed in the left margin of every page and a diagonal "Printed @
+        <timestamp>" watermark: a Summary table of basic PTW fields (status shown
+        via `ptw.runningStatusDisplay()`), an Additional Info table listing
+        tools/hazards/controls/MIWI/attachments (attachment names are fetched live
+        from the server rather than trusted from `ptw.attachs`), the Method of
+        Statement as a bulleted list when present, and signature tables for the
+        approval chain (`ptw.requiredApprovers()`) and the PA/IA running
+        confirmations. After writing and opening the PDF, it also fetches and opens
+        the PTW's MIWI document, the PTW-specific risk assessment report, and every
+        uploaded attachment.
+
+        Args:
+            loggedUser: user requesting the report, used to authorize the server
+                fetches for risk assessment, attachments, and MIWI.
+            ptw: the PTW being reported on.
+
+        Returns:
+            An error string if the MIWI document couldn't be fetched, else None.
+        """
         QR_CODE_WIDTH = 60*mm
         LOGO_IMG_WIDTH = 40*mm
         TABLE_LABELS_WIDTH = 50*mm
@@ -106,6 +163,8 @@ class ReportGenerator:
         styles['Heading3'].fontName = 'Helvetica-Bold'
 
         def listTo2ColsBullets(data: list, style):
+            """Split data into two roughly equal halves and lay them out as a
+            two-column table of bulleted, HTML-escaped paragraphs."""
             mid = (len(data) + 1) // 2
             col1Data = data[:mid]
             col2Data = data[mid:]
@@ -116,6 +175,8 @@ class ReportGenerator:
             return Table(tableData)
 
         def listToBullets(data: list, style):
+            """Render a list of strings as a bulleted ListFlowable of HTML-escaped
+            paragraphs, or None if data is empty."""
             if not data:
                 return None
             
@@ -148,6 +209,9 @@ class ReportGenerator:
         elements = []
 
         def insertTable(title, tableData: list[list]):
+            """Append a titled two-column label/value table (with a shaded label
+            column and full grid) to `elements`, followed by a page break. No-op
+            if tableData is empty."""
             if not tableData:
                 return
             
@@ -252,7 +316,11 @@ class ReportGenerator:
             return result
 
         def approvalColumns():
+            """Build one signature column per required approver stage/slot, padded
+            to 7 with blanks: (approver label, approver's name if approved, else
+            '', approval timestamp if approved, else '')."""
             def lastApprovalFor(approver):
+                """Return the most recent approval on ptw matching approver, or None."""
                 match = None
                 for approval in ptw.approvals:
                     if approver.matchesUser(globalData.allUsers.get(approval.username)):
@@ -274,6 +342,8 @@ class ReportGenerator:
             return cols
 
         def runConfirmationColumns():
+            """Build the PA/IA signature columns for the currently open run cycle:
+            (role label, signer's name, signature timestamp) for each of PA and IA."""
             performing = ptw.getPerforming()
             issuing = ptw.getIssuing()
             pa = globalData.allUsers[performing].getName() if performing in globalData.allUsers else str(performing or '')
@@ -301,15 +371,23 @@ class ReportGenerator:
         
 
         class NumberedCanvas(canvas.Canvas):
+            """ReportLab canvas that defers page-number drawing until save(), so
+            each page can display "Page X of Y" with the final total page count."""
+
             def __init__(self, *args, **kwargs):
+                """Initialize the underlying canvas and the buffer of saved page states."""
                 canvas.Canvas.__init__(self, *args, **kwargs)
                 self._saved_page_states = []
 
             def showPage(self):
+                """Stash the current page's drawing state instead of finalizing the
+                page immediately, so the page-number footer can be added later."""
                 self._saved_page_states.append(dict(self.__dict__))
                 self._startPage()
 
             def save(self):
+                """Replay each saved page state, draw its "Page X of Y" footer, then
+                finalize all pages and save the document."""
                 num_pages = len(self._saved_page_states)
                 for state in self._saved_page_states:
                     self.__dict__.update(state)
@@ -320,6 +398,9 @@ class ReportGenerator:
                 canvas.Canvas.save(self)
 
         def pageHeaderAndWatermark(canvas: canvas.Canvas, doc):
+            """Draw the two company logos, a diagonal "Printed @ <timestamp>"
+            watermark, and the logo QR code into the page's left margin. Used as
+            the ReportLab onFirstPage/onLaterPages callback."""
             canvas.saveState()
 
             canvas.drawImage(resource_path("assets/rashpetco-logo.png"), 0.7 * MARGIN + (QR_CODE_WIDTH - LOGO_IMG_WIDTH) / 2, (pageHeight - LOGO_IMG_WIDTH) / 2.0 + pageHeight / 3.5, LOGO_IMG_WIDTH, LOGO_IMG_WIDTH, mask='auto')
@@ -408,6 +489,24 @@ class ReportGenerator:
 
 
     def icReport(loggedUser, ic: IC):
+        """Build and open the IC (Isolation Certificate) PDF report.
+
+        Lays out a landscape-A4 PDF with the logo QR code (see `_makeQrWithLogoIC`)
+        and a diagonal "Printed @ <timestamp>" watermark on every page: a Summary
+        table of basic IC fields, an Isolation Items table (tag/description/state/
+        lock number/lock box number), a bulleted list of linked PTW ids, signature
+        tables for the approval chain (`ic.requiredApprovers()`), and signature
+        tables for each of the isolate/sanction-for-test/re-isolate/de-isolate
+        request-confirm-carry-out sequences.
+
+        Args:
+            loggedUser: unused by this report but kept for a consistent call
+                signature with `ptwReport`.
+            ic: the IC being reported on.
+
+        Returns:
+            None.
+        """
         QR_CODE_WIDTH = 60*mm
         LOGO_IMG_WIDTH = 40*mm
         TABLE_LABELS_WIDTH = 50*mm
@@ -438,11 +537,15 @@ class ReportGenerator:
         styles.add(ParagraphStyle('Heading3Center', parent=styles['Heading3'], alignment=TA_CENTER))
 
         def nameFor(username):
+            """Return the display name for username, or '' if username is falsy,
+            or the raw username if it's not a known user."""
             if not username:
                 return ''
             return globalData.allUsers[username].getName() if username in globalData.allUsers else str(username)
 
         def listToBullets(data: list, style):
+            """Render a list of strings as a bulleted ListFlowable of HTML-escaped
+            paragraphs, or None if data is empty."""
             if not data:
                 return None
 
@@ -475,6 +578,9 @@ class ReportGenerator:
         elements = []
 
         def insertTable(title, tableData: list[list]):
+            """Append a titled two-column label/value table (with a shaded label
+            column and full grid) to `elements`, followed by a page break. No-op
+            if tableData is empty."""
             if not tableData:
                 return
 
@@ -502,6 +608,9 @@ class ReportGenerator:
         ])
 
         def insertItemsTable(title, items: list[IC.IsolationItem]):
+            """Append a titled table of isolation items (No./Tag/Description/State/
+            Lock#/Lock Box#) to `elements`, followed by a page break. No-op if
+            items is empty."""
             if not items:
                 return
 
@@ -582,7 +691,11 @@ class ReportGenerator:
             return result
 
         def approvalColumns():
+            """Build one signature column per required approver stage/slot, padded
+            to 5 with blanks: (approver label, approver's name if approved, else
+            '', approval timestamp if approved, else '')."""
             def lastApprovalFor(approver):
+                """Return the most recent approval on ic matching approver, or None."""
                 match = None
                 for approval in ic.approvals:
                     if approver.matchesUser(globalData.allUsers.get(approval.username)):
@@ -659,15 +772,23 @@ class ReportGenerator:
         ])
 
         class NumberedCanvas(canvas.Canvas):
+            """ReportLab canvas that defers page-number drawing until save(), so
+            each page can display "Page X of Y" with the final total page count."""
+
             def __init__(self, *args, **kwargs):
+                """Initialize the underlying canvas and the buffer of saved page states."""
                 canvas.Canvas.__init__(self, *args, **kwargs)
                 self._saved_page_states = []
 
             def showPage(self):
+                """Stash the current page's drawing state instead of finalizing the
+                page immediately, so the page-number footer can be added later."""
                 self._saved_page_states.append(dict(self.__dict__))
                 self._startPage()
 
             def save(self):
+                """Replay each saved page state, draw its "Page X of Y" footer, then
+                finalize all pages and save the document."""
                 num_pages = len(self._saved_page_states)
                 for state in self._saved_page_states:
                     self.__dict__.update(state)
@@ -678,6 +799,9 @@ class ReportGenerator:
                 canvas.Canvas.save(self)
 
         def pageHeaderAndWatermark(canvas: canvas.Canvas, doc):
+            """Draw the two company logos, a diagonal "Printed @ <timestamp>"
+            watermark, and the logo QR code into the page's left margin. Used as
+            the ReportLab onFirstPage/onLaterPages callback."""
             canvas.saveState()
 
             canvas.drawImage(resource_path("assets/rashpetco-logo.png"), 0.7 * MARGIN + (QR_CODE_WIDTH - LOGO_IMG_WIDTH) / 2, (pageHeight - LOGO_IMG_WIDTH) / 2.0 + pageHeight / 3.5, LOGO_IMG_WIDTH, LOGO_IMG_WIDTH, mask='auto')
@@ -703,6 +827,7 @@ class ReportGenerator:
 
 
     def openPDF(filepath: str):
+        """Open the given file in a new browser tab."""
         webbrowser.open_new_tab(filepath)
         return
 
@@ -725,6 +850,15 @@ class ReportGenerator:
 
 
     def exportPTWs(ptws: list[PTW]):
+        """Export a list of PTWs to an Excel workbook and open it.
+
+        Writes one worksheet 'PTWs' with a styled header row (PTW#, Type, Status
+        via `runningStatusDisplay()`, Date, Department, Requestor, PA, Location,
+        Area Class, Equipment, Description) and one data row per PTW, each row
+        filled and colored using `ptw.backgroundColor()`/`ptw.foregroundColor()`.
+        Freezes the header row and enables auto-filter, then saves to a temp
+        .xlsx file and opens it with the OS's default handler.
+        """
         import openpyxl
         from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
@@ -753,6 +887,9 @@ class ReportGenerator:
         ws.row_dimensions[1].height = 28
 
         def qcolor_to_hex(qcolor):
+            """Convert a QColor to an RRGGBB hex string, blending its RGB channels
+            toward white using a fixed alpha of 240 (the QColor's own alpha is
+            ignored)."""
             r, g, b, a = qcolor.red(), qcolor.green(), qcolor.blue(), 240
             if a < 255:
                 r = (r * a + 255 * (255 - a)) // 255
@@ -806,6 +943,13 @@ class ReportGenerator:
 
 
     def MOSReport(mos: str, ptwId: str, ptwTitle: str):
+        """Build and open a standalone Method of Statement PDF for a PTW.
+
+        Lays out a portrait-A4 document whose header (on every page) shows the two
+        company logos flanking a "MOS for PTW# <id>" title and a diagonal "Printed
+        @ <timestamp>" watermark; the body is `mos` split on newlines and rendered
+        as a bulleted list. No-op if `mos` is empty.
+        """
         LOGO_IMG_WIDTH = 30*mm
         MARGIN = 0.8 * inch
 
@@ -835,6 +979,9 @@ class ReportGenerator:
         styles['Heading3'].alignment = TA_CENTER
 
         def pageHeaderAndWatermark(canvas: canvas.Canvas, doc):
+            """Draw the header table (two company logos flanking a "MOS for
+            PTW# <id>" title) and a diagonal "Printed @ <timestamp>" watermark.
+            Used as the ReportLab onFirstPage/onLaterPages callback."""
             canvas.saveState()
 
             logo1 = Image(resource_path("assets/rashpetco-logo.png"), LOGO_IMG_WIDTH, LOGO_IMG_WIDTH)
@@ -862,6 +1009,8 @@ class ReportGenerator:
             canvas.restoreState()
         
         def listToBullets(data: list, style):
+            """Render a list of strings as a bulleted ListFlowable of HTML-escaped
+            paragraphs, or None if data is empty."""
             if not data:
                 return None
             
@@ -889,6 +1038,17 @@ class ReportGenerator:
         
 
     def riskAssessmentReport(riskAssessment: RiskAssessment = None):
+        """Build and open a risk assessment PDF, laid out as a landscape-A4 table.
+
+        The table has one row per risk item with columns No./Hazard/Effect, a
+        grouped "Free Analysis" (Severity/Likelihood/Risk) and "Controlled
+        Analysis" (Severity/Likelihood/Risk) pair computed from each item's
+        `free_analysis`/`ctrl_analysis` strings, Control, and Evaluation; hazard,
+        effect, and control text are rendered as bulleted lines split on newlines.
+        The page header (on every page) shows the two company logos flanking the
+        assessment's title and a diagonal "Printed @ <timestamp>" watermark.
+        No-op if riskAssessment is None or has no risks.
+        """
         LOGO_IMG_WIDTH = 35*mm
         # Cols: No | Hazard | Effect | S | L | Risk(free) | Control | S | L | Risk(ctrl) | Evaluation
         TABLE_WIDTH_WEIGHTS = [7, 30, 33, 4, 4, 9, 52, 5, 5, 10, 20]
@@ -929,10 +1089,15 @@ class ReportGenerator:
         styles.add(ParagraphStyle('BulletItem',    parent=styles['NormalJustify'], leftIndent=_bw, firstLineIndent=-_bw))
 
         def slr(text):
+            """Split a Severity/Likelihood/Risk analysis string into its (severity,
+            likelihood, full text) parts: the first and last characters of text,
+            plus text itself."""
             t = text or ''
             return t[0], t[-1], t
 
         def bulleted(text):
+            """Split text on newlines, dropping blank lines, and render each
+            remaining line as a bulleted paragraph."""
             lines = [l for l in (text or '').split('\n') if l.strip()]
             return [Paragraph('• ' + line, styles['BulletItem']) for line in lines] if lines else []
 
@@ -1016,6 +1181,9 @@ class ReportGenerator:
         elements = [table]
             
         def pageHeaderAndWatermark(canvas: canvas.Canvas, doc):
+            """Draw the header table (two company logos flanking the risk
+            assessment's title) and a diagonal "Printed @ <timestamp>" watermark.
+            Used as the ReportLab onFirstPage/onLaterPages callback."""
             canvas.saveState()
 
             # canvas.drawImage("./rashpetco-logo.png", MARGIN + 2.0 * pageWidth / 3.0, pageHeight - MARGIN - LOGO_IMG_WIDTH, LOGO_IMG_WIDTH, LOGO_IMG_WIDTH, mask='auto')

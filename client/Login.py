@@ -1,3 +1,10 @@
+"""Login screen: username/password authentication, optional remembered-credential storage via
+keyring, the forgot-password/reset flow, and guest login entry.
+
+`LoginWindow` has its own `closeEvent` (quitting the whole app) since there is no system-tray
+or background-notification concept before a user is logged in.
+"""
+
 from PyQt6.QtCore import Qt, pyqtSignal, QSize, QSettings
 from PyQt6.QtWidgets import (QLineEdit, QToolButton, QDialog, QFormLayout, QLabel,
                               QPushButton, QCheckBox, QDialogButtonBox,
@@ -16,7 +23,11 @@ SETTINGS_REMEMBERED_USERS_KEY = "login/rememberedUsernames"
 
 
 class PasswordLineEdit(QLineEdit):
+    """A QLineEdit for entering a password, with a built-in eye-icon button overlaid on
+    its right edge to toggle showing the password in plain text."""
+
     def __init__(self, parent=None):
+        """Build the line edit in password-echo mode with the show/hide toggle button overlaid."""
         super().__init__(parent)
 
         self._visible = False
@@ -45,19 +56,26 @@ class PasswordLineEdit(QLineEdit):
         self._adjust_text_margins()
 
     def _toggle_visibility(self):
+        """Slot for the eye-icon button click: flip between masked and plain-text echo mode
+        and update the icon to match."""
         self._visible = not self._visible
         self.setEchoMode(QLineEdit.EchoMode.Normal if self._visible else QLineEdit.EchoMode.Password)
         self._update_icon()
 
     def _update_icon(self):
+        """Set the toggle button's icon (eye / eye-slash) to match the current visibility state."""
         self._btn.setIcon(self._icons[0] if self._visible else self._icons[1])
         self._btn.setIconSize(QSize(18, 18))
 
     def _adjust_text_margins(self):
+        """Reserve space on the right of the text field so typed text never runs under the
+        overlaid toggle button."""
         btn_w = self._btn.width()
         self.setTextMargins(0, 0, btn_w + 4, 0)
 
     def resizeEvent(self, event):
+        """Qt event handler: keep the toggle button pinned inside the field's right edge
+        whenever the widget is resized."""
         super().resizeEvent(event)
         btn_w = self._btn.width()
         btn_h = self._btn.height()
@@ -68,7 +86,12 @@ class PasswordLineEdit(QLineEdit):
 
 
 class ResetPasswordDialog(QDialog):
+    """Modal dialog for the forgot-password flow: triggers sending a verification code to the
+    user's registered email, then collects that code plus a new password (entered twice)."""
+
     def __init__(self, username: str, parent=None):
+        """Build the dialog for `username`, immediately request a verification code from the
+        server, and keep the code/password fields disabled until the send is confirmed."""
         super().__init__(parent)
         self.setWindowTitle("Reset Password")
 
@@ -119,12 +142,15 @@ class ResetPasswordDialog(QDialog):
         ClientRequests.requestResetPassword(username, callback=on_done)
 
     def _setFormEnabled(self, enabled: bool):
+        """Enable or disable the code/new-password/confirm-password fields and the OK button together."""
         self.boxCode.setEnabled(enabled)
         self.boxNewPassword.setEnabled(enabled)
         self.boxConfirmPassword.setEnabled(enabled)
         self.btns.button(QDialogButtonBox.StandardButton.Ok).setEnabled(enabled)
 
     def resetPassword(self):
+        """Slot for the OK button (`btns.accepted`): validate that a new password was entered
+        and matches its confirmation, then accept the dialog for the caller to submit the reset."""
         self.verificationCode = self.boxCode.text()
         self.newPassword = self.boxNewPassword.text()
         confirmPassword = self.boxConfirmPassword.text()
@@ -141,7 +167,12 @@ class ResetPasswordDialog(QDialog):
 
 
 class GuestDetailsDialog(QDialog):
+    """Modal dialog prompting an unauthenticated guest for a display name and department,
+    used to build an ephemeral GUEST-role session."""
+
     def __init__(self, departments, parent=None):
+        """Build the guest-details form: a free-text name field and a department combo box
+        populated from `departments`."""
         super().__init__(parent)
         self.setWindowTitle("Continue as Guest")
 
@@ -164,22 +195,33 @@ class GuestDetailsDialog(QDialog):
         lyt.addRow(btns)
 
     def _onAccept(self):
+        """Slot for the OK button (`btns.accepted`): reject with a warning if no name was
+        entered, otherwise accept the dialog."""
         if not self.boxName.text().strip():
             QMessageBox.warning(self, "Error", "Please enter your name.")
             return
         self.accept()
 
     def getName(self) -> str:
+        """Return the entered guest name, stripped of surrounding whitespace."""
         return self.boxName.text().strip()
 
     def getDepartment(self):
+        """Return the selected/entered department text."""
         return self.boxDepartment.currentText()
 
 
 class LoginWindow(QMainWindow):
+    """Main login window: username/password authentication (with optional remembered
+    credentials via keyring), the forgot-password flow, and guest login; emits
+    `on_login_success` once a user is authenticated (real or guest)."""
+
     on_login_success = pyqtSignal(object)
     
     def __init__(self, parent=None):
+        """Build the login window's UI (username/password fields, remember-me checkbox,
+        forgot-password link, Login/Guest/Cancel buttons) and load any remembered usernames
+        into the username combo."""
         super().__init__(parent)
         self.setWindowTitle("PTW Login")
         
@@ -248,13 +290,17 @@ class LoginWindow(QMainWindow):
         self._refreshOverlay = RefreshOverlay(self)
 
     def showHidePassword(self):
+        """Set the password field's echo mode to plain-text or masked based on `btnShowPassword`'s checked state."""
         self.boxPassword.setEchoMode(QLineEdit.EchoMode.Normal if self.btnShowPassword.isChecked() else QLineEdit.EchoMode.Password)
 
     def _rememberedUsernames(self) -> list[str]:
+        """Return the list of previously remembered usernames stored in QSettings."""
         value = QSettings("PTW", "PTW").value(SETTINGS_REMEMBERED_USERS_KEY, [], type=list)
         return [str(v) for v in value] if value else []
 
     def storeLoginCredentials(self, username: str, password: str):
+        """Save `username`/`password` in the OS keyring and move `username` to the front
+        of the remembered-usernames list in QSettings."""
         try:
             keyring.set_password(SERVICE_NAME, username, password)
         except KeyringError as e:
@@ -267,12 +313,15 @@ class LoginWindow(QMainWindow):
         QSettings("PTW", "PTW").setValue(SETTINGS_REMEMBERED_USERS_KEY, usernames)
 
     def retrieveLoginCredentials(self, username: str) -> str:
+        """Look up and return `username`'s stored password from the OS keyring (None if absent)."""
         try:
             return keyring.get_password(SERVICE_NAME, username)
         except KeyringError as e:
             raise e
 
     def forgetLoginCredentials(self, username: str):
+        """Remove `username` from the remembered-usernames list and delete its stored
+        password from the OS keyring."""
         usernames = self._rememberedUsernames()
         if username in usernames:
             usernames.remove(username)
@@ -283,6 +332,8 @@ class LoginWindow(QMainWindow):
             pass
 
     def _populateRememberedUsers(self):
+        """Refill the username combo from the remembered-usernames list and pre-fill the
+        password field for the most recently used username."""
         usernames = self._rememberedUsernames()
         self.boxUsername.setItems(usernames)
         self.boxPassword.clear()
@@ -290,6 +341,8 @@ class LoginWindow(QMainWindow):
             self._fillPasswordFor(usernames[0])
 
     def _fillPasswordFor(self, username: str):
+        """Look up `username`'s stored password via the keyring and set it in the password
+        field (blank if unavailable)."""
         try:
             password = self.retrieveLoginCredentials(username)
         except KeyringError:
@@ -297,12 +350,16 @@ class LoginWindow(QMainWindow):
         self.boxPassword.setText(password or '')
 
     def _onUsernameSelected(self, username: str):
+        """Slot for the username combo's `itemSelected` signal: fill in the stored password
+        if `username` is remembered, otherwise clear the password field."""
         if username in self._rememberedUsernames():
             self._fillPasswordFor(username)
         else:
             self.boxPassword.clear()
 
     def forgotPassword(self):
+        """Slot for the Forgot Password button: open `ResetPasswordDialog` for the entered
+        username and, once its fields are accepted, submit the reset request to the server."""
         from network.clientRequests import ClientRequests
 
         username = self.boxUsername.currentText()
@@ -325,14 +382,21 @@ class LoginWindow(QMainWindow):
         ClientRequests.resetPassword(username, dlg.newPassword, dlg.verificationCode, callback=on_done)
     
     def reset(self):
+        """Reset the window to its just-opened state: repopulate remembered usernames and
+        focus the username field. Called when returning to this window after a logout."""
         self._populateRememberedUsers()
         self.boxUsername.setFocus()
 
     def closeEvent(self, event):
+        """Qt event handler for the window's close button: accept the close and quit the
+        whole application, since there is no tray/background concept before login."""
         event.accept()
         QApplication.instance().quit()
 
     def login(self):
+        """Slot for the Login button (and Enter in either field): submit the entered
+        credentials to the server, and on success optionally remember them, apply the
+        user's saved theme, and emit `on_login_success`."""
         from network.clientRequests import ClientRequests
 
         username = self.boxUsername.currentText()
@@ -362,6 +426,9 @@ class LoginWindow(QMainWindow):
         ClientRequests.login(username, password, callback=on_done)
 
     def loginAsGuest(self):
+        """Slot for the Login as Guest button: prompt for a name and department via
+        `GuestDetailsDialog`, then emit `on_login_success` with an ephemeral GUEST-role
+        `User` built from that input."""
         from models.User import User, UserRoles, UserDepartments
 
         dlg = GuestDetailsDialog(list(UserDepartments), self)

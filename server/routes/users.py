@@ -1,3 +1,7 @@
+"""User CRUD routes, plus /usernames and /users/active: user account
+management (creation, update, activation, deletion) and lookups, layered on
+top of getVerifiedUser for auth."""
+
 import os
 import threading
 from flask import Blueprint, request, jsonify
@@ -14,6 +18,10 @@ usersBp = Blueprint("users", __name__)
 
 @usersBp.route("/user", methods=["GET"])
 def getSecuredUser():
+    """GET /user: any authenticated user (including guests). Body:
+    {"username"} names the account to look up. Returns the SecuredUser
+    (password hash excluded) for the requested username, or 401 if
+    unauthenticated, 400 on lookup failure."""
     user = getVerifiedUser(request.authorization)
     data = request.get_json(silent=True) or {}
     requestedUsername = data.get('username')
@@ -31,6 +39,9 @@ def getSecuredUser():
 
 @usersBp.route("/users", methods=["GET"])
 def getAllUsers():
+    """GET /users: any authenticated user (including guests). Returns every
+    user as SecuredUser dicts keyed by username, or 401 if unauthenticated,
+    400 on failure."""
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("GET /users unauthorized (ip=%s)", request.remote_addr)
@@ -46,6 +57,8 @@ def getAllUsers():
 
 @usersBp.route("/usernames", methods=["GET"])
 def getAllUsernames():
+    """GET /usernames: any authenticated user (including guests). Returns the
+    plain list of all usernames, or 401 if unauthenticated, 400 on failure."""
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("GET /usernames unauthorized (ip=%s)", request.remote_addr)
@@ -60,6 +73,9 @@ def getAllUsernames():
 
 
 def _sendInvitationEmail(username, password, name, userEmail):
+    """Build and send the HTML new-account invitation email (username +
+    initial password) to userEmail via Flask-Mail. Called on a background
+    daemon thread by newUserRequest, so failures here are only logged."""
     msg = Message(
         subject='PTW Invitation',
         sender=os.environ.get('MAIL_USERNAME'),
@@ -142,6 +158,14 @@ def _sendInvitationEmail(username, password, name, userEmail):
 
 @usersBp.route("/users", methods=["POST"])
 def newUserRequest():
+    """POST /users: admin only. Body: new user fields as a dict (including
+    'password', the auto-generated initial password shown read-only in the
+    admin's Add User dialog). Creates the user, patches it into
+    globalData.allUsers, and — if an email is given — fires the invitation
+    email on a background daemon thread (not awaited; a send failure is only
+    logged). Returns 401 if not admin, 400 on exception; otherwise 200 with
+    "error" set to the DB layer's error string (None on success) even though
+    "success" is always true in that path."""
     user = getVerifiedUser(request.authorization)
     if user is None or user.getRole() != UserRoles.ADMIN:
         log.warning("POST /users unauthorized: requester='%s' (ip=%s)", user.getUsername() if user else "unauthenticated", request.remote_addr)
@@ -179,6 +203,13 @@ def newUserRequest():
 
 @usersBp.route("/users", methods=["PUT"])
 def updateUserRequest():
+    """PUT /users: admin, or the user updating their own account; GUEST is
+    explicitly denied. Body: {"username": <target>, ...fields to update}.
+    On success, patches globalData.allUsers with the refreshed SecuredUser and
+    returns {"success": True, "user": None} (the DB layer returns None, not
+    the updated record, on success; an exception it caught internally
+    otherwise). Returns 401 if unauthenticated, a guest, or a non-admin
+    targeting someone else; 400 on an uncaught exception."""
     authUser = getVerifiedUser(request.authorization)
     if authUser is None:
         log.warning("PUT /users unauthorized (ip=%s)", request.remote_addr)
@@ -210,6 +241,10 @@ def updateUserRequest():
 
 @usersBp.route("/users/theme", methods=["PATCH"])
 def updateUserTheme():
+    """PATCH /users/theme: authenticated non-guest user, updating only their
+    own theme. Body: {"username", "theme"}. Returns 401 if unauthenticated, a
+    guest, or username doesn't match the authenticated user; 400 on
+    exception; else 200."""
     authUser = getVerifiedUser(request.authorization)
     if authUser is None:
         log.warning("PATCH /users/theme unauthorized (ip=%s)", request.remote_addr)
@@ -234,6 +269,11 @@ def updateUserTheme():
 
 @usersBp.route("/users/active", methods=["PATCH"])
 def setUserActiveRequest():
+    """PATCH /users/active: admin only. Body: {"username", "is_active"}.
+    Refuses to let an admin deactivate their own account. Patches
+    globalData.allUsers with the refreshed SecuredUser on success. Returns 401
+    if not admin, 400 for missing fields, self-deactivation, or an exception,
+    else 200."""
     authUser = getVerifiedUser(request.authorization)
     if authUser is None or authUser.getRole() != UserRoles.ADMIN:
         log.warning("PATCH /users/active unauthorized: requester='%s' (ip=%s)", authUser.getUsername() if authUser else "unauthenticated", request.remote_addr)
@@ -259,6 +299,9 @@ def setUserActiveRequest():
 
 @usersBp.route("/users", methods=["DELETE"])
 def deleteUserRequest():
+    """DELETE /users: admin only. Body: {"username"}. Deletes the user and
+    removes them from globalData.allUsers. Returns 401 if not admin, 400 on
+    exception, else 200 with "user": None."""
     user = getVerifiedUser(request.authorization)
     if user is None or user.getRole() != UserRoles.ADMIN:
         log.warning("DELETE /users unauthorized: requester='%s' (ip=%s)", user.getUsername() if user else "unauthenticated", request.remote_addr)

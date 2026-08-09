@@ -1,3 +1,5 @@
+"""Create/edit/view dialog for a user account, used by admins to manage other users."""
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QDialog, QFormLayout, QLineEdit, QComboBox, QLabel, QDialogButtonBox, QMessageBox
 import secrets
@@ -7,7 +9,24 @@ from GlobalData import globalData
 
 
 class DialogUser(QDialog):
+    """Create, edit, or view a user account: username, name, role, department, email, extension.
+
+    For a new user a random password is generated and shown once. Username is
+    only editable while creating; readonly mode disables all fields.
+    """
+
     def __init__(self, parent, readonly: bool, isNew: bool, loggedUser: User, toEditUser: User | SecuredUser, label: str=""):
+        """Build the form, prefilled from `toEditUser`, and wire up live username validation.
+
+        Args:
+            parent: Parent widget.
+            readonly: If True, disable all editable fields (view-only mode).
+            isNew: If True, show a generated password field and allow the username
+                to be edited; otherwise the username field is disabled.
+            loggedUser: The currently logged-in user performing this action.
+            toEditUser: The user being created or edited; mutated in place on accept.
+            label: Window title.
+        """
         super().__init__(parent)
         self.setWindowTitle(label)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowMaximizeButtonHint & ~Qt.WindowType.WindowMinimizeButtonHint)
@@ -74,6 +93,12 @@ class DialogUser(QDialog):
         self.checkUsername()
 
     def checkUsername(self):
+        """Flag the username field red and disable OK if it collides with an existing user.
+
+        Triggered by the username field's textChanged signal, and once directly
+        from __init__ to validate the initial value. A username unchanged from
+        the original (edit mode) is never considered a collision.
+        """
         username = self.txtUsername.text()
         err = username != self.toEditUser.getUsername() and username in globalData.allUsers
         self.btns.button(QDialogButtonBox.StandardButton.Ok).setEnabled(not err)
@@ -83,6 +108,13 @@ class DialogUser(QDialog):
         self.txtUsername.style().polish(self.txtUsername)
 
     def collectData(self):
+        """Copy the form fields onto `toEditUser` and accept, or show an error if invalid.
+
+        Triggered by the OK button. In readonly mode just accepts. Otherwise
+        validates that the username and name are non-empty, the username isn't
+        already taken (new users only), and the generated password meets the
+        minimum length (new users only), before calling accept().
+        """
         if self.readonly:
             self.accept()
             return

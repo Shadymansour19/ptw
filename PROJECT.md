@@ -6,6 +6,10 @@ This is a desktop-based **Permit To Work (PTW)** management system built for ind
 
 The application runs as a **PyQt6 desktop client** communicating with a **Flask REST API server** backed by **PostgreSQL**.
 
+This file is the full domain/architecture/API/DB reference. See [README.md](README.md) for the
+public-facing overview, [file-structure.txt](file-structure.txt) for the current file-by-file
+layout, and [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for the bug/security backlog.
+
 ---
 
 ## Technology Stack
@@ -145,7 +149,7 @@ WAITING_RUN_CONFIRM
     │      (is_archived = true)
     │
     │
-    └──── [PA sends hold request + selects keep_isolations]
+    └──── [PA sends hold request + selects which ICs to keep held]
               │
               │
               ▼
@@ -184,9 +188,9 @@ WAITING_RUN_CONFIRM
 - `run_ia` / `run_ia_action` (`Approved`/`Rejected`) / `run_ia_comment` / `run_ia_timestamp` — the IA's response to the run request.
 - `stop_pa` / `stop_pa_request` (`Hold`/`Close`) / `stop_pa_comment` / `stop_pa_timestamp` — the PA's hold-or-close request, once running.
 - `stop_ia` / `stop_ia_action` (`Approved`/`Rejected`) / `stop_ia_comment` / `stop_ia_timestamp` — the IA's response to that stop request.
-- `keep_isolations` — the isolation tags selected to remain linked for this specific hold (submitted alongside the hold request; empty for a close, or if this cycle hasn't reached a stop request yet).
+- `held_ics` — the linked IC ids selected to remain held for this specific hold (submitted alongside the hold request; empty for a close, or if this cycle hasn't reached a stop request yet). Renamed from `keep_isolations` when PTW↔isolation linkage moved from plain tags to ICs (see [Isolation Management](#isolation-management)) — it now holds IC ids, not raw isolation tags.
 
-A cycle is "open" (`RunCycle.isOpen()`) as long as its run wasn't rejected and its stop hasn't been approved; `PTW.currentRunCycle()` returns the last cycle if it's still open (used for `getPerforming()`/`getIssuing()` — the live PA/IA of an in-progress run — mirroring the old behavior where those fields went blank once a hold/close was accepted). `PTW.lastRunCycle()` always returns the most recent cycle regardless of whether it's still open. `PTW.operativeRunCycle()` walks backward from the end and skips any trailing cycle(s) whose run was rejected — a rejected resume-from-`HELD` attempt appends its own (otherwise-empty) cycle for the audit trail, but never actually changes running/isolation state, so reads that care about "what's actually in effect" (`getKeepIsolations()`, and `ReportGenerator`'s de-isolation report reading back who performed the hold/close) use `operativeRunCycle()` rather than `lastRunCycle()`, so they aren't fooled by that trailing no-op cycle into looking blank. This replaces the old flat, overwritten `performing`/`issuing`/`hold_*`/`close_*`/`keep_isolations` fields, which silently lost history on every rejection (a reject handler blanked its own fields instead of recording who rejected and when) and on every hold/close acceptance (which wiped `performing`/`issuing` rather than keeping them alongside the new stop record).
+A cycle is "open" (`RunCycle.isOpen()`) as long as its run wasn't rejected and its stop hasn't been approved; `PTW.currentRunCycle()` returns the last cycle if it's still open (used for `getPerforming()`/`getIssuing()` — the live PA/IA of an in-progress run — mirroring the old behavior where those fields went blank once a hold/close was accepted). `PTW.lastRunCycle()` always returns the most recent cycle regardless of whether it's still open. `PTW.operativeRunCycle()` walks backward from the end and skips any trailing cycle(s) whose run was rejected — a rejected resume-from-`HELD` attempt appends its own (otherwise-empty) cycle for the audit trail, but never actually changes running/isolation state, so reads that care about "what's actually in effect" (`getHeldICs()`, and `ReportGenerator`'s de-isolation report reading back who performed the hold/close) use `operativeRunCycle()` rather than `lastRunCycle()`, so they aren't fooled by that trailing no-op cycle into looking blank. This replaces the old flat, overwritten `performing`/`issuing`/`hold_*`/`close_*`/`keep_isolations` fields, which silently lost history on every rejection (a reject handler blanked its own fields instead of recording who rejected and when) and on every hold/close acceptance (which wiped `performing`/`issuing` rather than keeping them alongside the new stop record).
 
 ### Shifts, Run-Cycle & PTW Validity Limits
 
@@ -408,7 +412,7 @@ run_cycles  — Ordered list of RunCycle records, one per pass through the runni
               keep_isolations fields.
 ```
 
-`getPerforming()` / `getIssuing()` / `getPerformingTimestamp()` / `getIssuingTimestamp()` return the live PA/IA of the currently open run cycle (or `None` once it's been rejected, held, or closed — matching the old fields' behavior of going blank at that point). `getKeepIsolations()` returns the most recent cycle's kept isolation tags regardless of whether that cycle is still open (used both while `WAITING_HLD_CONFIRM`/`HELD`, and read back afterward for reporting).
+`getPerforming()` / `getIssuing()` / `getPerformingTimestamp()` / `getIssuingTimestamp()` return the live PA/IA of the currently open run cycle (or `None` once it's been rejected, held, or closed — matching the old fields' behavior of going blank at that point). `getHeldICs()` returns the most recent operative cycle's kept IC ids regardless of whether that cycle is still open (used both while `WAITING_HLD_CONFIRM`/`HELD`, and read back afterward for reporting).
 
 ### Safety & Work Instructions
 
@@ -620,6 +624,18 @@ Admin-only. The request body is JSON (`{"filename": "<name>"}`) to fetch a speci
 | GET    | `/logs`  | List log filenames **or** download a specific log file | Admin only  |
 
 Path traversal is prevented server-side via `os.path.abspath` containment check.
+
+### Backups
+
+Admin-only, backs `client/tables/TableBackups.py`. `GET`/`POST` bodies are JSON; `POST` takes none.
+
+| Method | Endpoint   | Description | Auth Required |
+|--------|------------|--------------|---------------|
+| GET    | `/backups` | List existing backups (omit body), or download one backup's dump/files archive (body: `{"name": "<timestamp>", "which": "dump"\|"files"}`) | Admin only |
+| POST   | `/backups` | Create a new on-demand backup now (`backupService.createBackup()`) | Admin only |
+| DELETE | `/backups` | Delete a backup (body: `{"name": "<timestamp>"}`) | Admin only |
+
+`GET /backups` (list form) returns `{"backups": [...], "retentionDays": 14, "freeBytes": <int|null>, "lastBackupAt": <iso|null>}`; each backup row has `name` (its `YYYYMMDD_HHMMSS` timestamp), `created`, `dumpSizeBytes`, `filesSizeBytes`, `totalSizeBytes`, `complete` (both the DB dump and file archive are present and non-empty). A backup is a `pg_dump -Fc` dump plus a `files.tar.gz` of `.env` + the MIWI/PTW-attachments/IC-attachments directories, written under `paths.BACKUP_DIR` (`DATA_DIR/backups/`) — the *same* on-disk format `server/dev-scripts/backup.sh`/`.ps1` produce, so backups made via either path are interchangeable with `restore.sh`/`.ps1`. Because `DATA_DIR/backups/` lives on the same disk as the live data it's backing up, this in-app path is a convenient manual snapshot/download mechanism, not a disaster-recovery solution by itself — `server/dev-scripts/backup.sh`/`.ps1` (run on a schedule to a separate, off-disk location; its default backup root is `paths.BACKUP_DIR` too, but an explicit path outside `DATA_DIR` is what actually gets the data off this machine) is the one meant for that.
 
 ---
 

@@ -1,3 +1,12 @@
+"""PTW-specific risk assessment editor: the flat risk-item table shown on a PTW's Risks tab.
+
+Provides the single-item editor (`DialogRiskItem`), the flat risk-items table
+used across a PTW's new/edit/view modes (`RiskItemsTable`, with add/delete/
+import/generic-pick and dedup logic), the generic-library picker
+(`DialogSelectGenericRisks`), and the `RiskAssessmentPreview()` factory that
+wraps a `RiskItemsTable` as either a popup dialog or an embeddable widget.
+"""
+
 import copy
 import re
 from datetime import datetime
@@ -17,7 +26,15 @@ from helper.i18n import t
 
 
 class DialogRiskItem(QDialog):
+    """Form dialog for viewing or editing a single `RiskItem`'s six fields.
+
+    Reused both to create a brand-new item and, via double-click on an
+    existing row, to edit one in place; `readonly` switches between the two
+    presentations without changing the field layout.
+    """
+
     def __init__(self, parent, riskItem: RiskItem = None, readonly: bool = False):
+        """Build the form, pre-filling it from `riskItem` if given and locking fields when `readonly`."""
         super().__init__(parent)
 
         self.setWindowTitle(t("View mode" if readonly else "Edit mode"))
@@ -70,6 +87,12 @@ class DialogRiskItem(QDialog):
             self.resize(int(parent.width() * 0.9), int(parent.height() * 0.9))
         
     def collectData(self):
+        """Validate the form fields and, if valid, write them into `self.riskItem` and accept the dialog.
+
+        Requires all six fields non-empty and both analysis fields to match a
+        single digit followed by a single uppercase letter; shows a warning
+        and leaves the dialog open otherwise.
+        """
         hazard = self.txtHazard.toPlainText()
         effect = self.txtEffect.toPlainText()
         ctrl = self.txtControl.toPlainText()
@@ -94,12 +117,29 @@ class DialogRiskItem(QDialog):
         self.accept()
 
 class RiskItemsTable(QWidget):
+    """Flat, read-only-cell table of `RiskItem` rows backing a PTW's risk assessment.
+
+    Used in all three PTW dialog modes (new/edit/view) as the sole risk-items
+    UI — there is no separate preview state, the table's rows *are* the data.
+    Rows can be populated by manual entry, picking from the generic library,
+    or Excel/CSV import, and every addition/edit path is deduplicated via
+    `riskItemKey()`: a new item that exactly matches (case/whitespace-insensitive,
+    across all 6 fields) one already present is rejected, and an in-place edit
+    that would collide with a *different* existing row is discarded and reverted.
+    """
+
     COLUMN_LABELS = ['Hazard', 'Effect', 'Free Analysis', 'Control', 'Controlled Analysis', 'Evaluation']
     FIELDS        = ['hazard', 'effect', 'free_analysis', 'ctrl', 'ctrl_analysis', 'eval']
     TABLE_WIDTH_WEIGHTS = [30, 33, 20, 52, 20, 20]
     ROW_PADDING = 20
 
     def __init__(self, parent, items: list[RiskItem], readonly: bool = True):
+        """Build the table widget and populate it with `items`.
+
+        Args:
+            items: the live list of RiskItem objects this table displays and
+                mutates in place (rows added/removed here also update `items`).
+        """
         super().__init__(parent)
         self.readonly = readonly
         self.riskItems = items
@@ -127,14 +167,17 @@ class RiskItemsTable(QWidget):
         self._applyColumnWidths()
 
     def resizeEvent(self, event):
+        """Reapply proportional column widths whenever the widget is resized."""
         self._applyColumnWidths()
         return super().resizeEvent(event)
 
     def showEvent(self, event):
+        """Reapply proportional column widths whenever the widget becomes visible."""
         self._applyColumnWidths()
         return super().showEvent(event)
 
     def _applyColumnWidths(self):
+        """Distribute the table's width across columns per `TABLE_WIDTH_WEIGHTS` and re-wrap row heights."""
         total = self.tbl.viewport().width()
         if total <= 0:
             return
@@ -149,6 +192,11 @@ class RiskItemsTable(QWidget):
             self._resizeRowWithPadding(row)
 
     def viewRiskItem(self, row, col):
+        """Open `row` in `DialogRiskItem` for view/edit; on edit, revert the row if it would duplicate another.
+
+        Edits apply directly to the shared `RiskItem` object, so a rejected
+        edit restores the pre-edit copy taken before the dialog was opened.
+        """
         riskItem = self.riskItems[row]
         original = copy.copy(riskItem)
         dlg = DialogRiskItem(self, riskItem, readonly=self.readonly)
@@ -162,6 +210,7 @@ class RiskItemsTable(QWidget):
         self._updateRow(riskItem, row)
 
     def _addRow(self, item: RiskItem):
+        """Append a new, non-editable table row rendering `item`'s fields."""
         row = self.tbl.rowCount()
         self.tbl.insertRow(row)
         for col, field in enumerate(self.FIELDS):
@@ -177,6 +226,7 @@ class RiskItemsTable(QWidget):
         self._resizeRowWithPadding(row)
 
     def _updateRow(self, item: RiskItem, row: int):
+        """Overwrite an existing row's cell text to match `item`'s current field values."""
         for col, field in enumerate(self.FIELDS):
             cellItem = self.tbl.item(row, col)
             if not cellItem:
@@ -186,14 +236,21 @@ class RiskItemsTable(QWidget):
         self._resizeRowWithPadding(row)
 
     def _resizeRowWithPadding(self, row: int):
+        """Size `row` to fit its wrapped content plus `ROW_PADDING` extra pixels."""
         self.tbl.resizeRowToContents(row)
         self.tbl.setRowHeight(row, self.tbl.rowHeight(row) + self.ROW_PADDING)
 
     def _isDuplicate(self, item: RiskItem, excludeRow: int = None) -> bool:
+        """Return whether `item` exactly matches (via `riskItemKey`) any other row, optionally ignoring `excludeRow`."""
         key = riskItemKey(item)
         return any(riskItemKey(other) == key for i, other in enumerate(self.riskItems) if i != excludeRow)
 
     def addItem(self, item: RiskItem) -> bool:
+        """Append `item` as a new row unless it duplicates an existing one.
+
+        Returns:
+            True if the item was added, False if it was rejected as a duplicate.
+        """
         if self._isDuplicate(item):
             return False
         self.riskItems.append(item)
@@ -201,6 +258,7 @@ class RiskItemsTable(QWidget):
         return True
 
     def addRiskItemsDialog(self):
+        """Prompt the user to add items manually, from the generic library, or by Excel/CSV import."""
         msgBox = QMessageBox(self)
         msgBox.setWindowTitle("Add Risk Items")
         msgBox.setText("How would you like to add new risk items?")
@@ -222,6 +280,7 @@ class RiskItemsTable(QWidget):
             self.importRiskItemsFromExcel()
 
     def addRiskItemManual(self):
+        """Open a blank `DialogRiskItem` and add the resulting item, warning if it duplicates an existing row."""
         riskItem = RiskItem()
         dlg = DialogRiskItem(self, riskItem, readonly=False)
         if dlg.exec() != QDialog.DialogCode.Accepted:
@@ -230,6 +289,7 @@ class RiskItemsTable(QWidget):
             QMessageBox.information(self, "Duplicate Item", "An identical risk item already exists — not added again.")
 
     def importRiskItemsFromExcel(self):
+        """Prompt for an Excel/CSV file, parse it, and add the resulting items, reporting skipped duplicates/errors."""
         filepath, _ = QFileDialog.getOpenFileName(self, "Select Risk Items File", QDir.homePath(), "Excel/CSV Files (*.xlsx *.csv);;Excel Files (*.xlsx);;CSV Files (*.csv);;All Files (*)")
         if not filepath:
             return
@@ -258,6 +318,7 @@ class RiskItemsTable(QWidget):
         QMessageBox.information(self, "Import", '\n'.join(parts))
 
     def addRiskItemsFromGenericRisks(self):
+        """Open the generic-library picker and add the selected assessments' items, reporting skipped duplicates."""
         dlg = DialogSelectGenericRisks(self)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
@@ -270,6 +331,7 @@ class RiskItemsTable(QWidget):
             QMessageBox.information(self, "Add From Generic Risks", f"{added} item(s) added, {duplicates} duplicate(s) skipped.")
 
     def deleteSelectedRows(self):
+        """Confirm with the user, then remove all checked/selected rows from the table and `riskItems`."""
         if QMessageBox.question(
             self, 
             "Delete Selected Items", 
@@ -285,6 +347,7 @@ class RiskItemsTable(QWidget):
             self.riskItems.pop(row)
 
     def getRiskItems(self) -> list[RiskItem]:
+        """Read the table's current cell contents back into a fresh list of `RiskItem` objects."""
         items = []
         for row in range(self.tbl.rowCount()):
             values = {}
@@ -295,6 +358,12 @@ class RiskItemsTable(QWidget):
         return items
 
     def validate(self) -> str:
+        """Check every row for required fields and valid analysis format.
+
+        Returns:
+            An error message for the first invalid row found, or None if all
+            rows are valid.
+        """
         for row, item in enumerate(self.getRiskItems()):
             if any(not getattr(item, f) for f in self.FIELDS):
                 return t('Row {row}: please fill in all fields').format(row=row + 1)
@@ -306,6 +375,15 @@ class RiskItemsTable(QWidget):
 
     @staticmethod
     def _parseRiskItemsFile(filepath: str) -> tuple[list[RiskItem], list[str]]:
+        """Parse an Excel/CSV file into `RiskItem` objects via `parseTabularFile`, validating each row.
+
+        Blank rows are skipped silently; rows missing a required field or with
+        a malformed analysis code are collected as error messages rather than
+        raising, so a partially-bad file can still import its good rows.
+
+        Returns:
+            A tuple of (valid items, per-row error messages).
+        """
         dataRows = parseTabularFile(filepath, RiskItemsTable.COLUMN_LABELS)
 
         items = []
@@ -335,6 +413,7 @@ class DialogSelectGenericRisks(QDialog):
     checkbox-list UI (same as the old embedded-in-PTW-widget selector) instead of a fresh one."""
 
     def __init__(self, parent):
+        """Build the dialog around a selectable, read-only `TableRisks` over the generic library."""
         super().__init__(parent)
         self.setWindowTitle(t("Select Generic Risk Assessments"))
 
@@ -357,6 +436,7 @@ class DialogSelectGenericRisks(QDialog):
             self.resize(int(parent.width() * 0.9), int(parent.height() * 0.9))
 
     def getSelectedRiskItems(self) -> list[RiskItem]:
+        """Return deep copies of every RiskItem from the checked generic assessments."""
         items = []
         for riskAssessment in self.tableRisks.getSelectedRiskAssessments():
             items.extend(copy.deepcopy(item) for item in riskAssessment.risks)
@@ -364,7 +444,13 @@ class DialogSelectGenericRisks(QDialog):
 
 
 class _RiskPreviewDialog(QDialog):
+    """Popup-dialog presentation of a `RiskAssessment`'s `RiskItemsTable`, with Add/Delete/Print controls.
+
+    Not instantiated directly — use `RiskAssessmentPreview(popup=True)`.
+    """
+
     def __init__(self, parent, riskAssessment: RiskAssessment, readonly: bool):
+        """Build the labeled table and action buttons, hiding Add/Delete when `readonly`."""
         super().__init__(parent)
 
         self.riskAssessment = riskAssessment
@@ -410,6 +496,7 @@ class _RiskPreviewDialog(QDialog):
             self.resize(int(parent.width() * 0.9), int(parent.height() * 0.7))
 
     def _onFinish(self):
+        """Validate the table and accept the dialog, or show a warning and keep it open if invalid."""
         err = self.table.validate()
         if err:
             QMessageBox.warning(self, t("Invalid Data"), err)
@@ -417,15 +504,25 @@ class _RiskPreviewDialog(QDialog):
         self.accept()
 
     def getRiskItems(self) -> list[RiskItem]:
+        """Return the table's current risk items."""
         return self.table.getRiskItems()
     
     def printPreview(self):
+        """Render this risk assessment via `ReportGenerator.riskAssessmentReport`."""
         from reports.ReportGenerator import ReportGenerator
         ReportGenerator.riskAssessmentReport(riskAssessment=self.riskAssessment)
 
 
 class _RiskPreviewWidget(QWidget):
+    """Embeddable-widget presentation of a `RiskAssessment`'s `RiskItemsTable`, with Add/Delete/Print controls.
+
+    Same content as `_RiskPreviewDialog` but a plain `QWidget` so it can be
+    laid out inline rather than always floating as a top-level window; use
+    `RiskAssessmentPreview(popup=False)`.
+    """
+
     def __init__(self, parent, riskAssessment: RiskAssessment, readonly: bool):
+        """Build the labeled table and action buttons, hiding Add/Delete when `readonly`."""
         super().__init__(parent)
 
         self.riskAssessment = riskAssessment
@@ -460,9 +557,11 @@ class _RiskPreviewWidget(QWidget):
         lyt.addLayout(btnLyt)
 
     def getRiskItems(self) -> list[RiskItem]:
+        """Return the table's current risk items."""
         return self.table.getRiskItems()
 
     def printPreview(self):
+        """Render this risk assessment via `ReportGenerator.riskAssessmentReport`."""
         from reports.ReportGenerator import ReportGenerator
         ReportGenerator.riskAssessmentReport(riskAssessment=self.riskAssessment)
 

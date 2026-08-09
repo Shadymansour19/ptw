@@ -1,3 +1,9 @@
+"""Database access for the `ptws` table: PTW CRUD plus the approval-cycle and
+running-cycle (RunCycle) mutations that drive a permit through its lifecycle
+(run/hold/close requests and the Issuing Authority's responses to them). Builds
+on the generic helpers in `db/commonDb.py`.
+"""
+
 import json
 from psycopg2.extras import RealDictCursor
 
@@ -11,10 +17,16 @@ class PtwsDb:
     first starting the server."""
 
     def addPTWFromDict(self, ptwDict: dict):
+        """Insert a new row into `ptws` from a PTW-shaped dict and return the
+        newly generated `id` (the table's SERIAL primary key)."""
         with CommonDB.get_conn() as conn:
             return CommonDB.addRecordFromDict(conn, 'ptws', ptwDict, 'id')
 
     def updatePTWFromDict(self, ptwDict: dict):
+        """Update the `ptws` row identified by `ptwDict['id']` with the rest of
+        its fields. Returns None on success, or the caught exception object on
+        failure — callers must check the return value, since this doesn't
+        raise."""
         try:
             with CommonDB.get_conn() as conn:
                 CommonDB.updateRecordFromDict(conn, 'ptws', ptwDict, 'id')
@@ -23,6 +35,9 @@ class PtwsDb:
             return e
 
     def getPTWById(self, ptwId: int):
+        """Fetch a single `ptws` row by id and return it as a PTW object (via
+        dictToObj + PTW.setAll), or None if no row matches. Wraps any DB error
+        in a generic Exception."""
         try:
             with CommonDB.get_conn() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
@@ -35,6 +50,10 @@ class PtwsDb:
             raise Exception("Error fetching PTW from database: " + str(e))
 
     def getAllPTWs(self, department: str = None, requestor: str = None) -> dict:
+        """Fetch every non-archived `ptws` row, optionally filtered
+        case-insensitively (ILIKE) by department and/or requestor — either
+        filter left as None matches all rows. Returns a dict of PTW objects
+        keyed by id."""
         ptws = {}
         try:
             with CommonDB.get_conn() as conn:
@@ -55,6 +74,9 @@ class PtwsDb:
         return ptws
 
     def getArchivedPTWs(self, department: str = None):
+        """Fetch every archived (`is_archived`) `ptws` row, optionally
+        filtered case-insensitively by department. Returns a list of PTW
+        objects."""
         ptws = []
         try:
             with CommonDB.get_conn() as conn:
@@ -73,6 +95,9 @@ class PtwsDb:
         return ptws
 
     def deletePTW(self, ptwId: str):
+        """Delete the `ptws` row with the given id. Returns None on success,
+        or the caught exception object on failure — callers must check the
+        return value, since this doesn't raise."""
         try:
             with CommonDB.get_conn() as conn:
                 CommonDB.deleteRecord(conn, 'ptws', 'id', ptwId)
@@ -81,6 +106,8 @@ class PtwsDb:
             return e
 
     def updatePTWApprovals(self, ptwId: str, approval: PTW.Approval):
+        """Append one Approval record to a PTW's `approvals` JSONB[] column
+        (`array_append`), preserving the existing audit trail."""
         with CommonDB.get_conn() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 cursor.execute(
@@ -90,6 +117,9 @@ class PtwsDb:
             conn.commit()
 
     def archivePTWs(self, ptwIds: list[str]):
+        """Mark every given PTW id as archived (`is_archived = TRUE`) in a
+        single UPDATE ... WHERE id IN (...). Doesn't touch running_status —
+        it keeps showing the PTW's real last state (typically CLOSED)."""
         with CommonDB.get_conn() as conn:
             placeholders = ', '.join(['%s'] * len(ptwIds))
             with conn.cursor(cursor_factory=RealDictCursor) as cursor:
@@ -145,18 +175,31 @@ class PtwsDb:
             conn.commit()
 
     def requestToRunPTW(self, ptwId: str, pa: str, ts: str):
+        """Record a Performing Authority's run request by appending a
+        brand-new RunCycle with just run_pa/run_pa_timestamp set (including
+        when this is a resume from HELD — a fresh cycle is always appended,
+        never patched, for a new run request)."""
         cycle = objToDict(PTW.RunCycle(run_pa=pa, run_pa_timestamp=ts))
         self._appendRunCycle(ptwId, cycle)
 
     def runAcceptPTW(self, ptwId: str, ia: str, ts: str, comment: str = None):
+        """Record the Issuing Authority's acceptance of the current run
+        request by patching the most recent open RunCycle's run_ia fields to
+        APPROVED."""
         patch = {'run_ia': ia, 'run_ia_action': PTW.RunCycle.Actions.APPROVED, 'run_ia_comment': comment, 'run_ia_timestamp': ts}
         self._patchLastRunCycle(ptwId, patch)
 
     def runRejectPTW(self, ptwId: str, ia: str, ts: str, comment: str = None):
+        """Record the Issuing Authority's rejection of the current run
+        request by patching the most recent open RunCycle's run_ia fields to
+        REJECTED."""
         patch = {'run_ia': ia, 'run_ia_action': PTW.RunCycle.Actions.REJECTED, 'run_ia_comment': comment, 'run_ia_timestamp': ts}
         self._patchLastRunCycle(ptwId, patch)
 
     def _hasOpenRunCycle(self, ptwId: str) -> bool:
+        """Return whether the PTW's most recent RunCycle exists and is still
+        open (PTW.RunCycle.isOpen()) — used by requestToClsPTW to decide
+        whether to patch that cycle or append a fresh one."""
         with CommonDB.get_conn() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 cursor.execute('SELECT run_cycles[cardinality(run_cycles)] AS last_cycle FROM ptws WHERE id = %s', (ptwId,))
@@ -165,6 +208,12 @@ class PtwsDb:
         return lastCycle is not None and PTW.RunCycle().setAll(lastCycle).isOpen()
 
     def requestToClsPTW(self, ptwId: str, pa: str, ts: str, comment: str = None):
+        """Record a Performing Authority's close request. If the last RunCycle
+        is still open, patches its stop_pa/stop_pa_request=CLOSE fields in
+        place; otherwise (the PTW was never run, or its only run attempt was
+        rejected) appends a brand-new RunCycle carrying just the close request
+        (no run_pa/run_ia at all), so it still goes through ordinary Issuing
+        Authority accept/reject."""
         if self._hasOpenRunCycle(ptwId):
             patch = {'stop_pa': pa, 'stop_pa_request': PTW.RunCycle.StopTypes.CLOSE, 'stop_pa_comment': comment, 'stop_pa_timestamp': ts}
             self._patchLastRunCycle(ptwId, patch)
@@ -181,14 +230,24 @@ class PtwsDb:
             self._appendRunCycle(ptwId, cycle)
 
     def clsAcceptPTW(self, ptwId: str, ia: str, ts: str, comment: str = None):
+        """Record the Issuing Authority's acceptance of a close request by
+        patching the most recent open RunCycle's stop_ia fields to APPROVED
+        (which __updateRunningStatus() then resolves to CLOSED)."""
         patch = {'stop_ia': ia, 'stop_ia_action': PTW.RunCycle.Actions.APPROVED, 'stop_ia_comment': comment, 'stop_ia_timestamp': ts}
         self._patchLastRunCycle(ptwId, patch)
 
     def clsRejectPTW(self, ptwId: str, ia: str, ts: str, comment: str = None):
+        """Record the Issuing Authority's rejection of a close request by
+        patching the most recent open RunCycle's stop_ia fields to REJECTED
+        (reverting to RUNNING if the cycle was actually running, or
+        NOT_RUNNING for a never-run cycle)."""
         patch = {'stop_ia': ia, 'stop_ia_action': PTW.RunCycle.Actions.REJECTED, 'stop_ia_comment': comment, 'stop_ia_timestamp': ts}
         self._patchLastRunCycle(ptwId, patch)
 
     def requestToHldPTW(self, ptwId: str, pa: str, ts: str, comment: str = None, heldICs: list[str] = []):
+        """Record a Performing Authority's hold request by patching the most
+        recent open RunCycle's stop_pa/stop_pa_request=HOLD fields, along with
+        the isolation tags (`held_ics`) selected to remain linked while held."""
         patch = {
             'stop_pa': pa, 'stop_pa_request': PTW.RunCycle.StopTypes.HOLD, 'stop_pa_comment': comment, 'stop_pa_timestamp': ts,
             'held_ics': heldICs,
@@ -196,9 +255,15 @@ class PtwsDb:
         self._patchLastRunCycle(ptwId, patch)
 
     def hldAcceptPTW(self, ptwId: str, ia: str, ts: str, comment: str = None):
+        """Record the Issuing Authority's acceptance of a hold request by
+        patching the most recent open RunCycle's stop_ia fields to APPROVED
+        (which __updateRunningStatus() then resolves to HELD)."""
         patch = {'stop_ia': ia, 'stop_ia_action': PTW.RunCycle.Actions.APPROVED, 'stop_ia_comment': comment, 'stop_ia_timestamp': ts}
         self._patchLastRunCycle(ptwId, patch)
 
     def hldRejectPTW(self, ptwId: str, ia: str, ts: str, comment: str = None):
+        """Record the Issuing Authority's rejection of a hold request by
+        patching the most recent open RunCycle's stop_ia fields to REJECTED
+        (reverting to RUNNING)."""
         patch = {'stop_ia': ia, 'stop_ia_action': PTW.RunCycle.Actions.REJECTED, 'stop_ia_comment': comment, 'stop_ia_timestamp': ts}
         self._patchLastRunCycle(ptwId, patch)

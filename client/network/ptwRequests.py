@@ -1,3 +1,9 @@
+"""PTW endpoint wrappers: fetch, create, update, delete, approve, and drive the
+run/hold/close request-and-confirm cycles, plus PTW attachments.
+
+Mixed into ``ClientRequests`` (see ``network/clientRequests.py``).
+"""
+
 from network.requestConfig import SERVER_URL, TIMEOUT, FILE_TIMEOUT
 import requests
 import tempfile
@@ -8,8 +14,17 @@ from models.PTW import PTW, Attachment
 
 
 class PTWRequests:
+    """Mixin providing PTW lifecycle and attachment endpoints.
+
+    Combined with the other ``*Requests`` mixins into ``ClientRequests``.
+    """
+
     @async_request
     def getAllPTWs(loggedUser: User, department: UserDepartments = None, requestorUsername: str = None) -> tuple[str, dict[int, PTW]]:
+        """Fetch all visible PTWs via GET /ptws, optionally filtered by department/requestor.
+
+        Returns ``(None, {id: PTW})`` on success, or ``(err, {})`` on failure.
+        """
         response = None
         try:
             response = requests.get(
@@ -58,6 +73,10 @@ class PTWRequests:
 
     @async_request
     def getArchivedPTWs(loggedUser: User, department: UserDepartments = None) -> tuple[str, dict[int, PTW]]:
+        """Fetch all archived PTWs via GET /ptws/archive, optionally filtered by department.
+
+        Returns ``(None, {id: PTW})`` on success, or ``(err, {})`` on failure.
+        """
         response = None
         try:
             response = requests.get(
@@ -81,6 +100,10 @@ class PTWRequests:
 
     @async_request
     def addPTW(loggedUser: User, ptw: PTW) -> tuple[str, str]:
+        """Create a new PTW via POST /ptws.
+
+        Returns ``(None, ptw-id)`` on success, or ``(err, None)`` on failure.
+        """
         response = None
         try:
             response = requests.post(
@@ -102,6 +125,10 @@ class PTWRequests:
 
     @async_request
     def updatePTW(loggedUser: User, ptw: PTW) -> str:
+        """Update an existing PTW via PUT /ptws (e.g. edit-and-resubmit a returned PTW).
+
+        Returns an error string, or None on success.
+        """
         response = None
         try:
             response = requests.put(f'{SERVER_URL}/ptws', json=objToDict(ptw), auth=(loggedUser.getUsername(), loggedUser.getPassword()), timeout=TIMEOUT)
@@ -119,6 +146,12 @@ class PTWRequests:
 
     @async_request
     def addPtwAttachments(loggedUser: User, ptwId: str, attachments: list[Attachment]) -> str:
+        """Upload files to a PTW via POST /ptws/attachments.
+
+        If ``attachments`` is empty, delegates to ``deleteAllPtwAttachments`` to
+        clear any existing ones instead of sending an empty upload. Returns an
+        error string, or None on success.
+        """
         if not attachments:
             return PTWRequests.deleteAllPtwAttachments(loggedUser, ptwId)
 
@@ -156,6 +189,10 @@ class PTWRequests:
 
     @async_request
     def getPtwAttachmentNames(loggedUser: User, ptwId: str) -> tuple[str, list[str]]:
+        """List a PTW's attachment filenames via GET /ptws/attachments.
+
+        Returns ``(None, [filename, ...])`` on success, or ``(err, None)`` on failure.
+        """
         response = None
         try:
             response = requests.get(
@@ -178,6 +215,10 @@ class PTWRequests:
 
     @async_request
     def getPtwAttachment(loggedUser: User, ptwId: str, filename: str):
+        """Download one PTW attachment via GET /ptws/attachments and save it to a temp file.
+
+        Returns ``(None, local_temp_path)`` on success, or ``(err, None)`` on failure.
+        """
         response = None
         try:
             response = requests.get(
@@ -201,6 +242,10 @@ class PTWRequests:
 
     @async_request
     def deleteAllPtwAttachments(loggedUser: User, ptwId: str, keepFilenames: list[str] = []) -> str:
+        """Delete a PTW's attachments via DELETE /ptws/attachments, keeping any in ``keepFilenames``.
+
+        Returns an error string, or None on success.
+        """
         response = None
         try:
             response = requests.delete(
@@ -222,6 +267,11 @@ class PTWRequests:
 
     @async_request
     def copyPtwAttachments(loggedUser: User, sourcePtwId: str, targetPtwId: str) -> str:
+        """Copy attachments from one PTW to another via POST /ptws/attachments/copy.
+
+        Also additively copies the source PTW's risk assessment onto the target
+        (server-side behavior). Returns an error string, or None on success.
+        """
         response = None
         try:
             response = requests.post(
@@ -243,6 +293,7 @@ class PTWRequests:
 
     @async_request
     def deletePTW(loggedUser: User, ptwId: str) -> str:
+        """Delete a PTW via DELETE /ptws. Returns an error string, or None on success."""
         response = None
         try:
             response = requests.delete(f'{SERVER_URL}/ptws', json={'ptw-id': ptwId}, auth=(loggedUser.getUsername(), loggedUser.getPassword()), timeout=TIMEOUT)
@@ -260,6 +311,10 @@ class PTWRequests:
 
     @async_request
     def returnPTW(loggedUser: User, ptwId: str, comment: str) -> str:
+        """Return a PTW to the requestor for corrections via POST /ptws/return, with a comment.
+
+        Returns an error string, or None on success.
+        """
         response = None
         try:
             response = requests.post(
@@ -282,6 +337,10 @@ class PTWRequests:
 
     @async_request
     def updateApprovalPTW(loggedUser: User, ptwId: str, approval: PTW.Approval) -> str:
+        """Submit an approval action on a PTW's approval chain via POST /ptws/approvals.
+
+        Returns an error string, or None on success.
+        """
         response = None
         try:
             response = requests.post(
@@ -304,6 +363,10 @@ class PTWRequests:
 
     @async_request
     def archivePTWs(loggedUser: User, ptwIds: list[str]) -> str:
+        """Archive one or more closed PTWs via POST /ptws/archive.
+
+        Returns an error string, or None on success.
+        """
         response = None
         try:
             response = requests.post(f'{SERVER_URL}/ptws/archive', json={'ptw-ids': ptwIds}, auth=(loggedUser.getUsername(), loggedUser.getPassword()), timeout=TIMEOUT)
@@ -321,6 +384,10 @@ class PTWRequests:
 
     @async_request
     def requestToRunPTW(loggedUser: User, ptwId: str, pa: str, ts: str):
+        """Submit a run request for a PTW via POST /ptws/run-request (Performing Authority).
+
+        Returns an error string, or None on success.
+        """
         response = None
         try:
             response = requests.post(
@@ -343,6 +410,10 @@ class PTWRequests:
 
     @async_request
     def runResponsePTW(loggedUser: User, ptwId: str, ia: str, ts: str, accepted: bool, comment: str = None) -> str:
+        """Accept or reject a PTW's run request via POST /ptws/run (Issuing Authority).
+
+        Returns an error string, or None on success.
+        """
         response = None
         try:
             response = requests.post(
@@ -365,6 +436,11 @@ class PTWRequests:
 
     @async_request
     def requestToHldPTW(loggedUser: User, ptwId: str, pa: str, ts: str, comment: str = None, heldICs: list[str] = []):
+        """Submit a hold request for a running PTW via POST /ptws/hold-request (Performing Authority).
+
+        ``heldICs`` lists which linked ICs should remain held for this cycle.
+        Returns an error string, or None on success.
+        """
         response = None
         try:
             response = requests.post(
@@ -387,6 +463,10 @@ class PTWRequests:
 
     @async_request
     def hldResponsePTW(loggedUser: User, ptwId: str, ia: str, ts: str, accepted: bool, comment: str = None) -> str:
+        """Accept or reject a PTW's hold request via POST /ptws/hold (Issuing Authority).
+
+        Returns an error string, or None on success.
+        """
         response = None
         try:
             response = requests.post(
@@ -409,6 +489,10 @@ class PTWRequests:
 
     @async_request
     def requestToClsPTW(loggedUser: User, ptwId: str, pa: str, ts: str, comment: str = None):
+        """Submit a close request for a PTW via POST /ptws/close-request (Performing Authority).
+
+        Returns an error string, or None on success.
+        """
         response = None
         try:
             response = requests.post(
@@ -431,6 +515,10 @@ class PTWRequests:
 
     @async_request
     def clsResponsePTW(loggedUser: User, ptwId: str, ia: str, ts: str, accepted: bool, comment: str = None) -> str:
+        """Accept or reject a PTW's close request via POST /ptws/close (Issuing Authority).
+
+        Returns an error string, or None on success.
+        """
         response = None
         try:
             response = requests.post(

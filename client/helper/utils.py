@@ -1,3 +1,8 @@
+"""Small stateless helpers shared across the client: locating bundled resources under both
+dev and frozen (Nuitka) execution, converting between plain dict/list structures and their
+object equivalents, and parsing tabular (.xlsx/.csv) import files.
+"""
+
 import sys
 import os
 from typing import Iterable, Mapping
@@ -5,11 +10,23 @@ from types import SimpleNamespace
 
 
 def resource_path(filename):
+    """Resolve `filename` to an absolute path under the app's resource base directory.
+
+    Uses `sys._MEIPASS` (set by the frozen Nuitka build) as the base directory when running
+    frozen; falls back to the `client/` source directory (two levels up from this file) when
+    running from source in dev.
+    """
     base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     return os.path.join(base, filename)
 
 
 def objToDict(obj):
+    """Recursively convert an object graph into plain dicts/lists/tuples/etc.
+
+    Primitive scalars pass through unchanged; mappings and other iterables are rebuilt
+    element-wise; any other object with a `__dict__` (e.g. a domain model instance) is
+    converted via `vars(obj)`, so it serializes the same way a plain dict would.
+    """
     if isinstance(obj, (str, bytes, int, float, bool, type(None))):
         return obj
     if isinstance(obj, Mapping):
@@ -61,6 +78,12 @@ def parseTabularFile(filepath: str, headers: list[str]) -> list[list[str]]:
 
 
 def dictToObj(data):
+    """Recursively convert plain dict/list/tuple/set structures into `SimpleNamespace` objects.
+
+    The inverse of `objToDict`: primitive scalars pass through unchanged, mappings become
+    `SimpleNamespace` instances with matching attributes, and lists/tuples/sets are rebuilt
+    element-wise with the same container type.
+    """
     if isinstance(data, (str, bytes, int, float, bool, type(None))):
         return data
     if isinstance(data, Mapping):

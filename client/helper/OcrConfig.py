@@ -1,3 +1,9 @@
+"""Points pytesseract at the Tesseract binary bundled with the frozen (Nuitka) build
+(`client/tesseract-bin/`, staged in `.github/workflows/build.yml`), since a frozen build
+can't rely on Tesseract being installed and on PATH the way a dev environment can. Both
+functions here are no-ops in dev, where Tesseract is expected to already be on the system.
+"""
+
 import os
 import platform
 import pytesseract

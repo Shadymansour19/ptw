@@ -1,3 +1,6 @@
+"""Entry point: registers all route blueprints on the Flask app built in core.py
+and runs the development server when executed directly."""
+
 from core import app, log
 from routes.auth import authBp
 from routes.users import usersBp

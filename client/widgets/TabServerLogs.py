@@ -1,3 +1,9 @@
+"""Admin-only server log viewer.
+
+Shows one collapsible panel per log file, lazily fetching a file's content
+the first time it is expanded, and offers a log-level filter that
+color-codes lines by severity via QTextCursor-based formatting.
+"""
 import re
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QColor, QTextCharFormat, QTextCursor
@@ -25,6 +31,7 @@ _LEVEL_FMT: dict[str, QTextCharFormat] = {}
 
 
 def _levelFormats() -> dict[str, QTextCharFormat]:
+    """Build (and cache) a QTextCharFormat per log level from `_LEVEL_COLORS`."""
     if _LEVEL_FMT:
         return _LEVEL_FMT
     for level, (color, bold) in _LEVEL_COLORS.items():
@@ -37,6 +44,16 @@ def _levelFormats() -> dict[str, QTextCharFormat]:
 
 
 def _setColoredText(edit: QTextEdit, content: str, levels: set[str]):
+    """Render log text into `edit`, colored by level and filtered to `levels`.
+
+    Replaces the edit's contents entirely. Walks the content line by line
+    using a single QTextCursor edit block: each line starting with a
+    timestamp (`_LINE_START`) determines a new level (via `_LEVEL_RE`), which
+    sets both the QTextCharFormat used to color it and whether it (and any
+    non-timestamped continuation lines that follow, e.g. traceback lines)
+    should be included at all — lines whose level isn't in `levels` are
+    skipped rather than dimmed.
+    """
     fmts = _levelFormats()
     default_fmt = QTextCharFormat()
 
@@ -65,7 +82,15 @@ def _setColoredText(edit: QTextEdit, content: str, levels: set[str]):
 
 
 class TabServerLogs(QWidget):
+    """Admin-only widget for browsing server log files.
+
+    Lists log files as collapsible panels (lazy-loaded on first expand) with
+    a shared log-level filter, backed by `ClientRequests.getLogFiles`/`getLog`
+    against the `/logs` endpoint.
+    """
+
     def __init__(self, parent, loggedUser, title: str = "Server Logs"):
+        """Build the header (level filter, Refresh button) and the scrollable log-panel container."""
         super().__init__(parent)
         self.loggedUser = loggedUser
         self._rawContent:   dict[str, str]       = {}
@@ -112,6 +137,11 @@ class TabServerLogs(QWidget):
         outerLayout.addWidget(scroll)
 
     def refresh(self):
+        """Slot for the Refresh button clicked signal; reload the list of log files.
+
+        Clears all existing panels and cached content, then re-fetches the
+        filename list from the server and adds a collapsed panel per file.
+        """
         while self._containerLayout.count() > 1:
             item = self._containerLayout.takeAt(0)
             if item.widget():
@@ -121,6 +151,7 @@ class TabServerLogs(QWidget):
         self._statusLabel.setText("")
 
         def on_done(err, filenames):
+            """Handle the getLogFiles response; add a panel per filename or show an error."""
             self.window()._refreshOverlay.hideBusy()
             if err:
                 self._statusLabel.setText(err)
@@ -136,6 +167,7 @@ class TabServerLogs(QWidget):
         ClientRequests.getLogFiles(self.loggedUser, callback=on_done)
 
     def _applyFilter(self):
+        """Slot for the level filter combo's filterChanged signal; re-render every loaded panel with the new level set."""
         levels = self._levelFilter.checkedItems()
         for filename, edit in self._contentEdits.items():
             raw = self._rawContent.get(filename)
@@ -144,6 +176,7 @@ class TabServerLogs(QWidget):
             _setColoredText(edit, raw, levels)
 
     def _addLogEntry(self, filename: str):
+        """Build and append one collapsible panel (header + content QTextEdit) for a log file."""
         entry = QFrame()
         entry.setFrameShape(QFrame.Shape.StyledPanel)
         entry.setStyleSheet(
@@ -186,6 +219,14 @@ class TabServerLogs(QWidget):
         self._contentEdits[filename] = contentEdit
 
         def onToggle(checked, fn=filename, edit=contentEdit):
+            """Slot for the panel's toggle button toggled signal; expand/collapse its content.
+
+            On expand, shows the content edit and, the first time only,
+            lazily fetches the file's content from the server (caching it in
+            `self._rawContent`) before rendering it colored/filtered;
+            subsequent expands just re-render the cached content. On
+            collapse, just hides the content edit.
+            """
             if checked:
                 toggleBtn.setIcon(qta.icon('fa6s.chevron-down'))
                 edit.setVisible(True)
@@ -193,6 +234,7 @@ class TabServerLogs(QWidget):
                     edit.setPlainText("Loading…")
 
                     def on_done(err, content):
+                        """Handle the getLog response; cache and render the fetched content, or show an error."""
                         self.window()._refreshOverlay.hideBusy()
                         if err:
                             edit.setPlainText(f"Error: {err}")

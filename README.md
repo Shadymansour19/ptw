@@ -152,7 +152,7 @@ WAITING_RUN_CONFIRM
     │      ARCHIVED
     │
     │
-    └──── [PA sends hold request + selects keep_isolations]
+    └──── [PA sends hold request + selects which ICs to keep held]
               │
               │
               ▼
@@ -355,6 +355,8 @@ On first launch, open **Settings** and point the client at your server URL.
 | Risks | `GET/POST/PUT/DELETE /risks` |
 | MIWI docs | `GET /miwi` · `GET /miwis` · `POST /miwi` |
 | Archive | `GET /ptws/archive` · `POST /ptws/archive` |
+| Backups | `GET/POST/DELETE /backups` (Admin only) |
+| Logs | `GET /logs` (Admin only) |
 | Events (SSE) | `GET /events` |
 
 Full API reference in [PROJECT.md](PROJECT.md).

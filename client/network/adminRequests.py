@@ -1,3 +1,8 @@
+"""Admin-only endpoint wrappers: server log files and on-demand database/file backups.
+
+Mixed into ``ClientRequests`` (see ``network/clientRequests.py``).
+"""
+
 from network.requestConfig import SERVER_URL, TIMEOUT, FILE_TIMEOUT
 import re
 import requests
@@ -6,8 +11,17 @@ from models.User import User
 
 
 class AdminRequests:
+    """Mixin providing admin-only endpoints for logs and backups.
+
+    Combined with the other ``*Requests`` mixins into ``ClientRequests``.
+    """
+
     @async_request
     def getLogFiles(loggedUser: User) -> tuple[str, list[str]]:
+        """List server log filenames via GET /logs (no request body).
+
+        Returns ``(None, [filename, ...])`` on success, or ``(err, None)`` on failure.
+        """
         response = None
         try:
             response = requests.get(
@@ -29,6 +43,10 @@ class AdminRequests:
 
     @async_request
     def getLog(loggedUser: User, filename: str) -> tuple[str, str]:
+        """Download a specific log file's contents via GET /logs.
+
+        Returns ``(None, file_text)`` on success, or ``(err, None)`` on failure.
+        """
         response = None
         try:
             response = requests.get(
@@ -46,6 +64,11 @@ class AdminRequests:
 
     @async_request
     def getBackups(loggedUser: User) -> tuple[str, dict]:
+        """List existing backups via GET /backups (no request body).
+
+        Returns ``(None, {"backups": [...], "retentionDays": ..., "freeBytes": ..., "lastBackupAt": ...})``
+        on success, or ``(err, None)`` on failure.
+        """
         response = None
         try:
             response = requests.get(
@@ -67,6 +90,10 @@ class AdminRequests:
 
     @async_request
     def createBackup(loggedUser: User) -> tuple[str, dict]:
+        """Create an on-demand backup now via POST /backups.
+
+        Returns ``(None, backup_row_dict)`` on success, or ``(err, None)`` on failure.
+        """
         response = None
         try:
             response = requests.post(
@@ -88,6 +115,10 @@ class AdminRequests:
 
     @async_request
     def deleteBackup(loggedUser: User, name: str) -> str:
+        """Delete a backup by its timestamp name via DELETE /backups.
+
+        Returns an error string, or None (implicitly) on success.
+        """
         response = None
         try:
             response = requests.delete(
@@ -108,6 +139,13 @@ class AdminRequests:
 
     @async_request
     def downloadBackupFile(loggedUser: User, name: str, which: str) -> tuple[str, dict]:
+        """Download one backup's dump or files archive via GET /backups (``which`` is ``"dump"`` or ``"files"``).
+
+        Reads the real filename from the response's Content-Disposition header
+        rather than guessing it client-side. Returns
+        ``(None, {"filename": ..., "content": bytes})`` on success, or
+        ``(err, None)`` on failure.
+        """
         response = None
         try:
             response = requests.get(

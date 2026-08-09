@@ -1,3 +1,11 @@
+"""Flask blueprint implementing the Isolation Certificate (IC) lifecycle.
+
+Covers IC creation and its staged approval chain, the isolate cycle
+(request -> IA confirm -> isolator execute), the de-isolate cycle (request
+-> IA confirm -> isolator execute), PTW<->IC link/unlink, and IC (P&ID /
+wiring) attachments.
+"""
+
 import os
 from datetime import datetime
 from flask import Blueprint, request, jsonify, send_file
@@ -78,6 +86,14 @@ def checkAndAutoDeisolateICs(icIds: list, by: str = "system"):
 
 @icsBp.route("/ics/attachments", methods=["POST"])
 def addIcAttachments():
+    """Upload one or more P&ID/wiring attachment files to an IC.
+
+    POST /ics/attachments (multipart form). Requires any authenticated
+    user; no role restriction. Form fields: ``ic-id`` plus the uploaded
+    files. Rejects path traversal, missing filenames, and filenames that
+    already exist in the IC's attachment directory; saves the rest to
+    disk. Responds with ``{"success": True}`` or a 400 listing any errors.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ics/attachments unauthorized (ip=%s)", request.remote_addr)
@@ -134,6 +150,14 @@ def addIcAttachments():
 
 @icsBp.route("/ics/attachments", methods=["GET"])
 def getIcAttachment():
+    """List an IC's attachments, or download a single one.
+
+    GET /ics/attachments. Requires any authenticated user; no role
+    restriction. Body: ``{"ic-id": <int>, "filename": <optional str>}``.
+    With ``filename``, streams that file (404 if missing, 400 on a
+    path-traversal attempt); without it, responds with ``{"success": True,
+    "attachments": [<filenames>]}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("GET /ics/attachments unauthorized (ip=%s)", request.remote_addr)
@@ -178,6 +202,13 @@ def getIcAttachment():
 
 @icsBp.route("/ics/attachments", methods=["DELETE"])
 def deleteIcAttachments():
+    """Delete an IC's attachments except those explicitly kept.
+
+    DELETE /ics/attachments. Requires any authenticated user; no role
+    restriction. Body: ``{"ic-id": <int>, "keep-filenames": [<str>, ...]}``.
+    Removes every file in the IC's attachment directory not listed in
+    ``keep-filenames``. Responds with ``{"success": True}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("DELETE /ics/attachments unauthorized (ip=%s)", request.remote_addr)
@@ -212,6 +243,14 @@ def deleteIcAttachments():
 
 @icsBp.route("/ics", methods=["GET"])
 def getAllICs():
+    """List ICs, department-scoped for the USER role.
+
+    GET /ics. Requires any authenticated user. A ``USER`` role only sees
+    ICs whose ``requestor_department`` matches their own department; other
+    roles may pass an optional ``"department"`` filter in the JSON body,
+    or omit it to see every IC. Responds with ``{"success": True, "ics":
+    [...]}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("GET /ics unauthorized (ip=%s)", request.remote_addr)
@@ -231,7 +270,13 @@ def getAllICs():
 
 @icsBp.route("/ics/<int:icId>", methods=["GET"])
 def getICByIdRoute(icId):
-    """Single-record lookup for SSE-driven targeted refreshes — same visibility rule as GET /ics."""
+    """Fetch a single IC by id, for SSE-driven targeted refreshes.
+
+    GET /ics/<icId>. Requires any authenticated user; same
+    department-visibility rule as GET /ics (a ``USER`` only sees ICs in
+    their own ``requestor_department``). Responds with ``{"success": True,
+    "ic": ...}``, or 404 if not found or not visible to the caller.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("GET /ics/%s unauthorized (ip=%s)", icId, request.remote_addr)
@@ -247,6 +292,17 @@ def getICByIdRoute(icId):
 
 @icsBp.route("/ics", methods=["POST"])
 def addICRequest():
+    """Create a new IC.
+
+    POST /ics. Requires an authenticated non-guest user. Stamps
+    ``requestor``/``requestor_department``/``requestor_timestamp`` from the
+    caller (never trusted from the payload). 400 if ``execution_department``
+    is missing, or (for a Self-type IC) doesn't match
+    ``requestor_department``, or (when ``is_psic``) ``psic_reasons`` is
+    empty or any of ``psic_system_description``/``psic_isolation_method``/
+    ``psic_control_measures`` is blank. Broadcasts an IC CREATED SSE event
+    to the ISSUING role. Responds with ``{"success": True, "ic-id": <id>}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ics unauthorized (ip=%s)", request.remote_addr)
@@ -291,6 +347,16 @@ def addICRequest():
 
 @icsBp.route("/ics/approvals", methods=["POST"])
 def updateICApprovals():
+    """Submit an approve/return decision on the IC's staged approval chain.
+
+    POST /ics/approvals. Requires an authenticated non-guest user whose
+    ``getApprovalStatus(role, department)`` is currently ``Requested`` for
+    this IC (403 otherwise), i.e. it must be their turn. Body:
+    ``{"ic-id": <int>, "approval": {...}}``. If this approval completes the
+    chain and ``isolate_asap`` is set, also auto-stamps
+    ``isolate_requestor``/``isolate_requestor_timestamp``. Broadcasts an IC
+    APPROVED/RETURNED SSE event. Responds with ``{"success": True}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ics/approvals unauthorized (ip=%s)", request.remote_addr)
@@ -343,6 +409,16 @@ def updateICApprovals():
 
 @icsBp.route("/ics/isolate-request", methods=["POST"])
 def requestIsolateIC():
+    """Request that an approved IC's isolation be carried out.
+
+    POST /ics/isolate-request. Requires an authenticated non-guest user.
+    Body: ``{"ic-id": <int>}``. 403 unless the IC's ``getStatus()`` is
+    ``Approved``. Stamps ``isolate_requestor``/
+    ``isolate_requestor_timestamp`` and clears any stale
+    ``isolate_issuing*`` decision left over from a previously returned
+    attempt. Broadcasts an IC ISOLATE_REQUESTED SSE event. Responds with
+    ``{"success": True}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ics/isolate-request unauthorized (ip=%s)", request.remote_addr)
@@ -391,6 +467,16 @@ def requestIsolateIC():
 
 @icsBp.route("/ics/isolate-confirm", methods=["POST"])
 def confirmIsolateIC():
+    """Issuing confirms or returns a pending isolate request.
+
+    POST /ics/isolate-confirm. Requires the ``ISSUING`` role (403
+    otherwise). Body: ``{"ic-id": <int>, "response": <bool>}``. 403 unless
+    the IC's ``getStatus()`` is ``Isolate Confirming``. Stamps
+    ``isolate_issuing``/``isolate_issuing_timestamp``/
+    ``isolate_issuing_action`` (``Approved`` or ``Returned``). Broadcasts
+    an IC ISOLATE_CONFIRMED/ISOLATE_REJECTED SSE event. Responds with
+    ``{"success": True}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ics/isolate-confirm unauthorized (ip=%s)", request.remote_addr)
@@ -438,6 +524,19 @@ def confirmIsolateIC():
 
 @icsBp.route("/ics/isolate-execute", methods=["POST"])
 def executeIsolateIC():
+    """Isolator carries out the isolation, completing the isolate cycle.
+
+    POST /ics/isolate-execute. Requires the ``ISOLATOR`` role, and the
+    caller's department must match the IC's ``execution_department`` (403
+    otherwise). Body: ``{"ic-id": <int>, "items": <optional list of
+    {"tag", "lock_num", "lock_box_num"}>}``. 403 unless the IC's
+    ``getStatus()`` is ``Pending``. Merges ``lock_num``/``lock_box_num``
+    into ``ic.items`` by tag — ``tag``/``description``/``state`` stay
+    server-authoritative, and an unrecognized tag in the payload is
+    dropped. Stamps ``isolate_isolator``/``isolate_isolator_timestamp``,
+    moving the IC to ``Active``. Broadcasts an IC ISOLATED SSE event.
+    Responds with ``{"success": True}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ics/isolate-execute unauthorized (ip=%s)", request.remote_addr)
@@ -498,6 +597,15 @@ def executeIsolateIC():
 
 @icsBp.route("/ics/deisolate-request", methods=["POST"])
 def requestDeisolateIC():
+    """Request that an active IC be de-isolated.
+
+    POST /ics/deisolate-request. Requires an authenticated non-guest user.
+    Body: ``{"ic-id": <int>}``. 403 unless the IC's ``getStatus()`` is
+    ``Active``. Delegates to ``setDeisolateRequested`` to stamp
+    ``deisolate_requestor``/``deisolate_requestor_timestamp`` and clear any
+    stale ``deisolate_issuing*`` decision. Responds with
+    ``{"success": True}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ics/deisolate-request unauthorized (ip=%s)", request.remote_addr)
@@ -532,6 +640,16 @@ def requestDeisolateIC():
 
 @icsBp.route("/ics/deisolate-confirm", methods=["POST"])
 def confirmDeisolateIC():
+    """Issuing confirms or returns a pending de-isolate request.
+
+    POST /ics/deisolate-confirm. Requires the ``ISSUING`` role (403
+    otherwise). Body: ``{"ic-id": <int>, "response": <bool>}``. 403 unless
+    the IC's ``getStatus()`` is ``Deisolate Confirming``. Stamps
+    ``deisolate_issuing``/``deisolate_issuing_timestamp``/
+    ``deisolate_issuing_action`` (``Approved`` or ``Returned``). Broadcasts
+    an IC DEISOLATE_CONFIRMED/DEISOLATE_REJECTED SSE event. Responds with
+    ``{"success": True}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ics/deisolate-confirm unauthorized (ip=%s)", request.remote_addr)
@@ -579,6 +697,16 @@ def confirmDeisolateIC():
 
 @icsBp.route("/ics/deisolate-execute", methods=["POST"])
 def executeDeisolateIC():
+    """Isolator carries out the de-isolation, completing the de-isolate cycle.
+
+    POST /ics/deisolate-execute. Requires the ``ISOLATOR`` role, and the
+    caller's department must match the IC's ``execution_department`` (403
+    otherwise). Body: ``{"ic-id": <int>}``. 403 unless the IC's
+    ``getStatus()`` is ``Closing``. Stamps ``deisolate_isolator``/
+    ``deisolate_isolator_timestamp``, moving the IC to ``Closed`` — the
+    only path to that status. Broadcasts an IC DEISOLATED SSE event.
+    Responds with ``{"success": True}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ics/deisolate-execute unauthorized (ip=%s)", request.remote_addr)
@@ -628,6 +756,16 @@ def executeDeisolateIC():
 
 @icsBp.route("/ics/link-ptw", methods=["POST"])
 def linkPTWToIC():
+    """Link a PTW to an IC, symmetrically updating both sides.
+
+    POST /ics/link-ptw. Requires the ``USER``, ``ISSUING``, or
+    ``COORDINATOR`` role (403 otherwise). Body: ``{"ic-id": <int>,
+    "ptw-id": <int>}``. 400 if the PTW is already linked, 404 if the IC or
+    PTW doesn't exist, 403 if ``IC.canLinkPTW(ptw)`` rejects the pair.
+    Updates ``IC.linked_ptws``/``held_by`` and ``PTW.linked_ics``, resyncs
+    the PTW cache, and broadcasts LINKED SSE events for both the IC and
+    the PTW. Responds with ``{"success": True}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ics/link-ptw unauthorized (ip=%s)", request.remote_addr)
@@ -684,6 +822,16 @@ def linkPTWToIC():
 
 @icsBp.route("/ics/unlink-ptw", methods=["POST"])
 def unlinkPTWFromIC():
+    """Unlink a PTW from an IC, symmetrically updating both sides.
+
+    POST /ics/unlink-ptw. Requires the ``USER``, ``ISSUING``, or
+    ``COORDINATOR`` role (403 otherwise). Body: ``{"ic-id": <int>,
+    "ptw-id": <int>}``. 400 if the PTW isn't currently in the IC's
+    ``linked_ptws``/``held_by``. Updates ``IC.linked_ptws``/``held_by`` and
+    ``PTW.linked_ics``, resyncs the PTW cache, broadcasts UNLINKED SSE
+    events for both the IC and the PTW, and runs the automatic
+    de-isolate check on the IC. Responds with ``{"success": True}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ics/unlink-ptw unauthorized (ip=%s)", request.remote_addr)

@@ -1,3 +1,9 @@
+"""Server-Sent Events client registry and broadcast mechanism backing GET /events.
+Connected clients are tracked per role in an in-memory dict of bounded queues;
+broadcast() fans a message out to every queue belonging to the targeted role(s),
+and each /events request's generator loop (in routes/auth.py) blocks on its own
+queue and yields whatever text is put into it."""
+
 import json
 import queue
 import logging
@@ -13,6 +19,9 @@ _sse_lock = threading.Lock()
 
 
 def registerClient(role: UserRoles) -> queue.Queue:
+    """Create and register a new bounded (maxsize=50) queue for a connecting
+    SSE client of the given role, returning it for the caller's stream loop to
+    read from."""
     q = queue.Queue(maxsize=50)
     with _sse_lock:
         _sse_clients.setdefault(role, []).append(q)
@@ -20,6 +29,8 @@ def registerClient(role: UserRoles) -> queue.Queue:
 
 
 def unregisterClient(role: UserRoles, q: queue.Queue):
+    """Remove a previously registered client queue for the given role, e.g. on
+    stream disconnect; silently ignores an already-removed or unknown queue."""
     with _sse_lock:
         try:
             _sse_clients[role].remove(q)
@@ -28,6 +39,7 @@ def unregisterClient(role: UserRoles, q: queue.Queue):
 
 
 def clientCount(role: UserRoles) -> int:
+    """Return the number of currently connected SSE clients for the given role."""
     return len(_sse_clients.get(role, []))
 
 

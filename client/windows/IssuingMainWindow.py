@@ -1,3 +1,6 @@
+"""Main window for the Issuing role - authorizes PTW execution and accepts/rejects
+run, hold, and close requests."""
+
 import qtawesome as qta
 
 from GlobalData import globalData
@@ -6,7 +9,15 @@ from windows.MainWindow import MainWindow
 
 
 class IssuingMainWindow(MainWindow):
+    """Issuing role window: the full PTW running-cycle tab set (Waiting Run/Hold/Close
+    Confirmation, Running, Held, Closed, plus the approval-side Under Review/Meeting/
+    Returned/Approved/Archived tabs) with run-accept/reject and hold/close take-action
+    options. Also has the full IC lifecycle tabs except Requested - a non-PSIC IC never
+    routes back to Requested once Issuing has acted on it, so that tab would stay empty
+    for this role. The FAB prints the PTWs in whichever tab is currently open."""
+
     def __init__(self, loggedUser: User):
+        """Build the Issuing window: wire PTW/IC tab options and the print-current-tab FAB."""
         super().__init__(loggedUser)
         self.setWindowTitle("PTW (Permit To Work) - Issuing Window")
 
@@ -69,6 +80,8 @@ class IssuingMainWindow(MainWindow):
         self.btnFAB.setToolTip("Print current widget PTWs")
 
     def stackTabChanged(self):
+        """Show the FAB except on the Welcome and any IC tab; lazily fetch archived
+        PTWs the first time that tab is opened."""
         super().stackTabChanged()
         tab = self.stack.currentWidget()
         self.btnFAB.setVisible(tab != self.tabWelcome and tab not in self._icTabsWidgets)
@@ -76,7 +89,9 @@ class IssuingMainWindow(MainWindow):
             self.refreshArchivedPTWs()
 
     def refreshGUI(self, refreshArchivedPTWs: bool = False):
+        """Reload PTW/user/IC data from the server and rebuild the PTW and IC tabs."""
         super().refreshPtwUserGUI(refreshArchivedPTWs=refreshArchivedPTWs)
 
     def btnFABHandler(self):
+        """Print the PTWs listed in the currently active tab."""
         self.printPTWs()

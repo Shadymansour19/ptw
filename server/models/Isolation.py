@@ -1,3 +1,9 @@
+"""Server-side isolation models: the declarative `Isolation` record attached to a
+PTW's required-isolations list, and the full `IC` (Isolation Certificate) model -
+approval chain, PSIC fields, isolate/de-isolate execution cycles, status
+derivation, P&ID/wiring documents, and PTW linkage. Kept in sync with the
+client-side twin of this file; no UI/coloring concerns live here."""
+
 import enum
 from types import SimpleNamespace
 from datetime import datetime
@@ -10,6 +16,8 @@ class Isolation:
     """Declarative record of an isolation required by a PTW — type/tag/description only.
     No runtime linkage state; that now lives entirely on IC (see below)."""
     class Types(enum.StrEnum):
+        """Classification of a declarative isolation tag (unrelated to `IC.Types`;
+        `Protective System` here is just a tag-classification value, not a PSIC)."""
         MECHANICAL = 'Mechanical'
         ELECTRICAL = 'Electrical'
         SELF       = 'Self'
@@ -17,11 +25,13 @@ class Isolation:
         OTHER      = 'Other'
 
     def __init__(self, type: str = '', tag: str = '', description: str = ''):
+        """Set the type/tag/description fields directly from the given values."""
         self.type = type
         self.tag = tag
         self.description = description
 
     def setAll(self, data: dict = None, namespace: SimpleNamespace = None):
+        """Bulk-assign matching attributes from a dict or SimpleNamespace and return self."""
         if namespace:
             self.__dict__.update(vars(namespace))
         elif data:
@@ -34,16 +44,29 @@ class Isolation:
         return self
 
     def __str__(self):
+        """Render as "type - description tag" for list/log display."""
         return f"{self.type} - {self.description if self.description else ''} {self.tag}"
 
 
 class IC:
+    """Isolation Certificate: the formal, independently-approved isolation-request
+    document. Wraps a list of isolation `items`, its own approval chain
+    (`Approval`/`Approver`/`requiredApprovers()`), optional PSIC (Protective
+    System IC) fields, the isolate/de-isolate execution cycles (with usernames
+    and timestamps for each requestor/issuing/isolator step), attached P&ID/
+    wiring documents, and PTW linkage lists (`linked_ptws`/`held_by`)."""
+
     class IsolationItem:
+        """One isolation point on an IC: tag, description, target state
+        (OPEN/CLOSE), and the lock/lock-box numbers set by the isolator."""
+
         class States(enum.StrEnum):
+            """Target state to leave an isolation point in: physically open or closed."""
             OPEN  = enum.auto()
             CLOSE = enum.auto()
 
         def __init__(self, tag: str = '', description: str = '', state: str = ''):
+            """Set tag/description/state; lock fields start blank until the isolator sets them."""
             self.tag = tag
             self.description = description
             self.state = state
@@ -51,14 +74,17 @@ class IC:
             self.lock_box_num = ''
 
         def setLockNum(self, lockNum):
+            """Set the lock number and return self for chaining."""
             self.lock_num = lockNum
             return self
 
         def setLockBoxNum(self, lockBoxNum):
+            """Set the lock box number and return self for chaining."""
             self.lock_box_num = lockBoxNum
             return self
 
         def setAll(self, data: dict = None, namespace: SimpleNamespace = None):
+            """Bulk-assign matching attributes from a dict or SimpleNamespace and return self."""
             if namespace:
                 self.__dict__.update(vars(namespace))
             elif data:
@@ -72,7 +98,11 @@ class IC:
 
 
     class Highlight:
+        """A single burned-in P&ID/wiring highlight box for one isolation item's tag,
+        located on a specific page and fractional rectangle of a `PidWiringDocument`."""
+
         def __init__(self, tag: str = '', page: int = 0, rect=None, state: str = '', manual: bool = False):
+            """Set the highlight's tag, page, rectangle, item state, and manual-edit flag."""
             self.tag = tag
             self.page = page          # 0-based page index
             self.rect = rect or [0.0, 0.0, 0.0, 0.0]  # [x, y, w, h], fractional 0..1 of page size
@@ -80,6 +110,7 @@ class IC:
             self.manual = manual      # unused today; reserved for future manual override editing
 
         def setAll(self, data: dict = None, namespace: SimpleNamespace = None):
+            """Bulk-assign matching attributes from a dict or SimpleNamespace and return self."""
             if namespace:
                 self.__dict__.update(vars(namespace))
             elif data:
@@ -92,6 +123,9 @@ class IC:
             return self
 
     class PidWiringDocument:
+        """A single uploaded P&ID/wiring diagram (PDF or image) attached to an IC,
+        with the isolation items' tags automatically located and highlighted on it."""
+
         @staticmethod
         def _asHighlight(h) -> 'IC.Highlight':
             """highlights arrives in three possible shapes depending on the caller: an already-
@@ -105,6 +139,7 @@ class IC:
             return IC.Highlight().setAll(h)
 
         def __init__(self, filename: str = '', original_filename: str = '', page_count: int = 1, ocr_used: bool = False, highlights=None):
+            """Set the document's filenames, page count, OCR flag, and normalized highlight list."""
             self.filename = filename                    # the highlighted/burned-in file - served to the app and to external viewers
             self.original_filename = original_filename  # pristine upload, kept only so highlights can be recomputed later
             self.page_count = page_count
@@ -112,6 +147,7 @@ class IC:
             self.highlights: list['IC.Highlight'] = [IC.PidWiringDocument._asHighlight(h) for h in (highlights or [])]
 
         def setAll(self, data: dict = None, namespace: SimpleNamespace = None):
+            """Bulk-assign matching attributes from a dict or SimpleNamespace, re-normalizing highlights, and return self."""
             if namespace:
                 self.__dict__.update(vars(namespace))
                 self.highlights = [IC.PidWiringDocument._asHighlight(h) for h in self.highlights]
@@ -129,12 +165,15 @@ class IC:
 
 
     class Types(enum.StrEnum):
+        """IC classification (distinct from the removed `Protective System` value -
+        see the `is_psic` flag instead)."""
         MECHANICAL = 'Mechanical'
         ELECTRICAL = 'Electrical'
         SELF       = 'Self'
         OTHER      = 'Other'
 
     class Status(enum.StrEnum):
+        """Overall IC lifecycle status, as computed by `getStatus()`."""
         REQUESTED  = 'Requested'
         RETURNED   = 'Returned'
         APPROVED   = 'Approved'
@@ -147,17 +186,22 @@ class IC:
         CLOSED     = 'Closed'
 
     class ApprovalActions(enum.StrEnum):
+        """Decision recorded for an approval step or an isolate/de-isolate IA confirmation."""
         APPROVED = 'Approved'
         RETURNED = 'Returned'
 
     class Approval:
+        """One recorded action (approve/return) in the IC's approval chain, by whom and when."""
+
         def __init__(self, action=None, username: str = None, timestamp: str = None, comment: str = None):
+            """Set the action, acting user, timestamp, and optional comment."""
             self.action = action
             self.username = username
             self.timestamp = timestamp
             self.comment = comment
 
         def setAll(self, data: dict):
+            """Bulk-assign matching attributes from a dict and return self."""
             for k, v in data.items():
                 if hasattr(self, k):
                     try:
@@ -167,6 +211,7 @@ class IC:
             return self
 
         def __str__(self):
+            """Render a human-readable "action by role name (dept) at timestamp" summary."""
             user = globalData.allUsers.get(self.username)
             if user is None:
                 return f"{self.action} by [deleted user: {self.username}] at {self.timestamp}"
@@ -175,28 +220,45 @@ class IC:
             return f"{self.action} by {user.getRole()} {user.getName()} at {self.timestamp}"
 
     class Approver:
+        """A required approval-chain slot: a role, optionally scoped to a specific department."""
+
         def __init__(self, role: 'UserRoles', department=None):
+            """Set the required role and, optionally, the department it's scoped to."""
             self.role = role
             self.department = department
 
         def matchesRoleDept(self, role, department) -> bool:
+            """Return True if the given role/department satisfies this Approver slot."""
             return role == self.role and (self.department is None or self.department == department)
 
         def matchesUser(self, user) -> bool:
+            """Return True if the given user's role/department satisfies this Approver slot."""
             return user is not None and self.matchesRoleDept(user.getRole(), user.getDepartment())
 
         def __eq__(self, other):
+            """Compare equal to another Approver with the same role and department."""
             return isinstance(other, IC.Approver) and self.role == other.role and self.department == other.department
 
         def __hash__(self):
+            """Hash on (role, department) so Approvers can be used in sets/dicts."""
             return hash((self.role, self.department))
 
         def __str__(self):
+            """Render as the department (for a department-scoped USER slot) or the role name."""
             if self.role == UserRoles.USER:
                 return str(self.department) if self.department else str(self.role)
             return str(self.role)
 
     def __init__(self, data: dict = {}):
+        """Build an IC from a data dict (server row or JSON payload), defaulting every
+        field to blank/unset for a brand-new certificate.
+
+        Nested lists (`approvals`, `items`, `pid_documents`) are rebuilt into their
+        proper model classes. `requestor_timestamp` defaults to now if not supplied
+        (this IC is being newly created), unlike the later isolate/sanction/
+        reisolate/deisolate requestor timestamps, which must stay unset until that
+        specific action actually happens.
+        """
         self.id : str = data.get('id')
         self.type : str = data.get('type')
         self.requestor_department : str = data.get('requestor_department')
@@ -264,6 +326,9 @@ class IC:
         self.held_by: list = []
 
     def setAll(self, data: dict = None, namespace: SimpleNamespace = None):
+        """Bulk-assign matching attributes from a dict or SimpleNamespace, rebuilding
+        the `approvals`/`items`/`pid_documents` lists into their proper model
+        classes, and return self."""
         if namespace:
             self.__dict__.update(vars(namespace))
             self.approvals = [IC.Approval().setAll(a.__dict__) for a in self.approvals]
@@ -286,9 +351,13 @@ class IC:
         return self
 
     def __str__(self):
+        """Render as "id - type reason" for list/log display."""
         return f"{self.id} - {self.type} {self.reason if self.reason else ''}"
 
     def requiredApprovers(self) -> list[list['IC.Approver']]:
+        """Return the ordered approval stages required for this IC: Issuing alone
+        for a normal IC, or Issuing followed by PDH/PGM/SOD/DFGM (each its own
+        stage) when `is_psic` is set."""
         stages = [[IC.Approver(UserRoles.ISSUING)]]
         if self.is_psic:
             stages.extend([
@@ -300,6 +369,7 @@ class IC:
         return stages
 
     def _stageSatisfied(self, stage: list['IC.Approver']) -> bool:
+        """Return True if every Approver in the given stage has a matching Approved entry."""
         approvedBy = [globalData.allUsers.get(a.username) for a in self.approvals if a.action == IC.ApprovalActions.APPROVED]
         return all(any(approver.matchesUser(user) for user in approvedBy) for approver in stage)
 
@@ -345,6 +415,26 @@ class IC:
         return None
 
     def getStatus(self) -> 'IC.Status':
+        """Derive the IC's current lifecycle status by layering the isolate/de-isolate
+        execution cycles on top of the approval chain, in this precedence order:
+
+        1. `deisolate_isolator` set -> CLOSED (terminal; the only path here).
+        2. `sanction_isolator` set and `reisolate_isolator` not (yet) set -> SANCTIONED.
+        3. `isolate_isolator` or `reisolate_isolator` set (physically isolated):
+           - no `deisolate_requestor` -> ACTIVE.
+           - `deisolate_requestor` set, `deisolate_issuing_action == Approved` -> CLOSING
+             (awaiting isolator's de-isolate execution).
+           - `deisolate_requestor` set, action not yet `Returned` -> DEISOLATE_CONFIRMING
+             (awaiting IA confirmation).
+           - `deisolate_requestor` set, action == `Returned` -> falls back to ACTIVE
+             (ready for a fresh de-isolate request).
+        4. `isolate_requestor` set (isolation requested but not yet executed):
+           - `isolate_issuing_action == Approved` -> PENDING (awaiting isolator execution).
+           - action not yet `Returned` -> ISOLATE_CONFIRMING (awaiting IA confirmation).
+           - action == `Returned` -> falls through to the approval-chain status below
+             (ready for a fresh isolate request).
+        5. Otherwise -> whatever `getApprovalStatus()` reports (Requested/Returned/Approved).
+        """
         if self.deisolate_isolator:
             return self.Status.CLOSED
         if self.sanction_isolator and not self.reisolate_isolator:
@@ -383,6 +473,8 @@ class IC:
         return ptw is not None and ptw.approval_status == PTW.ApprovalStatus.APPROVED and ptw.running_status == PTW.RunningStatus.NOT_RUNNING
 
     def linkPTW(self, ptwId):
+        """Link the given PTW id to this IC: un-hold it if held, then add it to
+        `linked_ptws` if not already present."""
         ptwId = str(ptwId)
         try:
             self.held_by.remove(ptwId)
@@ -392,6 +484,7 @@ class IC:
             self.linked_ptws.append(ptwId)
 
     def unlinkPTW(self, ptwId):
+        """Remove the given PTW id from both `linked_ptws` and `held_by`, if present in either."""
         ptwId = str(ptwId)
         try:
             self.linked_ptws.remove(ptwId)

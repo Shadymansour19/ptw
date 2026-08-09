@@ -1,3 +1,10 @@
+"""Client entry point.
+
+Creates the QApplication, sets `setQuitOnLastWindowClosed(False)` so hiding a window to the
+system tray never implicitly quits the app, wires global styling/i18n/OCR configuration, and
+shows the login window; a successful login routes to the role-appropriate main window.
+"""
+
 import sys
 import logging
 import tempfile
@@ -41,6 +48,12 @@ def _excepthook(exc_type, exc_value, exc_tb):
 sys.excepthook = _excepthook
 
 def on_login_success(user):
+    """Handle a successful login by opening the role-appropriate main window.
+
+    Connected to `LoginWindow.on_login_success`. Picks a `*MainWindow` subclass based on
+    `user.getRole()`, connects its `on_logout` signal to `on_logout`, shows it maximized,
+    and hides the login window.
+    """
     mainWindow = None
     if user.getRole() == UserRoles.GUEST:
         mainWindow = GuestMainWindow(user)
@@ -77,6 +90,10 @@ def on_login_success(user):
 
 
 def on_logout():
+    """Handle a logout request by resetting and re-showing the login window.
+
+    Connected to a main window's `on_logout` signal.
+    """
     loginWindow.reset()
     loginWindow.show()
 

@@ -1,3 +1,10 @@
+"""Dialog for choosing/reviewing which linked ICs stay held during a PTW hold request.
+
+Used from the PTW hold flow: the Performing Authority selects which linked ICs must
+remain isolated while the PTW is held, and the Issuing Authority later reviews that
+selection when confirming the hold.
+"""
+
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget,
                               QTableWidgetItem, QHeaderView, QAbstractItemView,
@@ -33,6 +40,18 @@ class DialogSelectHeldICs(QDialog):
         view_only: bool = False,
         title: str = "Linked ICs",
     ):
+        """Build the linked-IC table and buttons for the requested mode.
+
+        Args:
+            ics: linked ICs to list, one row each.
+            held: ids (as strings) of ICs currently held, used to pre-check rows.
+            selectable: whether checkboxes are user-editable (ignored in
+                review_mode/view_only, which each impose their own checkability).
+            review_mode: show the IA's Accept/Reject/Cancel review UI instead of
+                the PA's plain Ok/Cancel selection UI.
+            view_only: render a read-only summary (Close button only), overriding
+                selectable/review_mode's checkbox editability.
+        """
         super().__init__(parent)
         self.setWindowTitle(title)
         self.action = None
@@ -132,18 +151,25 @@ class DialogSelectHeldICs(QDialog):
             self.setMinimumWidth(int(parent.width() * 0.7))
 
     def _setAction(self, action: str):
+        """Record the IA's review decision and close the dialog as accepted.
+
+        Slot for the review-mode Accept/Reject button click.
+        """
         self.action = action
         self.accept()
 
     def _holdAll(self):
+        """Check every row's Hold checkbox. Slot for the "Hold All" button click."""
         for row in range(self.tbl.rowCount()):
             self.tbl.item(row, 0).setCheckState(Qt.CheckState.Checked)
 
     def _releaseAll(self):
+        """Uncheck every row's Hold checkbox. Slot for the "Release All" button click."""
         for row in range(self.tbl.rowCount()):
             self.tbl.item(row, 0).setCheckState(Qt.CheckState.Unchecked)
 
     def getHeldICIds(self) -> list[str]:
+        """Return the ids of ICs whose Hold checkbox is currently checked."""
         return [
             self.tbl.item(row, 1).text()
             for row in range(self.tbl.rowCount())

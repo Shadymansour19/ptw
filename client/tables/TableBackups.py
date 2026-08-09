@@ -1,3 +1,9 @@
+"""Admin tab for managing on-demand database + file backups.
+
+Lists existing backups and lets an admin trigger a new backup, download a
+backup's dump/files archive, or delete one, via the `/backups` endpoint
+(GET list/download, POST create, DELETE remove).
+"""
 import os
 from datetime import datetime
 
@@ -19,6 +25,7 @@ _CRIT_COLOR = "#d32f2f"
 
 
 def _formatBytes(n: int) -> str:
+    """Format a byte count as a human-readable string (e.g. "1.5 MB")."""
     if not n:
         return "0 B"
     n = float(n)
@@ -30,6 +37,7 @@ def _formatBytes(n: int) -> str:
 
 
 def _formatAge(dt: datetime) -> str:
+    """Format a datetime as a relative age string (e.g. "just now", "3h ago")."""
     seconds = (datetime.now() - dt).total_seconds()
     if seconds < 60:
         return "just now"
@@ -43,7 +51,15 @@ def _formatAge(dt: datetime) -> str:
 
 
 class TableBackups(QWidget):
+    """Admin widget listing on-demand backups, with create/download/delete actions.
+
+    Shows one row per backup (timestamp, age, DB/files/total size, complete
+    status, auto-prune countdown) and a status summary; backups are managed
+    through `ClientRequests` calls to the `/backups` endpoint.
+    """
+
     def __init__(self, parent, loggedUser, title: str = "Backups"):
+        """Build the header (status label, Backup Now/Refresh buttons) and backups table."""
         super().__init__(parent)
         self.loggedUser = loggedUser
         self.backups: list[dict] = []
@@ -96,7 +112,9 @@ class TableBackups(QWidget):
         lyt.addWidget(self.tbl)
 
     def refresh(self):
+        """Slot for the Refresh button clicked signal; reload the backup list from the server."""
         def on_done(err, summary):
+            """Handle the getBackups response; populate the table or show an error."""
             self.window()._refreshOverlay.hideBusy()
             if err:
                 self._statusLabel.setText(err)
@@ -109,6 +127,7 @@ class TableBackups(QWidget):
         ClientRequests.getBackups(self.loggedUser, callback=on_done)
 
     def _populate(self, summary: dict):
+        """Rebuild the table rows from a backups summary, computing per-row age/sizes/prune countdown."""
         self.backups = summary.get('backups', [])
         self.retentionDays = summary.get('retentionDays', 14)
 
@@ -143,6 +162,7 @@ class TableBackups(QWidget):
         self._updateStatusLabel(summary)
 
     def _updateStatusLabel(self, summary: dict):
+        """Update the header status label's text/color from the last-backup age and free disk space."""
         freeBytes = summary.get('freeBytes')
         lastBackupAt = summary.get('lastBackupAt')
         totalSize = sum(b.get('totalSizeBytes', 0) for b in self.backups)
@@ -162,9 +182,11 @@ class TableBackups(QWidget):
         self._statusLabel.setStyleSheet(f"color: {color}; font-weight: bold;")
 
     def _backupNow(self):
+        """Slot for the Backup Now button clicked signal; request an immediate on-demand backup."""
         self._btnBackupNow.setEnabled(False)
 
         def on_done(err, _):
+            """Handle the createBackup response; re-enable the button and refresh the list on success."""
             self._btnBackupNow.setEnabled(True)
             self.window()._refreshOverlay.hideBusy()
             if err:
@@ -177,6 +199,7 @@ class TableBackups(QWidget):
         ClientRequests.createBackup(self.loggedUser, callback=on_done)
 
     def _showContextMenu(self, pos: QPoint):
+        """Slot for the table's customContextMenuRequested signal; show Download/Delete menu for the right-clicked backup."""
         index = self.tbl.indexAt(pos)
         if not index.isValid():
             return
@@ -192,6 +215,11 @@ class TableBackups(QWidget):
         menu.exec(self.tbl.mapToGlobal(pos))
 
     def _downloadBackup(self, name: str):
+        """Download a backup's DB dump and files archive to a user-chosen local folder.
+
+        Fetches the dump first, then the files archive, writing each to
+        `<destRoot>/<name>/` as its response arrives.
+        """
         destRoot = QFileDialog.getExistingDirectory(self, 'Select destination folder')
         if not destRoot:
             return
@@ -199,6 +227,7 @@ class TableBackups(QWidget):
         os.makedirs(destDir, exist_ok=True)
 
         def on_files_done(err, result):
+            """Handle the files-archive download response; write it to disk and report completion."""
             self.window()._refreshOverlay.hideBusy()
             if err:
                 QMessageBox.warning(self, 'Backups', err)
@@ -208,6 +237,7 @@ class TableBackups(QWidget):
             QMessageBox.information(self, 'Backups', f"Backup '{name}' downloaded to:\n{destDir}")
 
         def on_dump_done(err, result):
+            """Handle the DB dump download response; write it to disk, then fetch the files archive."""
             if err:
                 self.window()._refreshOverlay.hideBusy()
                 QMessageBox.warning(self, 'Backups', err)
@@ -220,6 +250,7 @@ class TableBackups(QWidget):
         ClientRequests.downloadBackupFile(self.loggedUser, name, 'dump', callback=on_dump_done)
 
     def _deleteBackup(self, name: str):
+        """Confirm with the user, then delete the named backup via the server and refresh the list."""
         reply = QMessageBox.question(
             self, 'Delete Backup', f"Are you sure you want to delete backup '{name}'? This cannot be undone.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No,
@@ -228,6 +259,7 @@ class TableBackups(QWidget):
             return
 
         def on_done(err, _):
+            """Handle the deleteBackup response; refresh the list on success or show an error."""
             self.window()._refreshOverlay.hideBusy()
             if err:
                 QMessageBox.warning(self, 'Backups', err)

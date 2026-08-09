@@ -1,3 +1,12 @@
+"""Flask blueprint for risk assessments.
+
+Covers CRUD for the generic risk-assessment library (Safety role only,
+``ptw_id`` is ``None``) and for a PTW's own materialized risk-item row set
+(any authenticated user, ``ptw_id`` set) — the server distinguishes the two
+by checking whether ``ptw_id`` is present, not by trusting a client-declared
+role.
+"""
+
 from flask import Blueprint, request, jsonify
 
 from core import log, ptwDB, risksDB
@@ -10,6 +19,12 @@ risksBp = Blueprint("risks", __name__)
 
 @risksBp.route("/risks", methods=["GET"])
 def getAllRiskAssessments():
+    """Return every generic risk assessment (``ptw_id IS NULL``).
+
+    GET /risks. Requires any authenticated user; no role restriction.
+    Responds with ``{"success": True, "risks": [...]}``, or a 400 with an
+    error message if the lookup fails.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("GET /risks unauthorized (ip=%s)", request.remote_addr)
@@ -25,6 +40,13 @@ def getAllRiskAssessments():
 
 @risksBp.route("/risks/ptw", methods=["GET"])
 def getPTWSpecificRiskAssessment():
+    """Return one PTW's materialized risk assessment row set.
+
+    GET /risks/ptw. Requires any authenticated user, any department. Body:
+    ``{"ptw_id": <int>}``; 400 if missing/invalid, 404 if the PTW doesn't
+    exist. Responds with ``{"success": True, "risk": <RiskAssessment or
+    None>}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("GET /risks/ptw unauthorized (ip=%s)", request.remote_addr)
@@ -54,6 +76,14 @@ def getPTWSpecificRiskAssessment():
 
 @risksBp.route("/risks", methods=["POST"])
 def addNewRiskAssessment():
+    """Create a risk assessment.
+
+    POST /risks. Requires an authenticated user; only the Safety role may
+    create a generic assessment (``ptw_id`` absent) — any user may create
+    their own PTW-specific row set (``ptw_id`` set), 401 otherwise. Body is
+    the risk assessment dict. Responds with ``{"success": True, "error":
+    <db result>}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /risks unauthorized (ip=%s)", request.remote_addr)
@@ -76,6 +106,14 @@ def addNewRiskAssessment():
 
 @risksBp.route("/risks", methods=["PUT"])
 def updateRiskAssessment():
+    """Update a risk assessment.
+
+    PUT /risks. Requires an authenticated user; only the Safety role may
+    update a generic assessment (``ptw_id`` absent) — any user may update
+    their own PTW-specific row set (``ptw_id`` set), 401 otherwise. Body is
+    the risk assessment dict. Responds with ``{"success": True, "error":
+    <db result>}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("PUT /risks unauthorized (ip=%s)", request.remote_addr)
@@ -98,6 +136,14 @@ def updateRiskAssessment():
 
 @risksBp.route("/risks", methods=["DELETE"])
 def deleteRiskAssessment():
+    """Delete a risk assessment by title.
+
+    DELETE /risks. Requires an authenticated user; only the Safety role may
+    delete a generic assessment (``ptw_id`` absent) — any user may delete
+    their own PTW-specific row set (``ptw_id`` set), 401 otherwise. Body:
+    ``{"title": <str>, "ptw_id": <optional>}``. Responds with
+    ``{"success": True, "error": <db result>}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("DELETE /risks unauthorized (ip=%s)", request.remote_addr)

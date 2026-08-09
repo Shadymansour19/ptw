@@ -1,3 +1,9 @@
+"""Risk assessment endpoint wrappers: fetch generic and PTW-specific risk
+assessments, and create/update/delete them.
+
+Mixed into ``ClientRequests`` (see ``network/clientRequests.py``).
+"""
+
 from network.requestConfig import SERVER_URL, TIMEOUT, FILE_TIMEOUT
 import requests
 from network.RequestWorker import async_request
@@ -7,8 +13,17 @@ from models.PTW import PTW, RiskAssessment
 
 
 class RiskRequests:
+    """Mixin providing risk-assessment endpoints.
+
+    Combined with the other ``*Requests`` mixins into ``ClientRequests``.
+    """
+
     @async_request
     def getAllRiskAssessments(loggedUser: User) -> tuple[str, dict[str, RiskAssessment]]:
+        """Fetch all generic risk assessments via GET /risks.
+
+        Returns ``(None, {title: RiskAssessment})`` on success, or ``(err, None)`` on failure.
+        """
         response = None
         try:
             response = requests.get(
@@ -30,6 +45,10 @@ class RiskRequests:
 
     @async_request
     def getPTWSpecificRiskAssessment(loggedUser: User, ptw_id: int) -> tuple[str, RiskAssessment]:
+        """Fetch one PTW's specific risk assessment via GET /risks/ptw.
+
+        Returns ``(None, RiskAssessment or None)`` on success, or ``(err, None)`` on failure.
+        """
         response = None
         try:
             response = requests.get(
@@ -52,6 +71,10 @@ class RiskRequests:
 
     @async_request
     def addNewRiskAssessment(loggedUser: User, riskAssessment: RiskAssessment) ->  str:
+        """Create a risk assessment via POST /risks (generic or a PTW's own, per its ``ptw_id``).
+
+        Returns an error string, or None on success.
+        """
         response = None
         try:
             response = requests.post(
@@ -73,6 +96,10 @@ class RiskRequests:
 
     @async_request
     def updateRiskAssessment(loggedUser: User, riskAssessment: RiskAssessment) ->  str:
+        """Update a risk assessment via PUT /risks.
+
+        Returns an error string, or None on success.
+        """
         response = None
         try:
             response = requests.put(
@@ -94,6 +121,10 @@ class RiskRequests:
 
     @async_request
     def deleteRiskAssessment(loggedUser: User, riskTitle: str, ptw_id: int = None) ->  str:
+        """Delete a risk assessment via DELETE /risks, identified by title (and PTW id if not generic).
+
+        Returns an error string, or None on success.
+        """
         response = None
         try:
             response = requests.delete(

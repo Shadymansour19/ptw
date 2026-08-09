@@ -1,222 +1,183 @@
 PTW System — File Structure
-===========================
+============================
+Last regenerated: 2026-08-09, against commit 5b03fa1 ("Refactor: split MainWindow.py
+into client/windows/ package"). This file was previously stale (last touched 2026-06-13,
+before the client/windows/ split, the models/network/dialogs/tables/widgets reorg, and
+everything IC/PSIC/RunCycle/shift-alarm related) — treat any future drift the same way:
+if you restructure files, update this alongside PROJECT.md/README.md, not after.
+
+For prose explanations of *why* things are shaped this way, see PROJECT.md (full
+architecture + API + DB schema reference) and README.md (public-facing overview). This
+file is the flat, greppable map of *where* everything lives.
 
 /mnt/hdd/software/projects/qt/ptw/
 │
-├── PROJECT.md                      # Full project documentation (architecture, workflows, API)
-├── README.md                       # Public-facing overview (features, setup, API summary, build)
+├── PROJECT.md                      # Full project documentation (domain rules, lifecycle, API, DB schema, client architecture)
+├── README.md                       # Public-facing overview (features, setup, API summary, build/release)
 ├── KNOWN_ISSUES.md                 # Security and bug backlog with fix guidance
 ├── file-structure.txt              # This file
 │
-├── .vscode/
-│   ├── launch.json                 # VS Code debug launch configurations
-│   └── settings.json              # VS Code workspace settings
+├── .github/
+│   └── workflows/
+│       └── build.yml               # CI — builds Windows + Linux Nuitka binaries (--onedir + bundled Tesseract), publishes to GitHub Releases on version tags
+│
+├── .vscode/                        # Gitignored (local-only), present in a working checkout
+│   ├── launch.json                 #   Single "Python Debugger: Current File" (debugpy) config
+│   └── settings.json               #   Pins python-envs to venv; project cSpell word list
+│
+├── screenshots/                    # README screenshots (home, ptw-list, ptw-list-filtered, isolations, new-ptw, server-logs)
+│
+├── test_data/                      # Gitignored — manual-testing fixtures for bulk import (users Excel/CSV, risk items Excel) and its own output sample
+│
+├── dev-scripts/                    # Gitignored — one-off/local dev & migration scripts, NOT part of the shipped app.
+│   │                               # Each script documents itself in its own module docstring (what changed, why, how to run).
+│   ├── migrate_add_certificate_approvals.py     # Added `approvals` JSONB[] column to isolation_certificates (staged IC approval chain)
+│   ├── migrate_add_pid_documents_deisolate_action.py  # Backfilled `pid_documents` + `deisolate_issuing_action` on an already-existing `ics` table
+│   ├── migrate_add_requestor_isolate_asap.py    # Added requestor/requestor_timestamp/isolate_asap; repurposed isolate_requestor's meaning
+│   ├── migrate_drop_running_status.py           # Replaced stored running_status/prev_running_status with derived status + is_archived
+│   ├── migrate_long_term_column.py              # Fixed long_term column type (VARCHAR → BOOLEAN) on isolation_certificates
+│   ├── migrate_ptw_run_cycles.py                # Replaced flat performing/issuing/hold_*/close_* columns with the run_cycles JSONB[] model
+│   ├── reset_all_passwords.py                   # Resets every user's password hash to bcrypt("") + records new creds in local keyring/test_data
+│   ├── generate_bookmarklet.py                  # Builds a browser bookmarklet embedding locally-remembered PTW creds (dev convenience tool)
+│   └── generate_refresh_overlay_frames.py       # One-time asset generator: bakes RefreshOverlay's bounce animation into assets/sh-logo-bounce-frames.png
 │
 ├── client/                         # PyQt6 desktop application (runs on user machines)
 │   │
-│   ├── main.py                     # Entry point — creates QApplication, shows Login window
-│   ├── Login.py                    # Login screen UI — auth, password reset flow
-│   ├── MainWindow.py               # Post-login router — loads role-specific main window
-│   ├── GlobalData.py               # Client-side in-memory data cache (users, PTWs, isolations, risks)
-│   ├── clientRequests.py           # HTTP API client — wraps all server calls, returns (err, data)
-│   ├── PTWData.py                  # Client-side mirror of data model classes (PTWData, Isolation, etc.)
-│   ├── User.py                     # User model (UserRoles enum, SecuredUser, User classes)
-│   ├── Isolation.py                # Isolation model (client-side)
+│   ├── main.py                     # Entry point — creates QApplication, shows Login window, sets setQuitOnLastWindowClosed(False) for tray support
+│   ├── Login.py                    # Login screen — auth + password reset flow; own closeEvent (no tray concept pre-login)
+│   ├── GlobalData.py               # Client-side in-memory data cache (allUsers/allPTWs/archivedPTWs/ics/allRiskAssessments/allMIWIs)
+│   ├── nuitka-build.sh             # Local build: Nuitka --onefile (no bundled Tesseract — differs from CI's --onedir build)
+│   ├── pyinstaller-build.sh        # Alternate local packaging via PyInstaller — not used by CI/releases, predates the Nuitka move
 │   │
-│   │   ── MAIN UI WIDGETS ──
-│   ├── WidgetPTW.py                # Full PTW form widget — create, view, and edit a permit
-│   ├── TablePTWs.py                # PTW list view with filtering and Excel export
-│   ├── TableUsers.py               # Admin user management table
-│   ├── TableRisks.py               # Risk assessment table (list, open, manage)
-│   ├── TableIsolations.py          # All known isolation points table
-│   ├── TableAttachments.py         # Per-PTW file attachments management table
-│   ├── TabServerLogs.py            # Admin-only server log viewer tab:
-│   │                               #   collapsible per-file panels with lazy load on expand
-│   │                               #   CheckableComboBox level filter (DEBUG/INFO/WARNING/ERROR/CRITICAL)
-│   │                               #   color-coded lines per level via QTextCursor insertText
-│   │                               #   transparent panel styling
-│   ├── CheckableComboBox.py        # Reusable multi-select checkbox combo box
-│   │                               #   emits filterChanged signal; used in TablePTWs and TabServerLogs
+│   ├── windows/                    # Main window classes — one file per role, all subclass MainWindow
+│   │   ├── MainWindow.py           #   Base class: chrome (sidebar/topbar/home dashboard), PTW/IC action handlers, SSE sync, tray, PTW alarm polling
+│   │   ├── UserMainWindow.py       #   Requestor (Performing Authority) role window
+│   │   ├── CoordinatorMainWindow.py#   PTW approval coordination + IC view-only/Link-to-PTW
+│   │   ├── IssuingMainWindow.py    #   Run/hold/close confirmation + IC approval/isolate/deisolate confirm
+│   │   ├── SafetyMainWindow.py     #   Risk assessment library management + safety approvals
+│   │   ├── ManagerMainWindow.py    #   Shared class for PDH/PGM/SOD/DFGM (role passed in by main.py, not 4 separate classes)
+│   │   ├── AdminMainWindow.py      #   Full access — users, logs, backups; Users-by-Department home dashboard
+│   │   ├── IsolatorMainWindow.py   #   IC-only: Pending/Active/Closing/Sanctioned tabs, no PTW tabs, FAB hidden
+│   │   ├── GuestMainWindow.py      #   Unauthenticated visitor — create/view own PTWs only
+│   │   └── __init__.py
 │   │
-│   │   ── REALTIME & NETWORKING ──
-│   ├── SSEListener.py              # QThread that connects to GET /events and emits PTW change events
-│   ├── RequestWorker.py            # @async_request decorator — wraps any clientRequests method in a
-│   │                               #   QThread; marshals (err, data) result back to GUI thread via
-│   │                               #   a queued signal; callback= keyword arg triggers async path
+│   ├── models/                     # Data model classes (hand-kept in sync with server/models/ — not shared via a common package)
+│   │   ├── PTW.py                  #   PTW, RunCycle, Approval/Approver, enums — client-side mirror
+│   │   ├── Isolation.py            #   Isolation (declarative tag) + IC (formal isolation cert, approval chain, PSIC, linkage)
+│   │   ├── User.py                 #   User/SecuredUser, UserRoles/UserDepartments enums
+│   │   ├── SSE.py                  #   SSEObject/SSEAction enums — shared vocabulary for the /events stream envelope
+│   │   └── __init__.py
 │   │
-│   │   ── DIALOGS ──
-│   ├── DialogUser.py               # Create / edit user dialog
-│   ├── DialogIsolation.py          # Create / edit isolation point dialog
-│   ├── DialogRisk.py               # Risk item creation/edit dialog
-│   ├── DialogSelectIsolations.py   # Dialog to select which isolations to keep when requesting hold
-│   ├── DialogSettings.py           # App settings dialog (server URL, theme, credentials, etc.)
+│   ├── network/                    # HTTP + realtime plumbing
+│   │   ├── clientRequests.py       #   ClientRequests — composes every *Requests mixin below into one object; each call returns (err, data)
+│   │   ├── requestConfig.py        #   SERVER_URL, TIMEOUT, FILE_TIMEOUT
+│   │   ├── authRequests.py         #   AuthRequests mixin — login, password reset
+│   │   ├── userRequests.py         #   UserRequests mixin — user CRUD, theme, active status
+│   │   ├── ptwRequests.py          #   PTWRequests mixin — PTW CRUD, approvals, run/hold/close, attachments
+│   │   ├── icRequests.py           #   ICRequests mixin — IC CRUD, approvals, isolate/deisolate, link/unlink, attachments
+│   │   ├── riskRequests.py         #   RiskRequests mixin — risk assessment CRUD
+│   │   ├── documentRequests.py     #   DocumentRequests mixin — MIWI document upload/download/list
+│   │   ├── adminRequests.py        #   AdminRequests mixin — logs, on-demand DB/file backups
+│   │   ├── RequestWorker.py        #   @async_request decorator — runs a request off the GUI thread (QThread), marshals result back via queued signal
+│   │   ├── SSEListener.py          #   QThread — connects to GET /events, emits real-time PTW/IC events
+│   │   └── __init__.py
 │   │
-│   │   ── REPORTING ──
-│   ├── ReportGenerator.py          # Generates printable PDF permit report for a PTW
+│   ├── dialogs/                    # Modal dialogs
+│   │   ├── TabbedDialog.py         #   Base class for DialogPTW/DialogIC — tab bar, Back/Next/Finish/Cancel row, tab-bar coloring
+│   │   ├── DialogPTW.py            #   Full PTW form (create/view/edit) — Basic Info/Tools/Hazards/Controls/Risks/Isolation/MIWI-MOS/Attachments/History/IC Linkage tabs
+│   │   ├── DialogIC.py             #   IC create/view dialog — Basic Info/Isolation Items/P&ID/Wiring/PSIC/History/PTW Linkage tabs
+│   │   ├── DialogIsolationItem.py  #   Isolation-item add/edit/view dialog (tag/description/state/lock #/lock box #)
+│   │   ├── DialogCompleteIsolation.py  # Isolator's "Complete Isolation" table (Lock #/Lock Box # entry per item)
+│   │   ├── DialogSelectHeldICs.py  #   Hold-flow dialog — PA picks which linked ICs stay held, or reviews which were kept
+│   │   ├── DialogPtwAlarms.py      #   Two-section collapsible popup: 14-shift-validity-expired + run-cycle-shift-ended PTWs (View/Hold/Close/Close All)
+│   │   ├── DialogUser.py           #   Create/edit user dialog
+│   │   ├── DialogIsolation.py      #   Create/edit a PTW's declarative required-isolation entry
+│   │   ├── DialogSettings.py       #   Profile fields, theme, close-behavior (tray/exit) preference
+│   │   └── __init__.py
 │   │
-│   │   ── ASSETS ──
-│   ├── assets/
-│   │   ├── burullus-logo.png       # Burullus company logo
-│   │   ├── rashpetco-logo.png      # Rashpetco company logo
-│   │   ├── sh-logo.png             # Shell logo (color)
-│   │   ├── sh-logo-bw.png          # Shell logo (black and white)
-│   │   ├── sh-logo-trans.png       # Shell logo (transparent background)
-│   │   └── sh-logo-trans.ico       # App icon
-│   └── fonts/
-│       └── Satisfy/
-│           ├── Satisfy-Regular.ttf # Handwriting-style font (used in reports)
-│           └── LICENSE.txt
+│   ├── tables/                     # Embedded/tab list widgets
+│   │   ├── TablePTWs.py            #   PTW list with filters, context menu, Excel export; filterColumn() for dashboard drill-down
+│   │   ├── TableICs.py             #   IC list, one instance per status tab, mirrors TablePTWs
+│   │   ├── TableIsolationItems.py  #   Embedded editable isolation-item list inside DialogIC; itemsChanged drives P&ID resync prompt
+│   │   ├── TableIsolations.py      #   TablePTWIsolations — embedded editable required-isolations list inside DialogPTW
+│   │   ├── TableUsers.py           #   Admin user management table + bulk Excel/CSV import; filterColumn() for dashboard drill-down
+│   │   ├── TableRisks.py           #   Generic risk assessment library CRUD (Safety); also embedded read-only+checkbox picker
+│   │   ├── TableAttachments.py     #   Per-PTW/IC file attachment management
+│   │   ├── TableBackups.py         #   Admin tab — list/create/download/delete on-demand DB+file backups (GET/POST/DELETE /backups)
+│   │   └── __init__.py
+│   │
+│   ├── widgets/                    # Reusable standalone widgets
+│   │   ├── WidgetPidWiring.py      #   P&ID/Wiring tab in DialogIC — document picker, zoom/pan preview, live highlight editing
+│   │   ├── PidWiringHighlighter.py #   Pure logic (no UI) — computeHighlights() (PDF text search + OCR fallback), burnInHighlights()
+│   │   ├── DonutChart.py           #   DonutChart/DonutSegment — clickable/hoverable donut widget powering home-page dashboards
+│   │   ├── RiskPreview.py          #   RiskItemsTable, DialogRiskItem, DialogSelectGenericRisks, RiskAssessmentPreview() factory
+│   │   ├── RefreshOverlay.py       #   Dims a window/dialog + blocks input during a refresh; refcounted showBusy()/hideBusy(); animated bouncing-logo sprite
+│   │   ├── TabServerLogs.py        #   Admin-only log viewer — collapsible per-file panels, lazy load, level filter, color-coded lines (QTextCursor)
+│   │   ├── CheckableComboBox.py    #   Reusable multi-select checkbox combo box (filterChanged signal)
+│   │   ├── SearchableComboBox.py   #   Reusable editable combo box with fuzzy-match autocomplete, accepts free text
+│   │   ├── UiUtils.py              #   TabButton, lightenColor, bestForegroundColor, Timeline/TimelineEntry — shared by DialogPTW/DialogIC
+│   │   └── __init__.py
+│   │
+│   ├── reports/
+│   │   ├── ReportGenerator.py      #   PDF permit report generation (ReportLab + QR) and Excel export (openpyxl)
+│   │   ├── ImportUsersExcel.py     #   Bulk user Excel/CSV import parsing + DialogUsersPreview
+│   │   └── __init__.py
+│   │
+│   ├── helper/                     # Small shared, stateless helpers
+│   │   ├── utils.py                #   resource_path, objToDict, dictToObj, parseTabularFile
+│   │   ├── i18n.py                 #   Language/RTL init, translation loading
+│   │   ├── OcrConfig.py            #   Points pytesseract at the bundled Tesseract binary when frozen (Nuitka); no-op in dev
+│   │   └── __init__.py
+│   │
+│   ├── assets/                     # Bundled images/icons (logos, tray icon, bounce-animation sprite sheet)
+│   ├── fonts/
+│   │   └── Satisfy/                #   Satisfy-Regular.ttf + its own LICENSE.txt
+│   └── translations/
+│       └── ar.json                 #   Arabic translation strings
 │
-│   NOTE: All role-specific main windows are defined as classes inside MainWindow.py:
-│           AdminMainWindow, UserMainWindow, CoordinatorMainWindow,
-│           IssuingMainWindow, SafetyMainWindow, PDHMainWindow,
-│           PGMMainWindow, SODMainWindow, DFGMMainWindow
-│         Each implements role-gated views (approval buttons, run/hold/close controls, etc.)
-│         main.py routes to the correct class after login based on the user's role.
-│
-│
-└── server/                         # Flask REST API server (runs on the server machine)
+└── server/                         # Flask REST API
+    ├── app.py                      # Thin entrypoint — registers blueprints, app.run(host="0.0.0.0", port=5000, threaded=True)
+    ├── core.py                     # Flask/Mail app, DB singletons, globalData init, syncPtwCache
+    ├── paths.py                    # BASE_DIR (code) vs DATA_DIR (miwi/logs/backups/ptws/ics attachments) — see PTW_DATA_DIR below
+    ├── loggingSetup.py             # Rotating log handlers (10 MB × 5 backups) + formatter (timestamp, level, source location)
+    ├── sse.py                      # SSE client registry + broadcast()
+    ├── backupService.py            # On-demand DB dump (pg_dump -Fc) + file archive (tar.gz) backup helpers, backing /backups
+    ├── GlobalData.py               # Server-side in-memory cache (mirrors client/GlobalData.py's shape)
+    ├── utils.py                    # Shared helpers (objToDict, dictToObj)
+    ├── .env                        # Gitignored — real credentials (DB_*, MAIL_*, optional PTW_DATA_DIR)
+    ├── .env.example                # Template for .env
     │
-    ├── app.py                      # Flask application — all API route handlers (single file)
-    │                               #   Routes: /login, /reset-password*, /users, /ptws,
-    │                               #           /ptws/approvals, /ptws/run*, /ptws/hold*,
-    │                               #           /ptws/close*, /ptws/attachments*, /isolations,
-    │                               #           /risks, /miwi, /miwis, /events (SSE), /logs
-    │                               #   Logging: RotatingFileHandler (10 MB, 5 backups) → logs/
-    │                               #            format: timestamp [LEVEL   ] module:func:line - message
-    │                               #            levels: CRITICAL / ERROR / WARNING / INFO / DEBUG
+    ├── routes/                     # One Blueprint per resource — all auth via getVerifiedUser(request.authorization)
+    │   ├── auth.py                 #   /login, /reset-password-request, /reset-password, /events (SSE) + getVerifiedUser
+    │   ├── users.py                #   /user(s), /usernames, /users/active
+    │   ├── ptws.py                 #   /ptws* — CRUD, approvals, run/hold/close (request+response), archive, attachments
+    │   ├── ics.py                  #   /ics* — CRUD, approvals, isolate/deisolate (request+confirm+execute), link/unlink, attachments
+    │   ├── risks.py                #   /risks, /risks/ptw
+    │   ├── documents.py            #   /miwi, /miwis
+    │   ├── admin.py                #   /logs, /backups (Admin-only)
+    │   └── __init__.py
     │
-    ├── PTWData.py                  # Core data model classes:
-    │                               #   objToDict / dictToObj (serialization helpers)
-    │                               #   RiskItem, RiskAssessment
-    │                               #   Attachment
-    │                               #   Isolation (with Types enum: Mechanical, Electrical,
-    │                               #              Self, Protective System, Other)
-    │                               #   ActiveIsolation (extends Isolation):
-    │                               #     linked_ptws, primary_ptw, latest_ptw
-    │                               #     linkPTW(), unlinkPTW(), isReallyActive()
-    │                               #   PTWData class:
-    │                               #     ALL_TOOLS, ALL_HAZARDS, ALL_CONTROLS (constant lists)
-    │                               #     ALL_ISOLATIONS (dict of 100+ pre-configured isolation tags)
-    │                               #     ApprovalStatus enum (UNDER_REVIEW, APPROVED, RETURNED, REJECTED)
-    │                               #     ApprovalAction enum
-    │                               #     Approval (action, username, timestamp, comment)
-    │                               #     RunningStatus enum:
-    │                               #       NOT_RUNNING, WAITING_RUN_CONFIRM, RUNNING,
-    │                               #       WAITING_CLS_CONFIRM, CLOSED,
-    │                               #       WAITING_HLD_CONFIRM, HELD
+    ├── models/
+    │   ├── PTW.py                  #   PTW, RunCycle, Approval/Approver, enums — server-side (hand-kept in sync with client/models/PTW.py)
+    │   ├── Isolation.py            #   Isolation + IC — server-side (hand-kept in sync with client/models/Isolation.py)
+    │   ├── User.py                 #   UserRoles/UserDepartments enums, SecuredUser, User
+    │   ├── SSE.py                  #   SSEObject/SSEAction enums — server-side (hand-kept in sync with client/models/SSE.py)
+    │   └── __init__.py
     │
-    ├── User.py                     # User model:
-    │                               #   UserRoles enum (User, Coordinator, Issuing, Safety,
-    │                               #                   PDH, PGM, SOD, DFGM, Isolator, Admin)
-    │                               #   UserDepartments enum (Turbo, Mech, Elec, IT, Prod, Safety)
-    │                               #   SecuredUser class (no password field — safe for API responses)
-    │                               #   User class (extends SecuredUser, adds password)
+    ├── db/
+    │   ├── commonDb.py             #   Shared DB base class — ThreadedConnectionPool, generic CRUD helpers
+    │   ├── ptwDb.py                #   PTW database operations (table `ptws`)
+    │   ├── usersDb.py              #   User database operations (table `users`); seeds initial admin account if empty
+    │   ├── ICDb.py                 #   IC database operations (table `ics`)
+    │   ├── risksDb.py              #   Risk assessment database operations (table `risks`)
+    │   └── __init__.py
     │
-    ├── GlobalData.py               # Server-side in-memory state cache:
-    │                               #   allUsers   : dict[username -> SecuredUser]
-    │                               #   allPTWs    : list[PTWData]
-    │                               #   activeIsolations : dict[tag -> ActiveIsolation]
-    │                               #   allRisks   : list[RiskAssessment]
-    │                               #   refresh()  : re-loads all data from DB
-    │
-    ├── ptwDb.py                    # Database operations for the ptws table:
-    │                               #   addPTWFromDict, getAllPTWs, deletePTW
-    │                               #   updatePTWApprovals
-    │                               #   requestToRunPTW, runAcceptPTW, runRejectPTW
-    │                               #   requestToHldPTW, hldAcceptPTW, hldRejectPTW
-    │                               #   requestToClsPTW, clsAcceptPTW, clsRejectPTW
-    │
-    ├── usersDb.py                  # Database operations for the users table:
-    │                               #   getAllUsers, getAllSecuredUsers, getSecuredUser
-    │                               #   getAllUsernames, addUserFromDict
-    │                               #   updateUserFromDict, updateUserPassword, deleteUser
-    │
-    ├── IsolationDb.py              # Database operations for the active_isolations table:
-    │                               #   updateIsolation (upsert), getIsolation
-    │                               #   getAllIsolations (optionally filtered by ptwId)
-    │                               #   deleteIsolation
-    │
-    ├── risksDb.py                  # Database operations for the risks table:
-    │                               #   getAllRiskAssessments
-    │                               #   addRiskAssessmentFromDict
-    │                               #   updateRiskAssessmentFromDict
-    │                               #   deleteRiskAssessment
-    │
-    ├── commonDb.py                 # Shared DB helpers:
-    │                               #   addRecordFromDict  — generic INSERT from dict
-    │                               #   updateRecordFromDict — generic UPDATE from dict
-    │                               #   deleteRecord       — generic DELETE by key
-    │
-    ├── logs/                       # Server log files (gitignored)
-    │   ├── ptw.log                 # Current rotating log file
-    │   └── ptw.log.1 … ptw.log.5  # Rotated backups (10 MB each, 5 kept)
-    │
-    ├── miwi/                       # Maintenance and Isolation Work Instructions (PDF documents)
-    │
-    └── ptw-*-attachments/          # Per-PTW uploaded attachments
+    └── dev-scripts/                # Tracked (NOT gitignored) — ships with the repo, meant to be (re)run by operators
+        ├── init_db.py              #   One-time: creates ptw_database + all tables in their final shape. Run before first server start.
+        ├── backup.sh / backup.ps1  #   Dumps DB (pg_dump -Fc) + tars MIWI/ptws/ics/.env into <backup_root>/<timestamp>/; prunes >14 days old; backup_root defaults to paths.BACKUP_DIR (override with an arg for an off-disk location)
+        └── restore.sh / restore.ps1  # DESTRUCTIVE — drops+recreates DB and overwrites file storage from a backup.sh/.ps1 (or in-app /backups) snapshot
 
-
-===========================================================
-DATABASE (PostgreSQL — ptw_database @ localhost)
-===========================================================
-
-Tables:
-  users               — user accounts (username PK, password, name, role, department, email, ext)
-  ptws                — permit records (id SERIAL PK, all PTW fields, JSONB[] for approvals/isolations)
-  active_isolations   — currently active isolation locks (tag PK, linked_ptws TEXT[], primary_ptw, latest_ptw)
-  risks               — risk assessment line items (title + date composite, hazard, effect, ctrl, eval, etc.)
-
-
-===========================================================
-KEY DATA FLOWS
-===========================================================
-
-CREATE PTW:
-  Client WidgetPTW → POST /ptws → ptwDb.addPTWFromDict → INSERT ptws
-  → optional: POST /ptws/attachments (multipart upload)
-
-APPROVE PTW:
-  Role window (Coordinator/Safety/DFGM/etc.) → POST /ptws/approvals
-  → ptwDb.updatePTWApprovals → appends Approval to ptws.approvals[]
-  → approval_status updated based on all votes
-
-REQUEST RUN:
-  Performer → POST /ptws/run-request → ptwDb.requestToRunPTW
-  → running_status = WAITING_RUN_CONFIRM
-
-ACCEPT RUN (Issuing):
-  Issuing window → POST /ptws/run {response: true}
-  → ptwDb.runAcceptPTW → running_status = RUNNING
-  → for each isolation: ActiveIsolation.linkPTW() → isoDB.updateIsolation (upsert)
-
-REJECT RUN (Issuing):
-  Issuing window → POST /ptws/run {response: false}
-  → ptwDb.runRejectPTW → running_status = NOT_RUNNING
-
-REQUEST HOLD:
-  Performer → POST /ptws/hold-request {keep-tags: [...]}
-  → ptwDb.requestToHldPTW → running_status = WAITING_HLD_CONFIRM
-  → keep_isolations stored on PTW
-
-ACCEPT HOLD (Issuing):
-  Issuing window → POST /ptws/hold {response: true}
-  → ptwDb.hldAcceptPTW → running_status = HELD (approval_status stays APPROVED)
-  → isolations NOT in keep_isolations: ActiveIsolation.unlinkPTW()
-
-REJECT HOLD (Issuing):
-  Issuing window → POST /ptws/hold {response: false}
-  → ptwDb.hldRejectPTW → running_status = RUNNING (restored)
-
-REQUEST CLOSE:
-  Performer → POST /ptws/close-request
-  → ptwDb.requestToClsPTW → running_status = WAITING_CLS_CONFIRM
-
-ACCEPT CLOSE (Issuing):
-  Issuing window → POST /ptws/close {response: true}
-  → ptwDb.clsAcceptPTW → running_status = CLOSED
-  → all isolations: ActiveIsolation.unlinkPTW()
-
-REJECT CLOSE (Issuing):
-  Issuing window → POST /ptws/close {response: false}
-  → ptwDb.clsRejectPTW → running_status = RUNNING (restored)
+Generated content (MIWI PDFs, logs, on-demand DB backups, PTW/IC attachment folders) is
+NOT under server/ or anywhere in this repo — it lives in paths.DATA_DIR, an OS-appropriate
+per-machine directory outside the repo by default (override with the PTW_DATA_DIR env
+var): %LOCALAPPDATA%\PTW\server on Windows, ~/.local/share/ptw-server on Linux.

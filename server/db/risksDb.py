@@ -1,3 +1,12 @@
+"""DB operations on the `risks` table, backing both the generic risk assessment library
+and each PTW's own materialized risk-item rows.
+
+Rows are distinguished only by the `ptw_id` column: `ptw_id IS NULL` means a
+row belongs to a generic library assessment (looked up by `title`), while
+`ptw_id` set to a PTW's id means the row is part of that PTW's own
+specific risk assessment (looked up by `ptw_id`, with `title = str(ptw_id)`).
+"""
+
 from psycopg2.extras import RealDictCursor
 
 from models.PTW import RiskAssessment, RiskItem
@@ -9,6 +18,16 @@ class RisksDb:
     first starting the server."""
 
     def addRiskAssessmentFromDict(self, riskAssessment: dict):
+        """Insert a new risk assessment's items as rows in `risks`.
+
+        Args:
+            riskAssessment: dict with `title`, `date`, optional `ptw_id`, and a
+                `risks` list of risk-item dicts; each item dict is stamped with
+                the assessment's title/date/ptw_id before insertion.
+
+        Returns:
+            None on success, or an error message string on failure.
+        """
         try:
             title = riskAssessment['title']
             date  = riskAssessment['date']
@@ -24,6 +43,18 @@ class RisksDb:
             return str(e)
 
     def updateRiskAssessmentFromDict(self, riskAssessment: dict):
+        """Replace all rows for a risk assessment's title with the given items.
+
+        Deletes existing rows matching `riskAssessment['title']`, then
+        re-inserts one row per item in `riskAssessment['risks']`.
+
+        Args:
+            riskAssessment: dict with `title`, `date`, optional `ptw_id`, and a
+                `risks` list of risk-item dicts.
+
+        Returns:
+            None on success, or an error message string on failure.
+        """
         try:
             title = riskAssessment['title']
             date  = riskAssessment['date']
@@ -45,6 +76,11 @@ class RisksDb:
             return str(e)
 
     def deleteRiskAssessment(self, title: str) -> str:
+        """Delete all rows in `risks` for the given title.
+
+        Returns:
+            None on success, or an error message string on failure.
+        """
         try:
             with CommonDB.get_conn() as conn:
                 CommonDB.deleteRecord(conn, 'risks', 'title', title)

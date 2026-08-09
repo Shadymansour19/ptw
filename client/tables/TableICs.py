@@ -1,3 +1,7 @@
+"""IC (Isolation Certificate) list table widget: one instance per status tab,
+mirroring TablePTWs' filter bar, context menu, and double-click drill-down
+structure, plus the FAB dialog for creating a new IC."""
+
 from PyQt6.QtCore import Qt, QSize, QPoint
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
                               QLabel, QPushButton, QAbstractItemView, QHeaderView, QFrame,
@@ -20,6 +24,7 @@ class _LongTermItem(QTableWidgetItem):
     cell widget). Sorts by the real Yes/No value stashed in UserRole."""
 
     def __lt__(self, other):
+        """Compare by the stashed real Yes/No value instead of the empty display text."""
         if isinstance(other, QTableWidgetItem):
             return self.data(Qt.ItemDataRole.UserRole) < other.data(Qt.ItemDataRole.UserRole)
         return super().__lt__(other)
@@ -29,6 +34,8 @@ class TableICs(QWidget):
     """Reusable per-tab browsing widget for ICs, mirroring TablePTWs."""
 
     def __init__(self, parent, loggedUser, label: str):
+        """Build the labeled table, filter bar, and header/context-menu wiring
+        for one IC status tab."""
         super().__init__(parent)
         lyt = QVBoxLayout()
         lyt.setContentsMargins(0, 0, 0, 0)
@@ -104,6 +111,9 @@ class TableICs(QWidget):
         self.tbl.horizontalHeader().sortIndicatorChanged.connect(self._onSorted)
 
     def _toggleFilters(self, checked):
+        """Slot for the filter button's toggled signal: show/hide the filter
+        bar, (re)populating and applying filters when shown, or clearing all
+        row hiding when hidden."""
         self._filterBar.setVisible(checked)
         if checked:
             self._populateFilters()
@@ -113,11 +123,15 @@ class TableICs(QWidget):
             self._showAllRows()
 
     def _cellFilterText(self, col: int, item: QTableWidgetItem) -> str:
+        """Return the value to filter/compare on for a cell: the stashed
+        real Yes/No value for the L.T. column, otherwise its display text."""
         if col == self._ltCol:
             return item.data(Qt.ItemDataRole.UserRole)
         return item.text()
 
     def _populateFilters(self):
+        """Rebuild each column's filter combo options from the table's current
+        cell values, preserving any existing checked selections."""
         col_values = [set() for _ in self.summeryLabels]
         for row in range(self.tbl.rowCount()):
             for col in range(len(self.summeryLabels)):
@@ -128,6 +142,8 @@ class TableICs(QWidget):
             combo.setItems(col_values[col], preserve_selection=True)
 
     def _syncFilterWidths(self):
+        """Resize each filter combo to match its column's current header
+        width, keeping the filter bar aligned with the table columns."""
         if not self._filterBar.isVisible():
             return
         header = self.tbl.horizontalHeader()
@@ -136,6 +152,8 @@ class TableICs(QWidget):
         self._filterCombos[-1].setMinimumWidth(header.sectionSize(len(self._filterCombos) - 1))
 
     def _applyFilters(self):
+        """Hide any row that doesn't match every currently-checked filter
+        combo; called whenever a filter combo's selection changes."""
         active = [
             (col, combo.checkedItems())
             for col, combo in enumerate(self._filterCombos)
@@ -149,10 +167,18 @@ class TableICs(QWidget):
             self.tbl.setRowHidden(row, hide)
 
     def _showAllRows(self):
+        """Unhide every row in the table."""
         for row in range(self.tbl.rowCount()):
             self.tbl.setRowHidden(row, False)
 
     def filterColumn(self, label: str, values: set):
+        """Programmatically filter one column down to a specific set of
+        values, opening the filter bar first if it isn't already visible.
+
+        Args:
+            label: column label as it appears in `summeryLabels`.
+            values: the set of cell values to keep checked in that column.
+        """
         if label not in self.summeryLabels:
             return
         col = self.summeryLabels.index(label)
@@ -164,11 +190,16 @@ class TableICs(QWidget):
         self._filterCombos[col].setCheckedOnly(values)
 
     def _onSorted(self):
+        """Slot for the header's sortIndicatorChanged signal: keep
+        `icsData` in row order after a sort and reapply active filters."""
         self._syncICsData()
         if self._filterBar.isVisible():
             self._applyFilters()
 
     def icToRecord(self, ic: IC):
+        """Convert an IC model into the list of display strings for its row,
+        resolving computed status, the long-term flag, and the requestor id
+        to a display name."""
         record = []
         for field in self.summeryFields:
             if field == 'status':
@@ -185,6 +216,8 @@ class TableICs(QWidget):
         return record
 
     def _makeCell(self, col: int, value: str) -> QTableWidgetItem:
+        """Build the QTableWidgetItem for one cell, using `_LongTermItem`
+        (empty text, real value in UserRole) for the L.T. column."""
         if col == self._ltCol:
             cell = _LongTermItem("")
             cell.setData(Qt.ItemDataRole.UserRole, value)
@@ -193,6 +226,8 @@ class TableICs(QWidget):
 
     
     def _longTermIconWidget(self, longTerm: bool) -> QWidget:
+        """Build the L.T. column's cell widget: an empty container, or an
+        infinity-icon badge when the IC is long-term."""
         container = QWidget()
         container.setStyleSheet("background: transparent;")
         layout = QHBoxLayout(container)
@@ -208,6 +243,8 @@ class TableICs(QWidget):
         return container
 
     def addICToGUI(self, ic: IC):
+        """Append a new row for `ic`, refresh cached data, and reapply
+        filters if the filter bar is open."""
         self.icsData.append(ic)
         data = self.icToRecord(ic)
         self.tbl.setSortingEnabled(False)
@@ -229,6 +266,8 @@ class TableICs(QWidget):
             self._applyFilters()
 
     def updateICInGUI(self, row: int, ic: IC):
+        """Overwrite an existing row in place with `ic`'s current data,
+        refresh cached data, and reapply filters if the filter bar is open."""
         self.icsData[row] = ic
         data = self.icToRecord(ic)
         self.tbl.setSortingEnabled(False)
@@ -260,12 +299,16 @@ class TableICs(QWidget):
         return False
 
     def addOption(self, option):
+        """Register a single context-menu option."""
         self.options.append(option)
 
     def addOptions(self, options: Iterable):
+        """Register multiple context-menu options at once."""
         self.options.extend(options)
 
     def clear(self):
+        """Remove all rows and cached ICs, and reset every filter combo back
+        to its empty "Select All" state."""
         self.tbl.clearContents()
         self.icsData.clear()
         self.tbl.setRowCount(0)
@@ -275,10 +318,13 @@ class TableICs(QWidget):
             combo._updateText()
 
     def sort(self):
+        """Sort rows by IC# ascending and resync cached data to match."""
         self.tbl.sortItems(0, Qt.SortOrder.AscendingOrder)
         self._syncICsData()
 
     def _syncICsData(self):
+        """Reorder `icsData` to match the table's current (possibly
+        user-sorted) row order, keyed by the IC# column's stashed id."""
         id_to_cert = {str(c.id): c for c in self.icsData}
         self.icsData = [
             id_to_cert[str(self.tbl.item(r, 0).data(Qt.ItemDataRole.UserRole))]
@@ -286,10 +332,16 @@ class TableICs(QWidget):
         ]
 
     def doubleClickHandler(self, row, col):
+        """Slot for cellDoubleClicked: invoke the first registered menu
+        option's handler on the double-clicked row's IC."""
         if len(self.options) > 0:
             self.options[0].fun(row, self.icsData[row])
 
     def optionDoForAllSelected(self, fun, allAtOnce: bool):
+        """Run a context-menu option's handler over the current selection:
+        once with all selected rows/ICs together if `allAtOnce`, otherwise
+        once per row (in reverse order, so row indices stay valid as rows are
+        removed)."""
         selectedRows = list(set(row.row() for row in self.tbl.selectedIndexes() if row.isValid()))
         if allAtOnce:
             fun(selectedRows, [self.icsData[row] for row in selectedRows])
@@ -298,6 +350,10 @@ class TableICs(QWidget):
                 fun(row, self.icsData[row])
 
     def showContextMenu(self, pos: QPoint):
+        """Slot for customContextMenuRequested: build and show a right-click
+        menu of the registered options that pass their `visibleFor` check for
+        this row's IC (if any), wired to run each option's handler over the
+        selected rows on trigger."""
         row = self.tbl.indexAt(pos)
         if not row.isValid():
             return
@@ -312,6 +368,9 @@ class TableICs(QWidget):
         menu.exec(self.tbl.mapToGlobal(pos))
 
     def addNewICDialog(self):
+        """Open a new-IC `DialogIC`; on acceptance, submit the IC to the
+        server, add it to this table on success, and upload any pending
+        P&ID/Wiring documents attached during the dialog."""
         ic = IC()
         dlg = DialogIC(self, self.loggedUser, ic, True, False, "New IC")
         if dlg.exec() != QDialog.DialogCode.Accepted:
@@ -319,6 +378,9 @@ class TableICs(QWidget):
         ic = dlg.getIC()
 
         def on_done(err, icId):
+            """Callback for the addIC request: on success, stamp the new id,
+            cache the IC, add its row to the table, and upload any pending
+            P&ID/Wiring documents; on failure, show a warning."""
             self.window()._refreshOverlay.hideBusy()
             if err:
                 QMessageBox.warning(self, "Fail", err)
@@ -328,6 +390,8 @@ class TableICs(QWidget):
             self.addICToGUI(ic)
             if dlg.pidDocsToBeUploaded:
                 def on_pid_upload_done(err, _):
+                    """Callback for the P&ID/Wiring upload request: warn if
+                    the upload failed after the IC itself was already saved."""
                     if err:
                         QMessageBox.warning(self, "Warning", f"IC saved but failed to upload P&ID/Wiring documents:\n{err}")
                 ClientRequests.addIcAttachments(self.loggedUser, ic.id, dlg.pidDocsToBeUploaded, callback=on_pid_upload_done)

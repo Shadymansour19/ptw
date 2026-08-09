@@ -9,17 +9,26 @@ Requires on PATH: pg_dump.exe (ships with the PostgreSQL Windows installer,
 e.g. C:\Program Files\PostgreSQL\16\bin) and tar.exe (built into Windows 10
 1803+ / Server 2019+ at C:\Windows\System32\tar.exe).
 
-Usage: .\backup.ps1 [-BackupRoot "C:\ptw-backups"]
+Usage: .\backup.ps1 [-BackupRoot "D:\ptw-backups"]
+  -BackupRoot defaults to paths.BACKUP_DIR (the same on-disk location the
+  in-app Admin "Backups" tab / POST /backups already writes to - see
+  server/backupService.py). Pass an explicit path to back up somewhere else
+  (e.g. off this machine's disk entirely, which is the point of running this
+  on a schedule rather than relying on the in-app button alone).
 #>
 param(
-    [string]$BackupRoot = "C:\ptw-backups"
+    [string]$BackupRoot
 )
 
 $ErrorActionPreference = "Stop"
 
 $ServerDir = Split-Path -Parent $PSScriptRoot
 Push-Location $ServerDir
-try { $DataDir = (python -c "from paths import DATA_DIR; print(DATA_DIR)") }
+try {
+    $PtwPaths = (python -c "from paths import DATA_DIR, BACKUP_DIR; print(DATA_DIR); print(BACKUP_DIR)")
+    $DataDir = $PtwPaths[0]
+    if (-not $BackupRoot) { $BackupRoot = $PtwPaths[1] }
+}
 finally { Pop-Location }
 $RetentionDays = 14
 $Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"

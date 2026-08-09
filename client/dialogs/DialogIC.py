@@ -1,3 +1,11 @@
+"""IC (Isolation Certificate) create/view dialog.
+
+Tabbed like DialogPTW (Basic Info / Isolation Items / P&ID / Wiring / PSIC, plus History
+and PTW Linkage in readonly mode only): lets a requestor build a new IC or, in readonly
+mode, view an already-submitted one, including its approval/isolation history and any
+PTWs linked to it.
+"""
+
 from datetime import datetime
 from functools import partial
 
@@ -51,13 +59,26 @@ PSIC_TAG_SAMPLES = {
 
 
 class DialogIC(TabbedDialog):
+    """IC create/view dialog: Basic Info, Isolation Items, P&ID / Wiring, and PSIC tabs
+    always shown, plus History and PTW Linkage tabs added only in readonly mode (a
+    brand-new IC has neither approval history nor any linked PTW yet). There is no
+    editable-existing-IC mode - an IC can only be created new or viewed read-only."""
+
     def displayNameForUsername(username: str):
+        """Return username's display name, or username itself if unknown/blank.
+
+        Called on the class itself (DialogIC.displayNameForUsername(...)), not on an
+        instance, so no self is passed despite the lack of a @staticmethod decorator.
+        """
         if not username:
             return ''
         user = globalData.allUsers.get(username)
         return user.getName() if user else username
 
     def __init__(self, parent, loggedUser, ic: IC, new: bool, readOnly: bool, title: str):
+        """Build every tab's widgets and wire up their signals, then populate them from
+        ic and apply the readOnly state. History/PTW Linkage tabs are only added when
+        readOnly is True."""
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setModal(True)
@@ -246,12 +267,15 @@ class DialogIC(TabbedDialog):
         self.setMinimumHeight(650)
 
     def _makeReadOnlyField(self, text: str) -> QLineEdit:
+        """Build a read-only QLineEdit showing text, scrolled to its start."""
         box = QLineEdit(text)
         box.setReadOnly(True)
         box.setCursorPosition(0)
         return box
 
     def _viewLinkedPTW(self, ptwId):
+        """Handle a linked-PTW row's View button click: look up ptwId (active or
+        archived) and open it in a read-only DialogPTW, or warn if it can't be found."""
         ptw = globalData.allPTWs.get(int(ptwId)) or globalData.archivedPTWs.get(int(ptwId))
         if ptw is None:
             QMessageBox.warning(self, t("PTW Not Found"), t("PTW #{0} could not be found (it may be archived).").format(ptwId))
@@ -263,6 +287,9 @@ class DialogIC(TabbedDialog):
         dlg.exec()
 
     def _unlinkPTW(self, ptwId):
+        """Handle a linked-PTW row's Unlink button click: after confirmation, request the
+        server unlink ptwId from this IC, then close this dialog so the caller can reopen
+        it with the updated linkage."""
         reply = QMessageBox.question(
             self, t("Unlink PTW"), t("Unlink PTW #{0} from this IC?").format(ptwId),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
@@ -281,6 +308,9 @@ class DialogIC(TabbedDialog):
         ClientRequests.unlinkPTWFromIC(self.loggedUser, self.ic.id, ptwId, callback=on_done)
 
     def _linkNewPTW(self):
+        """Handle the Link to PTW button click: prompt for a PTW id, reject it if already
+        linked, otherwise request the server link it to this IC and close this dialog so
+        the caller can reopen it with the updated linkage."""
         ptwId, ok = QInputDialog.getText(self, t('Link PTW to IC #{0}').format(self.ic.id), t('PTW #:'))
         if not ok or not ptwId.strip():
             return
@@ -300,6 +330,9 @@ class DialogIC(TabbedDialog):
         ClientRequests.linkPTWToIC(self.loggedUser, self.ic.id, ptwId, callback=on_done)
 
     def _ptwLinkRow(self, ptwId) -> QWidget:
+        """Build one PTW Linkage tab row: a read-only label (PTW id plus running status,
+        if the PTW is found) with a View button, and an Unlink button for
+        User/Issuing/Coordinator roles."""
         ptw = globalData.allPTWs.get(int(ptwId)) or globalData.archivedPTWs.get(int(ptwId))
         label = f"PTW #{ptwId} — {ptw.running_status}" if ptw else f"PTW #{ptwId}"
 
@@ -317,6 +350,8 @@ class DialogIC(TabbedDialog):
         return row
 
     def _addPTWLinkRows(self, container: QVBoxLayout, ptwIds: list):
+        """Populate container with a row per linked PTW id in ptwIds, or a placeholder
+        label if there are none."""
         ids = [p for p in ptwIds if p]
         if not ids:
             container.addWidget(QLabel(t("No linked PTWs.")))
@@ -325,6 +360,7 @@ class DialogIC(TabbedDialog):
             container.addWidget(self._ptwLinkRow(ptwId))
 
     def _timelinePane(self, title: str, timeline: Timeline) -> QWidget:
+        """Wrap timeline in a labeled pane, titled title, for the History tab."""
         pane = QWidget()
         lyt = QVBoxLayout(pane)
         lyt.setContentsMargins(0, 0, 0, 0)
@@ -333,6 +369,10 @@ class DialogIC(TabbedDialog):
         return pane
 
     def _buildApprovalTimelinePane(self) -> QWidget:
+        """Build the History tab's Approval Timeline pane: the initial request entry
+        (green), one entry per recorded Approval (green if Approved, orange if Returned,
+        including any comment), then one gray "Pending" entry per still-pending
+        approver."""
         entries = []
         if self.ic.requestor:
             color = QColor('green')
@@ -366,6 +406,8 @@ class DialogIC(TabbedDialog):
         return self._timelinePane(t("Approval Timeline"), timeline)
 
     def _isolationStageEntry(self, label: str, username: str, timestamp: str, doneColor: QColor = None):
+        """Build one Isolation Timeline entry: label plus who/when in doneColor (default
+        green) if username is set, else a gray "Pending" placeholder."""
         if username:
             text = f"<b>{label}</b> by {DialogIC.displayNameForUsername(username)}"
             if timestamp:
@@ -381,6 +423,10 @@ class DialogIC(TabbedDialog):
         return (color, content)
 
     def _buildIsolationTimelinePane(self) -> QWidget:
+        """Build the History tab's Isolation Timeline pane: fixed Isolate/De-isolate
+        request-confirm-carried-out stage rows (shown gray/"Pending" until reached), plus
+        Sanction-for-test and Re-isolate stage rows only once each has actually started
+        (those two cycles are optional excursions that may never happen)."""
         ic = self.ic
         entries = []
 
@@ -415,6 +461,10 @@ class DialogIC(TabbedDialog):
         return self._timelinePane(t("Isolation Timeline"), timeline)
 
     def _certTypeChanged(self, _=None):
+        """Handle the type combo's currentTextChanged signal and the PSIC checkbox's
+        toggled signal: recolor the tab bar for the current type/PSIC combination, and
+        for a Self-type IC, force the execution department to match the requestor's own
+        department and lock it (any other type leaves it editable, unless readonly)."""
         isPsic = self.boxIsPsic.isChecked()
         color = IC.backgroundColorForType(self.typeCombo.currentText(), isPsic)
         self.setTabBarColor(color)
@@ -428,6 +478,8 @@ class DialogIC(TabbedDialog):
             self.boxExecutionDepartment.setEnabled(not self.readonly)
 
     def _populate(self):
+        """Fill every Basic Info and PSIC field from self.ic (defaulting the requestor
+        and execution departments to the logged-in user's own department when new)."""
         self.boxId.setText(str(self.ic.id) if self.ic.id else '')
         if self.ic.type:
             self.typeCombo.setCurrentText(self.ic.type)
@@ -459,6 +511,9 @@ class DialogIC(TabbedDialog):
         self._psicToggled(self.boxIsPsic.isChecked())
 
     def _applyReadOnly(self):
+        """Lock down every Basic Info and PSIC field for viewing an existing IC (combos,
+        buttons, and checkboxes disabled outright; text fields set read-only instead so
+        their content still renders normally)."""
         self.typeCombo.setEnabled(not self.readonly)
         self.boxLocation.setEnabled(not self.readonly)
         self.boxEquipment.setReadOnly(self.readonly)
@@ -478,12 +533,18 @@ class DialogIC(TabbedDialog):
             self._psicToggled(self.boxIsPsic.isChecked())
 
     def _psicToggled(self, checked: bool):
+        """Handle the PSIC checkbox's toggled signal (and readonly re-application):
+        enable/disable the PSIC reason checkboxes, tag combo, and Autofill button
+        together with checked (never enabling them in readonly mode), while the PSIC text
+        fields just follow checked so their content still reads normally when viewing."""
         for widget in self._psicComboWidgets:
             widget.setEnabled(checked and not self.readonly)
         for widget in self._psicTextWidgets:
             widget.setEnabled(checked)
 
     def _refreshPsicTagChoices(self):
+        """Handle TableIsolationItems.itemsChanged: repopulate the PSIC tag combo from the
+        current isolation items, keeping the previous selection if it still exists."""
         currentTag = self.psicTagCombo.currentText()
         self.psicTagCombo.clear()
         self.psicTagCombo.addItems([item.tag for item in self.itemsTable.getItems()])
@@ -492,6 +553,11 @@ class DialogIC(TabbedDialog):
             self.psicTagCombo.setCurrentIndex(idx)
 
     def _autofillPsicFromTag(self):
+        """Handle the Autofill from Tag button click: look up the selected tag in the
+        client-side PSIC_TAG_SAMPLES placeholder data and, if found, check/uncheck the
+        PSIC reason checkboxes to match and fill the three PSIC description fields from
+        it (overwriting any text already there). Shows a message instead if no tag is
+        selected or no sample data exists for it."""
         tag = self.psicTagCombo.currentText()
         if not tag:
             QMessageBox.information(self, t("No Tag Selected"), t("Add an isolation item first, then pick its tag to autofill from."))
@@ -508,9 +574,16 @@ class DialogIC(TabbedDialog):
         self.boxPsicControlMeasures.setText(sample['control_measures'])
 
     def getIC(self):
+        """Return the IC model this dialog is editing/viewing."""
         return self.ic
 
     def accept(self):
+        """Handle Finish/Ok being pressed: in readonly mode just close the dialog;
+        otherwise validate required fields (equipment, reason, long-term reason if
+        checked, at least one isolation item, and - if PSIC is checked - at least one
+        PSIC reason plus all three PSIC description fields), write the form's values back
+        onto self.ic, stamp requestor/department fields when creating a new IC, and
+        close."""
         if self.readonly:
             super().accept()
             return

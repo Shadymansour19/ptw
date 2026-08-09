@@ -1,3 +1,12 @@
+"""Filesystem layout for the server: BASE_DIR is the checked-out/deployed code
+location (this file's directory, or the frozen executable's directory when built
+as a Nuitka/PyInstaller onefile binary) and never receives generated content.
+DATA_DIR is the separate, per-machine location for everything generated or
+uploaded at runtime (MIWI documents, PTW/IC attachments, logs, DB backups) —
+it defaults to an OS-appropriate per-machine data directory (see
+_defaultDataDir()) but can be overridden wholesale via the PTW_DATA_DIR
+environment variable."""
+
 import os
 import sys
 

@@ -1,3 +1,6 @@
+"""Main window for the Admin role - full system access, user management only (no
+PTW/IC tabs)."""
+
 from collections import Counter
 from functools import partial
 from PyQt6.QtGui import QKeySequence, QShortcut
@@ -12,7 +15,14 @@ from windows.MainWindow import MainWindow
 
 
 class AdminMainWindow(MainWindow):
+    """Admin role window: full system access, but no PTW or IC tabs at all - just
+    Users, Server Logs, and Backups. Overrides the home dashboard with a
+    Users-by-Department donut instead of the base PTW donuts. The FAB (and Ctrl+N)
+    adds new user(s), manually or via Excel import."""
+
     def __init__(self, loggedUser: User):
+        """Build the Admin window: wire up Users/Server Logs/Backups tabs and the
+        add-user FAB with its Ctrl+N shortcut."""
         super().__init__(loggedUser)
         self.setWindowTitle("PTW (Permit To Work) - Admin Window")
 
@@ -34,9 +44,16 @@ class AdminMainWindow(MainWindow):
         shortcut.activated.connect(self.addNewUserDialog)
     
     def btnFABHandler(self):
+        """Open the add-user dialog when the FAB is clicked (or Ctrl+N pressed)."""
         self.addNewUserDialog()
     
     def addNewUserDialog(self):
+        """Prompt to add user(s) manually or via Excel import, if the FAB is visible.
+
+        Shows a chooser QMessageBox; "Type Manually" opens `DialogUser` for a single
+        new user and adds it to the table on accept, "Import from Excel" delegates to
+        the users table's bulk-import flow.
+        """
         if not self.btnFAB.isVisible():
             return
 
@@ -60,11 +77,13 @@ class AdminMainWindow(MainWindow):
             self.tabAllUsers.importUsersFromExcel()
 
     def stackTabChanged(self):
+        """Show the FAB only on the All Users tab."""
         super().stackTabChanged()
         tab = self.stack.currentWidget()
         self.btnFAB.setVisible(tab in [self.tabAllUsers])
 
     def buildHomePage(self):
+        """Override the base PTW dashboard with a single Users-by-Department donut chart."""
         self._homeUsersChart = DonutChart("Users")
         row = QHBoxLayout()
         row.addWidget(self._homeUsersChart, 1)
@@ -72,6 +91,8 @@ class AdminMainWindow(MainWindow):
         self.updateHomeDashboard()
 
     def updateHomeDashboard(self):
+        """Recompute per-department user counts and refresh the home donut's segments,
+        each clickable to jump to the filtered Users tab."""
         counts = Counter(u.getDepartment() for u in globalData.allUsers.values() if u.getDepartment())
         self._homeUsersChart.setSegments([
             DonutSegment(dept, counts[dept], DEPARTMENT_COLOR_CYCLE[i % len(DEPARTMENT_COLOR_CYCLE)],
@@ -80,11 +101,23 @@ class AdminMainWindow(MainWindow):
         ])
 
     def _openUsersFilteredByDept(self, dept: str):
+        """Navigate to the Users tab and filter it down to the given department.
+
+        Used as the click handler for a home-dashboard donut segment.
+        """
         self.btnUsers.click()
         self.tabAllUsers.filterColumn('Department', {dept})
 
     def refreshGUI(self, refreshArchivedPTWs: bool = False):
+        """Reload users from the server and rebuild the Users table, dashboard, server
+        logs, and backups panels.
+
+        Args:
+            refreshArchivedPTWs: Ignored - Admin has no PTW tabs.
+        """
         def on_done(err, _):
+            """Hide the busy overlay, then rebuild the Users table and dashboard, or
+            report the error."""
             self._refreshOverlay.hideBusy()
             if err:
                 QMessageBox.warning(self, "Error", f"Failed to refresh data: {err}")

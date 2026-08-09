@@ -1,3 +1,11 @@
+"""Shared tabbed-dialog infrastructure used by DialogPTW/DialogIC.
+
+Owns the mechanics common to both dialogs: the colored tab bar of icon+label
+TabButtons driving a QStackedWidget, the Back/Next/Finish/Cancel button row, and
+tab-bar recoloring with automatically readable text/icon colors. Subclasses embed
+these pieces into their own layout and supply the actual tab content.
+"""
+
 from functools import partial
 
 from PyQt6.QtGui import QColor
@@ -30,6 +38,12 @@ class TabbedDialog(QDialog):
     """
 
     def __init__(self, parent=None):
+        """Build the empty tab bar, stack, and Back/Next/Finish/Cancel buttons.
+
+        Subclasses call this via super().__init__(), then populate tabs with
+        addTab() and place tabsContainer/stack/bottomButtonsLayout() into their
+        own layout.
+        """
         super().__init__(parent)
 
         self.tabsContainer = QWidget()
@@ -93,6 +107,14 @@ class TabbedDialog(QDialog):
             btn.setHighlightColor(accentColor, selectedText, unselectedText)
 
     def stackTabChanged(self):
+        """Sync tab-button selection state and Back/Next enabled-state to the stack.
+
+        Slot for stack.currentChanged (emitted whenever the current page changes,
+        whether via a TabButton click, Alt+N shortcut, or Back/Next): marks the
+        TabButton matching the new current index as selected (and every other one
+        unselected), refreshes each button's icon/style accordingly, and enables
+        Back/Next only when a previous/next page actually exists.
+        """
         tabIdx = self.stack.currentIndex()
         for i, btn in enumerate(self.tabsBtnsMap.keys()):
             btn.setProperty("selected", i == tabIdx)

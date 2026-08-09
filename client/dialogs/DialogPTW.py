@@ -1,3 +1,13 @@
+"""The full Permit to Work (PTW) form dialog: create, view, and edit modes.
+
+DialogPTW presents every part of a PTW as tabs (Basic Info, Tools, Hazards,
+Controls, Risks, Isolation, MIWI/MOS, Attachments, and — readonly mode only —
+History and IC Linkage), built on the shared TabbedDialog infrastructure. The
+History tab renders the approval log and the running cycle as two side-by-side
+Timeline panes; the IC Linkage tab lists ICs linked to this PTW with View/Unlink
+actions.
+"""
+
 import copy
 from datetime import datetime
 from PyQt6.QtCore import Qt, QDir, QFileInfo
@@ -27,10 +37,31 @@ import qtawesome as qta
 from helper.i18n import t
 
 class DialogPTW(TabbedDialog):
+    """The full PTW create/view/edit form, tabbed via TabbedDialog.
+
+    Tabs: Basic Info, Tools, Hazards, Controls, Risks, Isolation, MIWI/MOS,
+    Attachments — always present — plus History and IC Linkage, offered only in
+    readonly mode (a brand-new PTW has neither approvals nor a linked IC yet).
+    History shows two side-by-side Timeline panes: the approval log
+    (_buildApprovalTimelinePane) and the running-cycle log
+    (_buildRunningTimelinePane). IC Linkage lists ICs linked via ptw.linked_ics,
+    each with View and (role-permitting) Unlink/Request Isolate actions.
+
+    Mode is driven by the `new`/`readOnly` constructor flags: `new` controls
+    whether data is fetched fresh vs. taken from an existing PTW (and whether a
+    reference PTW's attachments/risk assessment can be pulled in), while
+    `readOnly` disables every editable field/checkbox and switches the dialog
+    from an editable form into a plain viewer (also gating the History/IC
+    Linkage tabs).
+    """
+
     GRID_LYT_COLS = 3
     CHECK_BOX_MAX_LINE_CHARS = 36
 
     def checkboxDisplayName(text: str):
+        """Wrap `text` onto two lines (breaking at the last space before the max
+        line width) if it's longer than CHECK_BOX_MAX_LINE_CHARS, for a tools/
+        hazards/controls checkbox label."""
         if len(text) <= DialogPTW.CHECK_BOX_MAX_LINE_CHARS:
             return text
         else:
@@ -41,15 +72,31 @@ class DialogPTW(TabbedDialog):
             return text[:breakpoint] + '\n' + text[breakpoint:].lstrip()
         
     def formatCheckBoxText(text: str):
+        """Collapse a checkboxDisplayName-wrapped label back to a single line."""
         return text.replace('\n', ' ')
 
     def displayNameForUsername(username: str):
+        """Look up username in globalData.allUsers and return their display name,
+        falling back to the raw username if not found (or '' if username is falsy)."""
         if not username:
             return ''
         user = globalData.allUsers.get(username)
         return user.getName() if user else username
 
     def __init__(self, parent, loggedUser, ptw: PTW, referencePTW: PTW, new: bool, readOnly: bool, lbl: str):
+        """Build every tab of the PTW form from `ptw` and wire up its fields' enabled state.
+
+        Args:
+            ptw: the PTW to display/edit (a freshly-constructed one when `new`).
+            referencePTW: an existing PTW to copy attachments/risk assessment
+                from when creating a new PTW "from" it, or None.
+            new: whether this is a brand-new PTW being created (vs. an existing
+                one being viewed/edited) — controls data-fetching and whether
+                History/IC Linkage even apply.
+            readOnly: whether every field/checkbox is disabled for plain viewing;
+                also gates the History/IC Linkage tabs.
+            lbl: window title.
+        """
         super().__init__(parent)
 
         self.setWindowTitle(lbl)
@@ -392,12 +439,18 @@ class DialogPTW(TabbedDialog):
         self._refreshOverlay = RefreshOverlay(self)
 
     def _makeReadOnlyField(self, text: str) -> QLineEdit:
+        """Build a read-only QLineEdit showing `text`, cursor reset to the start."""
         box = QLineEdit(text)
         box.setReadOnly(True)
         box.setCursorPosition(0)
         return box
 
     def _viewLinkedIC(self, icId):
+        """Open the linked IC identified by icId in a read-only DialogIC.
+
+        Slot for an IC Linkage row's View button click. Looks icId up in
+        globalData.ics; warns if it can't be found (e.g. stale cache).
+        """
         icsById = {str(ic.id): ic for ic in globalData.ics.values()}
         ic = icsById.get(str(icId))
         if ic is None:
@@ -408,6 +461,11 @@ class DialogPTW(TabbedDialog):
         dlg.exec()
 
     def _unlinkIC(self, icId):
+        """Unlink the IC identified by icId from this PTW, after confirmation.
+
+        Slot for an IC Linkage row's Unlink button click. On success, closes
+        this dialog (the caller must reopen it to see the updated linkage).
+        """
         reply = QMessageBox.question(
             self, t("Unlink IC"), t("Unlink IC #{0} from this PTW?").format(icId),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
@@ -416,6 +474,7 @@ class DialogPTW(TabbedDialog):
             return
 
         def on_done(err, _):
+            """Handle the unlink-request result: warn on failure, else confirm and close."""
             self._refreshOverlay.hideBusy()
             if err:
                 QMessageBox.warning(self, t("Unlink Failed"), err)
@@ -426,6 +485,12 @@ class DialogPTW(TabbedDialog):
         ClientRequests.unlinkPTWFromIC(self.loggedUser, int(icId), self.ptw.id, callback=on_done)
 
     def _requestIsolateIC(self, icId):
+        """Request isolation of the linked IC identified by icId, after confirmation.
+
+        Slot for an IC Linkage row's Request Isolate button click (USER role
+        only). On success, closes this dialog (the caller must reopen it to see
+        the updated status).
+        """
         reply = QMessageBox.question(
             self, t('Request Isolate #{0}').format(icId), t("Request isolation for IC #{0}? This will notify Issuing to confirm.").format(icId),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
@@ -434,6 +499,7 @@ class DialogPTW(TabbedDialog):
             return
 
         def on_done(err, _):
+            """Handle the isolate-request result: warn on failure, else confirm and close."""
             self._refreshOverlay.hideBusy()
             if err:
                 QMessageBox.warning(self, t("Request Failed"), err)
@@ -444,6 +510,12 @@ class DialogPTW(TabbedDialog):
         ClientRequests.requestIsolateIC(self.loggedUser, int(icId), callback=on_done)
 
     def _linkNewIC(self):
+        """Prompt for an IC number and link it to this PTW.
+
+        Slot for the "Link New IC" button click. Rejects duplicates already in
+        ptw.linked_ics; on success, closes this dialog (the caller must reopen
+        it to see the updated linkage).
+        """
         icId, ok = QInputDialog.getText(self, t('Link IC to PTW #{0}').format(self.ptw.id), t('IC #:'))
         if not ok or not icId.strip():
             return
@@ -453,6 +525,7 @@ class DialogPTW(TabbedDialog):
             return
 
         def on_done(err, _):
+            """Handle the link-request result: warn on failure, else confirm and close."""
             self._refreshOverlay.hideBusy()
             if err:
                 QMessageBox.warning(self, t("Link Failed"), err)
@@ -463,6 +536,8 @@ class DialogPTW(TabbedDialog):
         ClientRequests.linkPTWToIC(self.loggedUser, icId, self.ptw.id, callback=on_done)
 
     def _icLinkRow(self, icId) -> QWidget:
+        """Build one IC Linkage row: label plus View and (role-permitting)
+        Request Isolate/Unlink buttons for the IC identified by icId."""
         icsById = {str(ic.id): ic for ic in globalData.ics.values()}
         ic = icsById.get(str(icId))
         label = f"IC #{icId} — {ic.getStatus()}" if ic else f"IC #{icId}"
@@ -486,6 +561,8 @@ class DialogPTW(TabbedDialog):
         return row
 
     def _addICLinkRows(self, container: QVBoxLayout, icIds: list):
+        """Populate container with one _icLinkRow per non-empty id in icIds, or a
+        "No linked ICs." label if there are none."""
         ids = [i for i in icIds if i]
         if not ids:
             container.addWidget(QLabel(t("No linked ICs.")))
@@ -494,6 +571,7 @@ class DialogPTW(TabbedDialog):
             container.addWidget(self._icLinkRow(icId))
 
     def _timelinePane(self, title: str, timeline: Timeline) -> QWidget:
+        """Wrap timeline in a titled pane for side-by-side placement in the History tab."""
         pane = QWidget()
         lyt = QVBoxLayout(pane)
         lyt.setContentsMargins(0, 0, 0, 0)
@@ -502,6 +580,17 @@ class DialogPTW(TabbedDialog):
         return pane
 
     def _buildApprovalTimelinePane(self) -> QWidget:
+        """Build the History tab's left Timeline pane from ptw.approvals.
+
+        Emits, in order: a green "Requested" entry (if the PTW has a requestor),
+        then one entry per recorded Approval — green for APPROVED, orange
+        otherwise (RETURNED/REJECTED) — with its comment appended if present.
+        Once any non-APPROVED action is seen, `skipPending` is set so no gray
+        "Pending" entries are appended afterward for ptw.pendingApprovers():
+        once the chain has been returned/rejected, the remaining stages are no
+        longer meaningfully "awaiting" anyone, so they're left out rather than
+        shown as if still in progress.
+        """
         entries = []
         if self.ptw.requestor:
             color = QColor('green')
@@ -541,6 +630,14 @@ class DialogPTW(TabbedDialog):
         return self._timelinePane(t("Approval Timeline"), timeline)
 
     def _runCycleRequestEntry(self, label: str, username: str, timestamp: str, comment: str = None) -> tuple:
+        """Build one Timeline (color, QLabel) entry for a run-cycle request step
+        (e.g. "Run Requested", "Hold Requested").
+
+        Green with the requester/timestamp/comment if `username` is set; gray
+        "Pending" otherwise — which only happens for a step the current,
+        still-open cycle hasn't reached yet, since every earlier cycle's request
+        fields are always already filled in.
+        """
         if username:
             text = f"<b>{label}</b> by {DialogPTW.displayNameForUsername(username)}"
             if timestamp:
@@ -558,6 +655,14 @@ class DialogPTW(TabbedDialog):
         return (color, content)
 
     def _runCycleResponseEntry(self, verb: str, username: str, action: str, timestamp: str, comment: str = None) -> tuple:
+        """Build one Timeline (color, QLabel) entry for the IA's response to a
+        run-cycle request step (e.g. "Run Approved/Rejected").
+
+        Green for an Approved action, orange for Rejected, with the responder/
+        timestamp/comment; gray "Pending" if `action` is unset — which, as with
+        _runCycleRequestEntry, only happens for the current, still-open cycle's
+        not-yet-answered step.
+        """
         if action:
             color = QColor('orange') if action == PTW.RunCycle.Actions.REJECTED else QColor('green')
             text = f"<b>{verb} {action}</b> by {DialogPTW.displayNameForUsername(username)}"
@@ -575,6 +680,19 @@ class DialogPTW(TabbedDialog):
         return (color, content)
 
     def _buildRunningTimelinePane(self) -> QWidget:
+        """Build the History tab's right Timeline pane from ptw.run_cycles.
+
+        Renders each RunCycle as a "Run Cycle #N" header followed by its Run
+        Requested / Run Approved-or-Rejected rows, and — only if a stop
+        (hold/close) has actually been requested on that cycle
+        (`cycle.stop_pa_request` set) — its Hold/Close Requested and
+        Hold/Close Approved-or-Rejected rows too. A cycle with no stop request
+        yet (i.e. still plainly RUNNING) shows no stop rows at all, not even
+        pending ones. Gray "Pending" rows only ever appear for whichever step
+        the current, still-open cycle hasn't reached yet: every earlier,
+        already-finished cycle has all of its relevant fields filled in, so it
+        never renders a pending row.
+        """
         entries = []
         for i, cycle in enumerate(self.ptw.run_cycles, start=1):
             header = QLabel(f"<b>{t('Run Cycle')} #{i}</b>")
@@ -594,6 +712,14 @@ class DialogPTW(TabbedDialog):
         return self._timelinePane(t("Running Timeline"), timeline)
 
     def ptwTypeChanged(self):
+        """Recolor the tab bar for the newly-selected PTW type and refresh required fields.
+
+        Slot for the Type combo box's currentIndexChanged (and called once at
+        init to set the initial color). Recomputes tab-bar color from the type,
+        keeps tab-button selection in sync, and — unless read-only — re-runs
+        checkRequirement() since a type change can add/remove required tools/
+        hazards/controls/attachments.
+        """
         color = PTW.backgroundColorForType(self.boxPTWType.currentData())
         self.setTabBarColor(color)
         self.stackTabChanged()
@@ -602,12 +728,30 @@ class DialogPTW(TabbedDialog):
             self.checkRequirement()
 
     def checkRequirement(self, state=None):
+        """Recompute and re-render which tools/hazards/controls/attachments are required.
+
+        Slot for any tools/hazards/controls checkbox click (state is the new
+        checked state, unused beyond triggering the recompute) and called
+        directly by ptwTypeChanged(). No-op in read-only mode. Collects the
+        current form data onto self.ptw, asks it to recompute requirements for
+        the current type, then refreshes the checkbox UI to match.
+        """
         if not self.readonly:
             self.collectData()
             self.ptw.updateRequirements()
             self.refreshUI()
 
     def refreshUI(self):
+        """Re-check/enable each tools/hazards/controls checkbox against the current PTW type.
+
+        Called by checkRequirement() after requirements are recomputed: for
+        each checkbox, forces it checked if required by ptwType, forces it
+        unchecked and disabled if restricted, otherwise leaves it as the user
+        set it; also refreshes the "Others" free-text boxes and the attachment
+        table's required-attachments list. Signals are blocked around the whole
+        pass so programmatic checked-state changes don't re-trigger
+        checkRequirement().
+        """
         ptwType = self.boxPTWType.currentData()
 
         all_check_btns: dict[str, QCheckBox] = {}
@@ -663,6 +807,13 @@ class DialogPTW(TabbedDialog):
             btn.blockSignals(False)
 
     def miwiMosSwitch(self):
+        """Toggle the MIWI/MOS tab's enabled fields to match the selected radio button.
+
+        Slot for the MIWI/MOS radio-button group's buttonClicked (and called
+        once at init). Enables the MIWI combo/View/New buttons and disables the
+        MOS text box when MIWI is selected, or the reverse when MOS is selected
+        (focusing the MOS box in that case).
+        """
         if self.btnMiwi.isChecked():
             self.boxMiwi.setEnabled(not self.readonly)
             self.boxMOS.setEnabled(False)
@@ -676,7 +827,9 @@ class DialogPTW(TabbedDialog):
             self.boxMOS.setFocus()
 
     def openMIWI(self):
+        """Fetch and open the selected MIWI PDF. Slot for the "View MIWI" button click."""
         def on_done(err, filepath):
+            """Handle the MIWI fetch result: warn on failure, else open the downloaded PDF."""
             self._refreshOverlay.hideBusy()
             if err:
                 QMessageBox.warning(self, t("Error"), err)
@@ -689,7 +842,16 @@ class DialogPTW(TabbedDialog):
             ClientRequests.getMIWI(self.loggedUser, miwiName, department=department, callback=on_done)
 
     class SaveAsDialog(QDialog):
+        """Small prompt for a save-on-server filename, validated against a list of names
+        already in use (e.g. existing MIWIs or attachments)."""
+
         def __init__(self, parent, initName: str = '', invalidList: list[str] = [], title: str = "Save file as"):
+            """Build the filename field, pre-filled with initName, and Ok/Cancel buttons.
+
+            Args:
+                invalidList: names that are rejected (Ok stays disabled) as
+                    already in use.
+            """
             super().__init__(parent)
             self.setWindowTitle(t(title))
             self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowMaximizeButtonHint & ~Qt.WindowType.WindowMinimizeButtonHint)
@@ -713,6 +875,10 @@ class DialogPTW(TabbedDialog):
             self.checkSaveName()
 
         def checkSaveName(self):
+            """Enable Ok only for a non-empty, not-already-used name; flag the field red otherwise.
+
+            Slot for the filename field's textChanged.
+            """
             name = self.boxFileName.text().strip()
             self.btns.button(QDialogButtonBox.StandardButton.Ok).setEnabled(bool(name) and name not in self.invalidList)
             self.boxFileName.setProperty('error', str(not name or name in self.invalidList))
@@ -720,11 +886,23 @@ class DialogPTW(TabbedDialog):
             self.boxFileName.style().polish(self.boxFileName)
 
         def collectData(self):
+            """Store the trimmed filename as self.savename and accept the dialog.
+
+            Slot for the Ok button (connected to btns.accepted).
+            """
             self.savename = self.boxFileName.text().strip()
             self.accept()
 
 
     def newMIWI(self):
+        """Pick a local PDF, name it, and upload it as a new MIWI document.
+
+        Slot for the "New MIWI" button click. Prompts for a file, then a
+        server-side save name (via SaveAsDialog, defaulting to the file's own
+        name, rejecting names already in globalData.allMIWIs); on successful
+        upload, adds the new name to globalData.allMIWIs and selects it in the
+        MIWI combo.
+        """
         filepath, _ = QFileDialog.getOpenFileName(self, t("Select MIWI File"), QDir.homePath(), "PDFs (*.pdf);;All Files (*)")
         if not filepath:
             return
@@ -738,6 +916,7 @@ class DialogPTW(TabbedDialog):
             return
 
         def on_done(err, _):
+            """Handle the MIWI upload result: warn on failure, else register and select it."""
             self._refreshOverlay.hideBusy()
             if err:
                 QMessageBox.warning(self, t("Error"), err)
@@ -750,6 +929,15 @@ class DialogPTW(TabbedDialog):
         ClientRequests.uploadMIWI(self.loggedUser, filepath, miwiName, callback=on_done)
     
     def newAttachment(self):
+        """Pick a local PDF, name it, and add it to the Attachments table.
+
+        Slot for the "New Attachment" button click. Prompts for a file, then a
+        server-side save name (via SaveAsDialog, rejecting names already used
+        by this PTW's attachments); the file itself is only queued locally here
+        (added to the table as not-yet-uploaded) — collectData()/accept()
+        collects the not-yet-uploaded attachments into self.attachsToBeUploaded
+        for the caller to actually upload once the dialog is accepted.
+        """
         filepath, _ = QFileDialog.getOpenFileName(self, t("Select File"), QDir.homePath(), "PDFs (*.pdf);;All Files (*)")
         if not filepath:
             return
@@ -765,6 +953,13 @@ class DialogPTW(TabbedDialog):
         self.tableAttachments.addAttachment(Attachment(filepath, filename, False))
 
     def collectData(self):
+        """Write every editable form field back onto self.ptw. No-op if read-only.
+
+        Also rebuilds self.ptw.tools/hazards/controls/isolations from their
+        respective widgets (checkboxes plus the delimiter-split "Others" free
+        text), and sets self.attachsToBeUploaded to the attachments not yet
+        uploaded, for the caller to upload once this dialog is accepted.
+        """
         if self.readonly:
             return
         
@@ -824,6 +1019,12 @@ class DialogPTW(TabbedDialog):
         self.attachsToBeUploaded = [a for a in self.tableAttachments.getAttachments() if not a.uploaded]
 
     def accept(self):
+        """Validate and accept the dialog. Overrides QDialog.accept()/the Finish button's slot.
+
+        Read-only mode accepts unconditionally (nothing to validate). Otherwise
+        collects form data via collectData() and blocks acceptance — showing
+        the validation error instead — unless self.ptw.validate() passes.
+        """
         if self.readonly:
             return super().accept()
         

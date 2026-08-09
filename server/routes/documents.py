@@ -1,3 +1,6 @@
+"""Flask blueprint for MIWI (Maintenance and Work Instruction) document
+endpoints: list, download, and upload per-department PDF documents.
+"""
 import os
 from flask import Blueprint, request, jsonify, send_file
 
@@ -10,6 +13,13 @@ documentsBp = Blueprint("documents", __name__)
 
 @documentsBp.route("/miwi", methods=["GET"])
 def getMIWI():
+    """Download a MIWI PDF by filename.
+
+    GET, any authenticated user. Body carries ``filename`` (required) and
+    an optional ``department`` used only to narrow/prefer the search —
+    reading is not restricted to the caller's own department. Returns the
+    file as an attachment, or a 404/400 JSON error on failure.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("GET /miwi unauthorized (ip=%s)", request.remote_addr)
@@ -34,6 +44,13 @@ def getMIWI():
 
 @documentsBp.route("/miwis", methods=["GET"])
 def getAllMIWIs():
+    """List MIWI filenames, optionally scoped by department.
+
+    GET, any authenticated user. Body carries an optional ``department``;
+    if it's a recognized department only that folder is listed, otherwise
+    every department folder plus any legacy flat top-level files are
+    returned. Responds with ``{"success": True, "miwis": [...]}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("GET /miwis unauthorized (ip=%s)", request.remote_addr)
@@ -61,6 +78,14 @@ def getAllMIWIs():
 
 @documentsBp.route("/miwi", methods=["POST"])
 def uploadMIWI():
+    """Upload a new MIWI PDF into a department folder.
+
+    POST, any authenticated user. Takes the file from
+    ``request.files['miwi']`` and ``department`` from the form fields,
+    validated against ``paths.MIWI_DEPARTMENTS``; rejects path-traversal
+    attempts and filenames that already exist. Responds with
+    ``{"success": True, "message": ...}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /miwi unauthorized (ip=%s)", request.remote_addr)

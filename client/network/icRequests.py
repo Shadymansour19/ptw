@@ -1,3 +1,9 @@
+"""IC (Isolation Certificate) endpoint wrappers: fetch, create, approve, drive the
+isolate/de-isolate request-confirm-execute cycles, PTW linkage, and IC attachments.
+
+Mixed into ``ClientRequests`` (see ``network/clientRequests.py``).
+"""
+
 from network.requestConfig import SERVER_URL, TIMEOUT, FILE_TIMEOUT
 import os
 import requests
@@ -10,8 +16,17 @@ from models.Isolation import IC
 
 
 class ICRequests:
+    """Mixin providing IC (Isolation Certificate) lifecycle and attachment endpoints.
+
+    Combined with the other ``*Requests`` mixins into ``ClientRequests``.
+    """
+
     @async_request
     def getAllICs(loggedUser: User, department: UserDepartments = None):
+        """Fetch all visible ICs via GET /ics, optionally filtered by department.
+
+        Returns ``(None, {id: IC})`` on success, or ``(err, None)`` on failure.
+        """
         response = None
         try:
             response = requests.get(
@@ -59,6 +74,10 @@ class ICRequests:
 
     @async_request
     def addIC(loggedUser: User, ic: IC) -> tuple[str, str]:
+        """Create a new IC via POST /ics.
+
+        Returns ``(None, ic-id)`` on success, or ``(err, None)`` on failure.
+        """
         response = None
         try:
             response = requests.post(
@@ -80,6 +99,12 @@ class ICRequests:
 
     @async_request
     def addIcAttachments(loggedUser: User, icId: str, attachments: list[Attachment]) -> str:
+        """Upload P&ID/wiring files to an IC via POST /ics/attachments.
+
+        If ``attachments`` is empty, delegates to ``deleteAllIcAttachments`` to
+        clear any existing ones instead of sending an empty upload. Returns an
+        error string, or None on success.
+        """
         if not attachments:
             return ICRequests.deleteAllIcAttachments(loggedUser, icId)
 
@@ -117,6 +142,10 @@ class ICRequests:
 
     @async_request
     def getIcAttachmentNames(loggedUser: User, icId: str) -> tuple[str, list[str]]:
+        """List an IC's P&ID/wiring attachment filenames via GET /ics/attachments.
+
+        Returns ``(None, [filename, ...])`` on success, or ``(err, None)`` on failure.
+        """
         response = None
         try:
             response = requests.get(
@@ -139,6 +168,10 @@ class ICRequests:
 
     @async_request
     def getIcAttachment(loggedUser: User, icId: str, filename: str):
+        """Download one IC P&ID/wiring attachment via GET /ics/attachments and save it to a temp file.
+
+        Returns ``(None, local_temp_path)`` on success, or ``(err, None)`` on failure.
+        """
         response = None
         try:
             response = requests.get(
@@ -163,6 +196,10 @@ class ICRequests:
 
     @async_request
     def deleteAllIcAttachments(loggedUser: User, icId: str, keepFilenames: list[str] = []) -> str:
+        """Delete an IC's P&ID/wiring attachments via DELETE /ics/attachments, keeping any in ``keepFilenames``.
+
+        Returns an error string, or None on success.
+        """
         response = None
         try:
             response = requests.delete(
@@ -184,6 +221,10 @@ class ICRequests:
 
     @async_request
     def updateApprovalIC(loggedUser: User, icId, approval: IC.Approval) -> str:
+        """Submit an approval action on an IC's approval chain via POST /ics/approvals.
+
+        Returns an error string, or None on success.
+        """
         response = None
         try:
             response = requests.post(
@@ -206,6 +247,10 @@ class ICRequests:
 
     @async_request
     def requestIsolateIC(loggedUser: User, icId) -> str:
+        """Request that an approved IC's isolation be carried out via POST /ics/isolate-request.
+
+        Returns an error string, or None on success.
+        """
         response = None
         try:
             response = requests.post(
@@ -228,6 +273,10 @@ class ICRequests:
 
     @async_request
     def confirmIsolateIC(loggedUser: User, icId, response: bool) -> str:
+        """Issuing confirms or returns an isolate request via POST /ics/isolate-confirm.
+
+        Returns an error string, or None on success.
+        """
         resp = None
         try:
             resp = requests.post(
@@ -250,6 +299,10 @@ class ICRequests:
 
     @async_request
     def executeIsolateIC(loggedUser: User, icId, items: list = None) -> str:
+        """Isolator carries out the isolation via POST /ics/isolate-execute, with optional per-item lock #/lock box # data.
+
+        Returns an error string, or None on success.
+        """
         response = None
         try:
             response = requests.post(
@@ -272,6 +325,10 @@ class ICRequests:
 
     @async_request
     def requestDeisolateIC(loggedUser: User, icId) -> str:
+        """Request de-isolation of an active IC via POST /ics/deisolate-request.
+
+        Returns an error string, or None on success.
+        """
         response = None
         try:
             response = requests.post(
@@ -294,6 +351,10 @@ class ICRequests:
 
     @async_request
     def confirmDeisolateIC(loggedUser: User, icId, response: bool) -> str:
+        """Issuing confirms or returns a de-isolate request via POST /ics/deisolate-confirm.
+
+        Returns an error string, or None on success.
+        """
         resp = None
         try:
             resp = requests.post(
@@ -316,6 +377,10 @@ class ICRequests:
 
     @async_request
     def executeDeisolateIC(loggedUser: User, icId) -> str:
+        """Isolator carries out the de-isolation via POST /ics/deisolate-execute, closing the IC.
+
+        Returns an error string, or None on success.
+        """
         response = None
         try:
             response = requests.post(
@@ -338,6 +403,10 @@ class ICRequests:
 
     @async_request
     def linkPTWToIC(loggedUser: User, icId, ptwId) -> str:
+        """Link a PTW to an IC via POST /ics/link-ptw (symmetric write to both records).
+
+        Returns an error string, or None on success.
+        """
         response = None
         try:
             response = requests.post(
@@ -360,6 +429,10 @@ class ICRequests:
 
     @async_request
     def unlinkPTWFromIC(loggedUser: User, icId, ptwId) -> str:
+        """Unlink a PTW from an IC via POST /ics/unlink-ptw (symmetric write to both records).
+
+        Returns an error string, or None on success.
+        """
         response = None
         try:
             response = requests.post(

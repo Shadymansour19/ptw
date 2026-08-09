@@ -1,3 +1,9 @@
+"""MIWI (Maintenance and Work Instructions) document endpoint wrappers: list,
+download, and upload.
+
+Mixed into ``ClientRequests`` (see ``network/clientRequests.py``).
+"""
+
 from network.requestConfig import SERVER_URL, TIMEOUT, FILE_TIMEOUT
 import requests
 import tempfile
@@ -6,8 +12,17 @@ from models.User import User, UserDepartments
 
 
 class DocumentRequests:
+    """Mixin providing MIWI document endpoints.
+
+    Combined with the other ``*Requests`` mixins into ``ClientRequests``.
+    """
+
     @async_request
     def getMIWI(loggedUser: User, filename: str, department: UserDepartments = None) -> tuple[str, str]:
+        """Download a MIWI PDF via GET /miwi and save it to a temp file.
+
+        Returns ``(None, local_temp_path)`` on success, or ``(err, None)`` on failure.
+        """
         response = None
         try:
             response = requests.get(
@@ -31,6 +46,10 @@ class DocumentRequests:
 
     @async_request
     def getAllMIWIs(loggedUser: User, department: UserDepartments = None) -> tuple[str, list[str]]:
+        """List MIWI filenames via GET /miwis, optionally scoped by department.
+
+        Returns ``(None, [filename, ...])`` on success, or ``(err, None)`` on failure.
+        """
         response = None
         try:
             response = requests.get(
@@ -53,6 +72,10 @@ class DocumentRequests:
 
     @async_request
     def uploadMIWI(loggedUser: User, filePath: str, savename: str = None) -> str:
+        """Upload a new MIWI PDF via POST /miwi, into the logged-in user's own department.
+
+        Returns an error string, or None on success.
+        """
         response = None
         try:
             with open(filePath, 'rb') as f:

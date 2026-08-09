@@ -1,3 +1,13 @@
+"""P&ID/Wiring tab embedded in the IC dialog.
+
+Lets the requestor attach one or more diagrams (PDF or image) to an IC, previews them
+with zoom/pan, and shows each isolation item's tag highlighted on the diagram (color
+coded by OPEN/CLOSE state). In editable (new-IC) mode, highlights are live, draggable and
+resizable, can be added or deleted by hand, and a "Sync" action recomputes the automatic
+highlights from the current isolation items list while preserving manual ones. See
+widgets.PidWiringHighlighter for the underlying detection/burn-in logic.
+"""
+
 import os
 from functools import partial
 
@@ -24,6 +34,9 @@ class _EditableHighlightItem(QGraphicsRectItem):
     HANDLE_SIZE = 10
 
     def __init__(self, rect: QRectF, color: QColor, tooltip: str = '', onReleased=None):
+        """Create a movable/selectable highlight rectangle at rect, filled/outlined in
+        color, with tooltip as its tag label. onReleased, if given, is called after
+        every completed drag or resize."""
         super().__init__(rect)
         self.setFlags(QGraphicsRectItem.GraphicsItemFlag.ItemIsMovable |
                       QGraphicsRectItem.GraphicsItemFlag.ItemIsSelectable)
@@ -35,6 +48,8 @@ class _EditableHighlightItem(QGraphicsRectItem):
         self._onReleased = onReleased
 
     def _handleRects(self) -> dict:
+        """Return the four corner resize-handle hit-boxes ('tl'/'tr'/'bl'/'br'), each
+        HANDLE_SIZE square and centered on that corner of the current rect."""
         r = self.rect()
         s = self.HANDLE_SIZE
         return {
@@ -45,6 +60,7 @@ class _EditableHighlightItem(QGraphicsRectItem):
         }
 
     def paint(self, painter, option, widget=None):
+        """Paint the rectangle as usual, plus corner resize-handle squares when selected."""
         super().paint(painter, option, widget)
         if self.isSelected():
             painter.setBrush(QBrush(Qt.GlobalColor.white))
@@ -53,12 +69,16 @@ class _EditableHighlightItem(QGraphicsRectItem):
                 painter.drawRect(hr)
 
     def _handleAt(self, pos: QPointF):
+        """Return the name ('tl'/'tr'/'bl'/'br') of the resize handle containing pos, or
+        None if pos isn't over any handle."""
         for name, hr in self._handleRects().items():
             if hr.contains(pos):
                 return name
         return None
 
     def hoverMoveEvent(self, event):
+        """Update the mouse cursor to a resize cursor while hovering a corner handle of a
+        selected item, or a move cursor otherwise."""
         handle = self._handleAt(event.pos()) if self.isSelected() else None
         if handle in ('tl', 'br'):
             self.setCursor(Qt.CursorShape.SizeFDiagCursor)
@@ -69,6 +89,8 @@ class _EditableHighlightItem(QGraphicsRectItem):
         super().hoverMoveEvent(event)
 
     def mousePressEvent(self, event):
+        """Record the pre-drag rect and, if the press lands on a corner handle of a
+        selected item, start a resize instead of the default move/select behavior."""
         self._pressRect = self.rect()
         self._resizeHandle = self._handleAt(event.pos()) if self.isSelected() else None
         if self._resizeHandle:
@@ -77,6 +99,10 @@ class _EditableHighlightItem(QGraphicsRectItem):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
+        """While resizing, recompute the rect by moving the dragged corner to the cursor
+        (normalizing so it stays a valid rect), ignoring the resize if either resulting
+        dimension would drop to 5px or below. Otherwise defer to the default move
+        behavior."""
         if self._resizeHandle:
             r = self.rect()
             p = event.pos()
@@ -96,6 +122,8 @@ class _EditableHighlightItem(QGraphicsRectItem):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
+        """End any active resize and, if the rect actually changed (drag or resize),
+        invoke onReleased so the caller can persist/re-burn the new geometry."""
         self._resizeHandle = None
         super().mouseReleaseEvent(event)
         if self._onReleased and self.rect() != getattr(self, '_pressRect', self.rect()):
@@ -108,6 +136,7 @@ class _AssignHighlightDialog(QDialog):
     list, so a manual highlight can never disagree with the table it came from."""
 
     def __init__(self, parent, items: list):
+        """Build the dialog with a tag combo box listing every item's tag."""
         super().__init__(parent)
         self.setWindowTitle(t("Assign Highlight"))
         self.setModal(True)
@@ -124,6 +153,8 @@ class _AssignHighlightDialog(QDialog):
         lyt.addWidget(btns)
 
     def selected(self) -> tuple:
+        """Return (tag, state) for the chosen item, state read from that item's own
+        current state in the items list."""
         tag = self.tagCombo.currentText()
         item = next((i for i in self._items if i.tag == tag), None)
         return tag, (item.state if item else '')
@@ -142,6 +173,8 @@ class _PidGraphicsView(QGraphicsView):
     ZOOM_MAX_PERCENT = 1000
 
     def __init__(self, parent=None):
+        """Set up scroll-hand drag-panning, disable scrollbars (see comment below), and
+        create the floating zoom-percentage combo pinned to the bottom-left corner."""
         super().__init__(parent)
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -172,12 +205,16 @@ class _PidGraphicsView(QGraphicsView):
         self._updateZoomDisplay()
 
     def resizeEvent(self, event):
+        """Re-anchor the zoom combo to the bottom-left corner when the view is resized."""
         super().resizeEvent(event)
         margin = 20
         self.zoomCombo.move(self.width() - self.zoomCombo.width() - margin,
                              self.height() - self.zoomCombo.height() - margin)
 
     def fitInView(self, *args, **kwargs):
+        """Fit the scene into the view like QGraphicsView.fitInView, but force scrollbars
+        off for the computation to avoid a viewport-size feedback loop (see comment
+        below), then refresh the zoom-percentage display."""
         # Qt gotcha: if the previous content left scrollbars visible, fitInView computes
         # its scale against the scrollbar-shrunk viewport, then the scrollbars disappear
         # once the new (smaller) scale no longer needs them - leaving the result zoomed in
@@ -192,20 +229,28 @@ class _PidGraphicsView(QGraphicsView):
         self._updateZoomDisplay()
 
     def _currentZoomPercent(self) -> int:
+        """Return the view's current horizontal scale factor as a whole percentage."""
         return round(self.transform().m11() * 100)
 
     def _updateZoomDisplay(self):
+        """Refresh the zoom combo's editable text to match the current zoom percentage,
+        without re-triggering its own change signals."""
         self.zoomCombo.blockSignals(True)
         self.zoomCombo.setEditText(f"{self._currentZoomPercent()}%")
         self.zoomCombo.blockSignals(False)
 
     def _parsePercent(self, text: str):
+        """Extract the digits from text and clamp them to
+        [ZOOM_MIN_PERCENT, ZOOM_MAX_PERCENT]. Returns None if text has no digits."""
         digits = ''.join(ch for ch in text if ch.isdigit())
         if not digits:
             return None
         return max(self.ZOOM_MIN_PERCENT, min(int(digits), self.ZOOM_MAX_PERCENT))
 
     def _setZoomPercent(self, percent: int):
+        """Scale the view so its horizontal transform factor equals percent / 100, computed
+        against the exact current scale rather than its rounded display value (see comment
+        below) to avoid drift on repeated entry of the same percentage."""
         # use the exact transform scale, not the rounded display percentage - compounding
         # the display's own rounding here would make repeated entry (e.g. "100%") drift
         # away from the value actually requested.
@@ -217,6 +262,8 @@ class _PidGraphicsView(QGraphicsView):
         self._updateZoomDisplay()
 
     def _onZoomComboChosen(self, index: int):
+        """Handle the zoom combo's activated signal (a preset picked from the dropdown):
+        apply the chosen percentage, or just refresh the display if it didn't parse."""
         percent = self._parsePercent(self.zoomCombo.itemText(index))
         if percent:
             self._setZoomPercent(percent)
@@ -224,6 +271,8 @@ class _PidGraphicsView(QGraphicsView):
             self._updateZoomDisplay()
 
     def _onZoomComboEntered(self):
+        """Handle Return being pressed in the zoom combo's editable line edit: apply the
+        typed percentage, or just refresh the display if it didn't parse."""
         percent = self._parsePercent(self.zoomCombo.currentText())
         if percent:
             self._setZoomPercent(percent)
@@ -231,15 +280,23 @@ class _PidGraphicsView(QGraphicsView):
             self._updateZoomDisplay()
 
     def wheelEvent(self, event):
+        """Zoom in/out by a fixed 1.1x factor on each mouse wheel step, instead of
+        scrolling."""
         factor = 1.1 if event.angleDelta().y() > 0 else 1 / 1.1
         self.scale(factor, factor)
         self._updateZoomDisplay()
 
     def armAddRect(self, armed: bool):
+        """Enable or disable "draw a new highlight" mode: while armed, dragging on empty
+        canvas draws a rectangle (rather than panning); disarming restores normal
+        scroll-hand-drag panning."""
         self._drawingNew = armed
         self.setDragMode(QGraphicsView.DragMode.NoDrag if armed else QGraphicsView.DragMode.ScrollHandDrag)
 
     def mousePressEvent(self, event):
+        """While armed for drawing and the press isn't on an existing highlight, start a
+        new dashed-outline rectangle at the click point; otherwise defer to the default
+        (pan/select) behavior."""
         # the rendered page itself is a full-page QGraphicsPixmapItem, so itemAt() almost
         # never returns None for a click inside the page - only an existing highlight
         # should block starting a new draw (so it can be moved/resized instead).
@@ -253,6 +310,8 @@ class _PidGraphicsView(QGraphicsView):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
+        """While drawing a new rectangle, resize its outline to follow the cursor;
+        otherwise defer to the default behavior."""
         if self._drawingNew and self._drawItem is not None:
             self._drawItem.setRect(QRectF(self._drawStart, self.mapToScene(event.pos())).normalized())
             event.accept()
@@ -260,6 +319,9 @@ class _PidGraphicsView(QGraphicsView):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
+        """Finish drawing a new rectangle: remove the temporary dashed-outline item,
+        disarm draw mode, and emit rectDrawn if the drawn rectangle is at least 5x5px
+        (discarding accidental clicks/tiny drags silently)."""
         if self._drawingNew and self._drawItem is not None:
             rect = self._drawItem.rect()
             self.scene().removeItem(self._drawItem)
@@ -282,6 +344,8 @@ class WidgetPidWiring(QWidget):
     a drag, add one, or delete one."""
 
     def __init__(self, parent, loggedUser, ic: IC, readonly: bool):
+        """Build the tab: document picker/toolbar row, zoom/pan preview, page nav, and
+        (when not readonly) the Sync/Clear/Draw/Delete highlight-editing toolbar."""
         super().__init__(parent)
         self.loggedUser = loggedUser
         self.ic = ic
@@ -365,6 +429,7 @@ class WidgetPidWiring(QWidget):
         self._refreshDocCombo()
 
     def _legendSwatch(self, color, text) -> QWidget:
+        """Build a small colored-square-plus-label widget for the OPEN/CLOSE color legend."""
         w = QWidget()
         l = QHBoxLayout(w)
         l.setContentsMargins(0, 0, 0, 0)
@@ -378,6 +443,9 @@ class WidgetPidWiring(QWidget):
     # ------------------------------------------------------------------ document list
 
     def _refreshDocCombo(self, selectFilename: str = None):
+        """Repopulate the document combo from ic.pid_documents (with an OCR badge and a
+        PDF/image icon per entry), then select selectFilename if given, else the first
+        document, or show the empty-state message if there are no documents at all."""
         self.docCombo.blockSignals(True)
         self.docCombo.clear()
         for doc in self.ic.pid_documents:
@@ -400,23 +468,31 @@ class WidgetPidWiring(QWidget):
         self._selectDocument(self.ic.pid_documents[idx])
 
     def _onDocComboChanged(self, index: int):
+        """Handle the document combo's currentIndexChanged signal by displaying the newly
+        selected document."""
         if index < 0 or index >= len(self.ic.pid_documents):
             return
         self._selectDocument(self.ic.pid_documents[index])
 
     def _localPathFor(self, doc: 'IC.PidWiringDocument'):
+        """Return the staged local path for doc's burned-in file, if any is staged."""
         return self._stagedPathFor(doc.filename)
 
     def _originalLocalPathFor(self, doc: 'IC.PidWiringDocument'):
+        """Return the staged local path for doc's pristine original file, if any is staged."""
         return self._stagedPathFor(doc.original_filename)
 
     def _stagedPathFor(self, remoteName: str):
+        """Return the local path staged for upload under remoteName, or None if nothing
+        is staged under that name (e.g. a not-yet-fetched file on an existing IC)."""
         for attach in self.docsToBeUploaded:
             if attach.remoteName == remoteName:
                 return attach.localPath
         return None
 
     def _replaceStagedFile(self, remoteName: str, newLocalPath: str):
+        """Point the staged Attachment for remoteName at newLocalPath, or stage a new,
+        not-yet-uploaded Attachment if none exists yet for that name."""
         for attach in self.docsToBeUploaded:
             if attach.remoteName == remoteName:
                 attach.localPath = newLocalPath
@@ -426,6 +502,10 @@ class WidgetPidWiring(QWidget):
     # ------------------------------------------------------------------ display
 
     def _selectDocument(self, doc: 'IC.PidWiringDocument'):
+        """Make doc the currently displayed document (resetting to its first page) and
+        load the appropriate file for display: the burned-in file when readonly (fetching
+        it from the server first if not already staged locally), or the pristine
+        original (falling back to the burned-in file) when editable."""
         self._currentDoc = doc
         self._currentPage = 0
         self._pairs = []
@@ -443,6 +523,8 @@ class WidgetPidWiring(QWidget):
                 self._loadDisplayFile(sourcePath)
 
     def _fetchBurnedThenLoad(self, doc: 'IC.PidWiringDocument'):
+        """Download doc's burned-in file from the server (showing a busy overlay
+        meanwhile) and display it once retrieved."""
         overlay = getattr(self.window(), '_refreshOverlay', None)
         if overlay:
             overlay.showBusy()
@@ -458,6 +540,8 @@ class WidgetPidWiring(QWidget):
         ClientRequests.getIcAttachment(self.loggedUser, self.ic.id, doc.filename, callback=on_done)
 
     def _loadDisplayFile(self, filePath: str):
+        """Open filePath (as a QPdfDocument for a PDF, else a QImage) for on-screen
+        display and show its first page."""
         self._displayPdfDoc = None
         self._displayImage = None
         try:
@@ -471,11 +555,16 @@ class WidgetPidWiring(QWidget):
         self._showPage(0)
 
     def _pageCount(self) -> int:
+        """Return the page count of the currently displayed file (always 1 for an image)."""
         if self._displayPdfDoc is not None:
             return max(self._displayPdfDoc.pageCount(), 1)
         return 1
 
     def _showPage(self, pageIndex: int):
+        """Render and display pageIndex (clamped to the valid range) of the current
+        document. In editable mode, also rebuilds the live, draggable/resizable
+        highlight items for that page from the current document's highlight list, and
+        updates the page-nav controls (shown only when there's more than one page)."""
         pageCount = self._pageCount()
         self._currentPage = max(0, min(pageIndex, pageCount - 1))
 
@@ -511,9 +600,13 @@ class WidgetPidWiring(QWidget):
         self.btnNextPage.setEnabled(self._currentPage < pageCount - 1)
 
     def _changePage(self, delta: int):
+        """Handle a Prev/Next page button click by moving the current page by delta
+        (clamped to the valid range by _showPage)."""
         self._showPage(self._currentPage + delta)
 
     def _showEmptyMessage(self, text: str):
+        """Clear the preview and show text as a placeholder (used when there are no
+        P&ID/Wiring documents attached), hiding the page-nav controls."""
         self.scene.clear()
         self._pairs = []
         self.scene.addText(text)
@@ -522,6 +615,8 @@ class WidgetPidWiring(QWidget):
         self.lblPage.setVisible(False)
 
     def _openExternally(self):
+        """Handle the Open Externally button click: open the currently selected
+        document's burned-in file in the system's default viewer."""
         if not self._currentBurnedPath:
             QMessageBox.information(self, t("No Document"), t("Select a document first."))
             return
@@ -531,6 +626,8 @@ class WidgetPidWiring(QWidget):
     # ------------------------------------------------------------------ upload / delete document
 
     def _existingFilenames(self) -> set:
+        """Return the set of every filename and original_filename already attached to
+        this IC, used to reject a duplicate-named upload."""
         names = set()
         for doc in self.ic.pid_documents:
             names.add(doc.filename)
@@ -538,10 +635,18 @@ class WidgetPidWiring(QWidget):
         return names
 
     def _uniqueOriginalName(self, filename: str) -> str:
+        """Derive the stored name for filename's pristine original copy by inserting an
+        "__original" suffix before the extension."""
         base, ext = os.path.splitext(filename)
         return f"{base}__original{ext}"
 
     def _uploadDocument(self):
+        """Handle the Upload button click: let the user pick a PDF/image file, reject it
+        if its name collides with an already-attached document, then asynchronously
+        compute its automatic highlights from the current isolation items and burn them
+        in. On success, appends a new IC.PidWiringDocument and stages both the burned-in
+        file and the pristine original for upload (actual upload happens later, after the
+        IC itself is created), then selects the new document."""
         fileDialog = QFileDialog(self, t("Select P&ID / Wiring file to upload"), QDir.homePath(),
                                   "PDF/Image (*.pdf *.jpg *.jpeg *.png);;All Files (*)")
         fileDialog.setFileMode(QFileDialog.FileMode.ExistingFile)
@@ -587,6 +692,8 @@ class WidgetPidWiring(QWidget):
         highlighter.computeHighlightsAsync(filePath, self.ic.items, callback=on_compute_done)
 
     def _deleteSelectedDoc(self):
+        """Handle the Delete button click: after confirmation, remove the currently
+        selected document from the IC and drop its staged upload files."""
         doc = self._currentDoc
         if doc is None:
             return
@@ -617,6 +724,11 @@ class WidgetPidWiring(QWidget):
             self._resyncAll()
 
     def _resyncAll(self):
+        """Handle the Sync button click: recompute automatic highlights for every
+        attached document from the current isolation items list, one document at a time,
+        keeping each document's own manual highlights untouched and merging them back in
+        alongside the freshly recomputed automatic ones before re-burning. Shows a busy
+        overlay for the whole batch and reports any per-document failures at the end."""
         if not self.ic.pid_documents:
             return
         currentFilename = self._currentDoc.filename if self._currentDoc else None
@@ -669,6 +781,9 @@ class WidgetPidWiring(QWidget):
         process_next()
 
     def _clearSelectedDocHighlights(self):
+        """Handle the Clear button click: after confirmation, wipe every highlight
+        (manual included) from the currently selected document only, and re-burn it with
+        none."""
         doc = self._currentDoc
         if doc is None or self.readonly:
             return
@@ -703,6 +818,14 @@ class WidgetPidWiring(QWidget):
     # ------------------------------------------------------------ manual highlight editing (always live)
 
     def _applyCurrentPageHighlights(self):
+        """Write the current page's on-screen highlight geometry back into the document's
+        highlight list and re-burn the file immediately.
+
+        Only a highlight whose rect actually changed (beyond a small tolerance, to absorb
+        fractional/pixel round-trip error) is marked manual - an untouched sibling keeps
+        whatever manual/auto status it already had, so a later Sync can still refresh it.
+        Highlights on other pages are left as-is.
+        """
         doc = self._currentDoc
         if doc is None or self.readonly or not self._currentOriginalPath:
             return
@@ -739,9 +862,14 @@ class WidgetPidWiring(QWidget):
         highlighter.burnInHighlightsAsync(self._currentOriginalPath, doc.highlights, callback=on_done)
 
     def _onHighlightGeometryChanged(self):
+        """Handle a highlight item's onReleased callback (fired after a drag/resize) by
+        persisting and re-burning the current page's highlights."""
         self._applyCurrentPageHighlights()
 
     def _onNewRectDrawn(self, rect: QRectF):
+        """Handle the graphics view's rectDrawn signal (a new rectangle just hand-drawn):
+        ask which isolation item it belongs to via _AssignHighlightDialog, then add it
+        (marked manual) to the current page's highlights and re-burn."""
         if self._currentDoc is None or self.readonly:
             return
         if not self.ic.items:
@@ -759,6 +887,8 @@ class WidgetPidWiring(QWidget):
         self._applyCurrentPageHighlights()
 
     def _deleteSelectedHighlight(self):
+        """Handle the Delete Selected button click: remove every currently selected
+        highlight item from the scene and the document's highlight list, then re-burn."""
         if self._currentDoc is None or self.readonly:
             return
         selected = set(self.scene.selectedItems())
@@ -771,15 +901,20 @@ class WidgetPidWiring(QWidget):
 
     @staticmethod
     def _fractionalToScene(rect: list, width: float, height: float) -> QRectF:
+        """Convert a fractional [x, y, w, h] highlight rect to pixel scene coordinates
+        for a page of the given width/height."""
         x, y, w, h = rect
         return QRectF(x * width, y * height, w * width, h * height)
 
     @staticmethod
     def _sceneToFractional(rect: QRectF, width: float, height: float) -> list:
+        """Convert a pixel scene QRectF back to a fractional [x, y, w, h] highlight rect
+        for a page of the given width/height."""
         if width <= 0 or height <= 0:
             return [0.0, 0.0, 0.0, 0.0]
         return [rect.x() / width, rect.y() / height, rect.width() / width, rect.height() / height]
 
     @staticmethod
     def _rectsClose(a: list, b: list, tol: float = 1e-6) -> bool:
+        """Return True if fractional rects a and b match within tol on every component."""
         return all(abs(x - y) < tol for x, y in zip(a, b))

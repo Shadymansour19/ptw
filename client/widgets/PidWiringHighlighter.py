@@ -1,3 +1,14 @@
+"""P&ID/Wiring diagram highlight detection and burn-in.
+
+Pure logic module (no UI) used by the P&ID/Wiring tab (`widgets.WidgetPidWiring`) of the
+IC dialog. `computeHighlights()` locates each isolation item's tag on a PDF or image
+diagram - via the PDF's native text layer where available, falling back to Tesseract OCR
+for scanned pages or plain images - and returns the fractional page-relative rectangles
+where it was found. `burnInHighlights()` then physically draws those rectangles into a
+new copy of the file (PDF or image), so the highlights survive being opened in any
+external viewer rather than existing only as an in-app overlay.
+"""
+
 import io
 import logging
 import os
@@ -30,6 +41,7 @@ HIGHLIGHT_PAD_MIN = 0.005       # fractional page-size floor, so very small/shor
 
 
 def _waitForReady(doc: QPdfDocument):
+    """Block (via a local event loop) until doc finishes loading or fails."""
     if doc.status() in (QPdfDocument.Status.Ready, QPdfDocument.Status.Error):
         return
     loop = QEventLoop()
@@ -38,6 +50,7 @@ def _waitForReady(doc: QPdfDocument):
 
 
 def _waitForSearch(model: QPdfSearchModel, timeoutMs: int = 1000):
+    """Block (via a local event loop) until model's result count changes or timeoutMs elapses."""
     loop = QEventLoop()
     model.countChanged.connect(loop.quit)
     QTimer.singleShot(timeoutMs, loop.quit)
@@ -45,6 +58,7 @@ def _waitForSearch(model: QPdfSearchModel, timeoutMs: int = 1000):
 
 
 def loadPdfDocument(filePath: str) -> QPdfDocument:
+    """Load filePath into a QPdfDocument and wait until it is ready to use."""
     doc = QPdfDocument(None)
     doc.load(filePath)
     _waitForReady(doc)
@@ -52,6 +66,8 @@ def loadPdfDocument(filePath: str) -> QPdfDocument:
 
 
 def renderPage(doc: QPdfDocument, pageIndex: int, targetSize: QSize = None) -> QImage:
+    """Rasterize one page of doc (at targetSize, or a resolution derived from the page's
+    own point size) and flatten it onto an opaque white background."""
     rendered = doc.render(pageIndex, targetSize or _targetSizeForPage(doc.pagePointSize(pageIndex)))
     return _flattenOnWhite(rendered)
 
@@ -72,6 +88,8 @@ def _flattenOnWhite(image: QImage) -> QImage:
 
 
 def _targetSizeForPage(pageSizePoints) -> QSize:
+    """Scale pageSizePoints so its longer side equals RENDER_TARGET_LONG_SIDE, preserving
+    aspect ratio, for use as a raster render target."""
     longSide = max(pageSizePoints.width(), pageSizePoints.height())
     if longSide <= 0:
         return QSize(RENDER_TARGET_LONG_SIDE, RENDER_TARGET_LONG_SIDE)
@@ -122,6 +140,11 @@ def _padRect(rect: list) -> list:
 
 
 def _computeForPdf(filePath: str, items: list) -> tuple:
+    """Compute highlights for a PDF: native-text search on every page that has any
+    extractable text at all, OCR fallback on the rest (scanned/image-only pages).
+
+    Returns (highlights, pageCount, ocrUsed) where ocrUsed is True if any page needed OCR.
+    """
     doc = loadPdfDocument(filePath)
     pageCount = doc.pageCount()
 
@@ -140,6 +163,9 @@ def _computeForPdf(filePath: str, items: list) -> tuple:
 
 
 def _searchNativeText(doc: QPdfDocument, items: list, excludePages: set) -> list:
+    """Search doc's real text layer for each item's tag (via QPdfSearchModel), skipping
+    excludePages (the scanned pages handled separately by OCR), and return one Highlight
+    per matched rectangle, normalized and converted to page-fractional coordinates."""
     highlights = []
     model = QPdfSearchModel(None)
     model.setDocument(doc)
@@ -169,6 +195,8 @@ def _searchNativeText(doc: QPdfDocument, items: list, excludePages: set) -> list
 
 
 def _computeForImage(filePath: str, items: list) -> tuple:
+    """Compute highlights for a plain image upload via OCR only (images have no text
+    layer to search natively). Returns (highlights, pageCount=1, ocrUsed=True)."""
     image = QImage(filePath)
     if image.isNull():
         return [], 1, False
@@ -176,6 +204,11 @@ def _computeForImage(filePath: str, items: list) -> tuple:
 
 
 def _ocrMatchTags(image: QImage, items: list, page: int) -> list:
+    """Run Tesseract OCR on image, group the recognized words into lines, and match each
+    item's tag against each line's normalized text (whitespace-stripped, case-folded).
+    On a match, the highlight rectangle is the union of that line's own word boxes, in
+    pixel coordinates normalized to the image size. Returns [] (logging a warning)
+    instead of raising if Tesseract is unavailable or fails."""
     try:
         import pytesseract
         from pytesseract import Output
@@ -206,10 +239,17 @@ def _ocrMatchTags(image: QImage, items: list, page: int) -> list:
 
 
 def _normalize(text: str) -> str:
+    """Strip all whitespace and case-fold text, for whitespace/case-insensitive matching."""
     return ''.join(text.split()).casefold()
 
 
 def _groupWordsIntoLines(data: dict) -> list:
+    """Group pytesseract's flat per-word output (data, from image_to_data) into lines by
+    (block, paragraph, line) key, preserving first-seen order.
+
+    Returns a list of (lineText, words) tuples, where words is the list of
+    (word, left, top, width, height) tuples that make up that line.
+    """
     lineKeys = {}
     order = []
     for i in range(len(data.get('text', []))):
@@ -225,6 +265,8 @@ def _groupWordsIntoLines(data: dict) -> list:
 
 
 def _unionBox(words: list) -> tuple:
+    """Return the (x, y, width, height) bounding box enclosing every word's own box in
+    words (each a (word, left, top, width, height) tuple)."""
     lefts = [w[1] for w in words]
     tops = [w[2] for w in words]
     rights = [w[1] + w[3] for w in words]
@@ -234,6 +276,7 @@ def _unionBox(words: list) -> tuple:
 
 
 def _qImageToPil(image: QImage):
+    """Convert a QImage to a Pillow Image by round-tripping it through an in-memory PNG."""
     from PIL import Image
     buf = QBuffer()
     buf.open(QIODevice.OpenModeFlag.WriteOnly)
@@ -267,6 +310,8 @@ def burnInHighlightsAsync(filePath: str, highlights: list):
 
 
 def _copyUnchanged(filePath: str) -> str:
+    """Copy filePath to a new temp file unmodified and return its path (used by
+    burnInHighlights when there are no highlights to draw)."""
     fd, outPath = tempfile.mkstemp(suffix=os.path.splitext(filePath)[1], prefix='pidwiring-')
     os.close(fd)
     shutil.copyfile(filePath, outPath)
@@ -274,6 +319,15 @@ def _copyUnchanged(filePath: str) -> str:
 
 
 def _burnInPdf(filePath: str, highlights: list) -> str:
+    """Draw highlights into a new copy of the PDF at filePath and return its path.
+
+    Groups highlights by page, and for each page that needs any: bakes in the page's
+    own rotation via transfer_rotation_to_content() first (so pypdf's mediabox agrees
+    with the visual dimensions the highlight rects were computed against), builds a
+    same-size overlay PDF page (_overlayPdfBytes) with the highlight rectangles drawn on
+    it, and merges that overlay onto the page. Every page (highlighted or not) is then
+    written out to a new PDF via PdfWriter.
+    """
     from pypdf import PdfReader, PdfWriter
 
     reader = PdfReader(filePath)
@@ -307,6 +361,10 @@ def _burnInPdf(filePath: str, highlights: list) -> str:
 
 
 def _overlayPdfBytes(width: float, height: float, highlights: list) -> io.BytesIO:
+    """Build a single-page, width x height reportlab PDF (in memory) with each
+    highlight's rectangle drawn filled and stroked in its state color, for merging onto
+    the real page in _burnInPdf. Converts each fractional, top-left-origin rect (Qt
+    convention) to PDF's bottom-left-origin coordinate space."""
     from reportlab.pdfgen import canvas as reportlab_canvas
 
     buf = io.BytesIO()
@@ -326,6 +384,12 @@ def _overlayPdfBytes(width: float, height: float, highlights: list) -> io.BytesI
 
 
 def _burnInImage(filePath: str, highlights: list) -> str:
+    """Draw highlights into a new copy of the image at filePath and return its path.
+
+    Draws all highlight rectangles onto a transparent RGBA overlay the same size as the
+    image, alpha-composites that overlay over the (RGBA-converted) original, then
+    converts back to the original color mode before saving to a new temp file.
+    """
     from PIL import Image, ImageDraw
 
     image = Image.open(filePath)
@@ -350,6 +414,8 @@ def _burnInImage(filePath: str, highlights: list) -> str:
 
 
 def _colorForState(state: str) -> tuple:
+    """Return the (r, g, b) burn-in color for an isolation item's state: red for OPEN,
+    green for CLOSE, gray for anything else."""
     if state == IC.IsolationItem.States.OPEN:
         return (255, 0, 0)
     if state == IC.IsolationItem.States.CLOSE:

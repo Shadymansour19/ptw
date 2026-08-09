@@ -1,3 +1,12 @@
+"""Generic PostgreSQL access layer shared by every `*Db.py` class.
+
+Provides `CommonDB`: database creation/connection-pool setup, a pooled
+connection context manager, and generic dict-driven insert/update/delete
+helpers that introspect a table's columns and handle JSONB(-array) values.
+Table-specific query logic lives in the individual `*Db.py` modules (e.g.
+`ptwDb.py`), which build on top of these primitives.
+"""
+
 import os
 import psycopg2
 from psycopg2 import *
@@ -8,10 +17,20 @@ from contextlib import contextmanager
 
 
 class CommonDB:
+    """Shared database-access layer: owns the process-wide connection pool and
+    provides generic, table-agnostic dict-to-SQL helpers (insert/update/delete)
+    used by every `*Db.py` class instead of each writing raw SQL by hand."""
+
     pool: ThreadedConnectionPool = None
 
     @classmethod
     def ensure_database_exists(cls):
+        """Create the target database (named by DB_NAME, default
+        'ptw_database') if it doesn't already exist. Connects to the default
+        'postgres' database in autocommit mode (CREATE DATABASE can't run
+        inside a transaction) using DB_HOST/DB_USER/DB_PASSWORD from the
+        environment. Intended to run once at server startup, before the
+        connection pool is initialized."""
         db_name = os.environ.get('DB_NAME', 'ptw_database')
         host     = os.environ.get('DB_HOST', 'localhost')
         user     = os.environ.get('DB_USER', 'postgres')
@@ -31,6 +50,10 @@ class CommonDB:
 
     @classmethod
     def init_pool(cls, minconn=2, maxconn=10):
+        """Create the class-wide `ThreadedConnectionPool` (default 2-10
+        connections) against DB_HOST/DB_NAME/DB_USER/DB_PASSWORD from the
+        environment. Must be called once at startup before `get_conn()` is
+        used."""
         cls.pool = ThreadedConnectionPool(
             minconn, maxconn,
             host=os.environ.get('DB_HOST', 'localhost'),
@@ -42,6 +65,9 @@ class CommonDB:
     @classmethod
     @contextmanager
     def get_conn(cls):
+        """Context manager yielding a pooled connection: checks one out of
+        `cls.pool`, rolls it back and re-raises on any exception, and always
+        returns it to the pool afterward (never closes it outright)."""
         conn = cls.pool.getconn()
         try:
             yield conn
@@ -52,6 +78,15 @@ class CommonDB:
             cls.pool.putconn(conn)
 
     def addRecordFromDict(conn, table: str, data: dict, primaryKey: str = None):
+        """Insert a row into `table` built from `data`, silently dropping any
+        keys that aren't real columns on that table. A value that is a list of
+        dicts (e.g. a JSONB[] column such as `ptws.approvals`) is wrapped with
+        `Json(...)` per element and cast `::jsonb[]`; every other value is
+        passed through as-is. If `primaryKey` is given, it's excluded from the
+        INSERT and appended as `RETURNING <primaryKey>`, and its generated
+        value (e.g. a new `id`) is returned; otherwise nothing is returned.
+        Commits on success; rolls back and raises a generic Exception
+        (without the original cause) on failure."""
         columns = list(data.keys())
         cursor = conn.cursor()
         try:
@@ -90,6 +125,13 @@ class CommonDB:
             raise Exception(f"Error adding data {data} to table {table}")
 
     def updateRecordFromDict(conn, table: str, data: dict, primaryKey: str):
+        """Update the row of `table` identified by `data[primaryKey]`, setting
+        every other key in `data` as a column (keys that aren't real columns
+        on `table` are popped from `data` in place and skipped). As in
+        `addRecordFromDict`, a list-of-dicts value is cast `::jsonb[]` via
+        `Json(...)` per element; other values are passed through as-is.
+        Commits on success; rolls back and raises a generic Exception on
+        failure."""
         cursor = conn.cursor()
         try:
             cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name = %s", (table,))
@@ -115,6 +157,9 @@ class CommonDB:
             raise Exception(f"Error updating data {data} in table {table}")
 
     def deleteRecord(conn, table: str, primaryKey: str, primaryKeyVal: str):
+        """Delete the row of `table` where `primaryKey` equals `primaryKeyVal`.
+        Commits on success; rolls back and raises on failure, with the
+        original error message included."""
         cursor = conn.cursor()
         try:
             cursor.execute(f"DELETE FROM {table} WHERE {primaryKey} = %s", (primaryKeyVal,))

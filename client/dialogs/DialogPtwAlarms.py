@@ -1,3 +1,11 @@
+"""Grouped attention-required popup for PTWs past their shift/validity limits.
+
+Shown by MainWindow._checkPtwAlarms() for a USER-role viewer: two individually
+collapsible sections list 14-shift-validity-expired PTWs (View/Close/Close All)
+and run-cycle-shift-ended PTWs (View/Hold/Close), each row acting straight through
+MainWindow's existing hold/close request plumbing.
+"""
+
 from datetime import datetime
 from functools import partial
 import qtawesome as qta
@@ -32,6 +40,14 @@ class DialogPtwAlarms(QDialog):
     screen — instead of flashing on the (possibly obscured) MainWindow underneath."""
 
     def __init__(self, mainWindow, validityExpired: list[PTW], shiftExpired: list[PTW]):
+        """Build the two collapsible sections from the given already-computed alarm lists.
+
+        Args:
+            validityExpired: PTWs past their 14-shift validity (needsCloseAlarm()),
+                rendered with View/Close per row and a "Close All" bulk button.
+            shiftExpired: PTWs whose current run cycle's shift has ended while still
+                RUNNING (isRunCycleShiftExpired()), rendered with View/Hold/Close.
+        """
         super().__init__(mainWindow)
         self._mainWindow = mainWindow
         self.setWindowTitle("PTW Attention Required")
@@ -113,6 +129,7 @@ class DialogPtwAlarms(QDialog):
         btnToggle.setStyleSheet("QToolButton { border: none; }")
 
         def onToggled(expanded):
+            """Show/hide content and flip the chevron icon. Slot for btnToggle.toggled."""
             content.setVisible(expanded)
             btnToggle.setIcon(qta.icon('fa6s.chevron-down' if expanded else 'fa6s.chevron-right'))
         btnToggle.toggled.connect(onToggled)
@@ -128,12 +145,19 @@ class DialogPtwAlarms(QDialog):
         return section
 
     def _rowLabel(self, ptw: PTW) -> QLineEdit:
+        """Build the read-only "PTW #id — description" label used at the left of a row."""
         box = QLineEdit(f"PTW #{ptw.id} — {ptw.description}")
         box.setReadOnly(True)
         box.setCursorPosition(0)
         return box
 
     def _view(self, ptw: PTW):
+        """Open ptw in a read-only DialogPTW. Slot for a row's View button click.
+
+        Builds its own DialogPTW directly (rather than delegating to
+        MainWindow.viewPTW) so the busy overlay shown while it builds appears on
+        this dialog, since it's the window actually in front of the user.
+        """
         from dialogs.DialogPTW import DialogPTW
         self._refreshOverlay.showBusy()
         dlg = DialogPTW(self, self._mainWindow.loggedUser, ptw, None, False, True, f'View Mode - PTW# {ptw.id}')
@@ -141,6 +165,7 @@ class DialogPtwAlarms(QDialog):
         dlg.exec()
 
     def _validityRow(self, ptw: PTW) -> QWidget:
+        """Build one row of the validity-expired section: label plus View/Close buttons."""
         row = QWidget()
         lyt = QHBoxLayout(row)
         lyt.setContentsMargins(0, 0, 0, 0)
@@ -157,6 +182,7 @@ class DialogPtwAlarms(QDialog):
         return row
 
     def _shiftRow(self, ptw: PTW) -> QWidget:
+        """Build one row of the shift-ended section: label plus View/Hold/Close buttons."""
         row = QWidget()
         lyt = QHBoxLayout(row)
         lyt.setContentsMargins(0, 0, 0, 0)
@@ -175,7 +201,14 @@ class DialogPtwAlarms(QDialog):
         return row
 
     def _hold(self, ptw: PTW, btnHold: QPushButton, btnClose: QPushButton):
+        """Request a hold on ptw. Slot for a shift-ended row's Hold button click.
+
+        Delegates to MainWindow.requestToHldPTW; on success disables both the
+        Hold and Close buttons for that row, since a stop request is now pending
+        and a second one shouldn't be sent until the IA responds.
+        """
         def onDone(err, _):
+            """Handle the hold-request result: warn on failure, else disable the row's buttons."""
             if err:
                 QMessageBox.warning(self, 'Fail', err)
                 return
@@ -184,7 +217,14 @@ class DialogPtwAlarms(QDialog):
         self._mainWindow.requestToHldPTW(-1, ptw, callback=onDone)
 
     def _close(self, ptw: PTW, btnClose: QPushButton, btnHold: QPushButton = None):
+        """Request a close on ptw. Slot for a row's Close button click.
+
+        Delegates to MainWindow.requestToClsPTW; on success disables Close (and
+        Hold, if present on this row) and refreshes the "Close All" button's
+        enabled state.
+        """
         def onDone(err, _):
+            """Handle the close-request result: warn on failure, else disable the row's buttons."""
             if err:
                 QMessageBox.warning(self, 'Fail', err)
                 return
@@ -195,6 +235,14 @@ class DialogPtwAlarms(QDialog):
         self._mainWindow.requestToClsPTW(-1, ptw, callback=onDone)
 
     def _closeAll(self):
+        """Request closing every not-yet-actioned validity-expired PTW, after one confirm.
+
+        Slot for the validity section's "Close All" button click: collects rows
+        whose Close button is still enabled, asks a single confirmation covering
+        all of them, then fires one close request per PTW directly (bypassing the
+        per-row confirmation), disabling each row's Close button as its own
+        request succeeds.
+        """
         pending = {ptwId: btn for ptwId, btn in self._validityCloseButtons.items() if btn.isEnabled()}
         if not pending:
             return
@@ -210,6 +258,7 @@ class DialogPtwAlarms(QDialog):
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         for ptwId, btnClose in pending.items():
             def onDone(err, _, ptwId=ptwId, btnClose=btnClose):
+                """Handle one PTW's close-request result: warn on failure, else disable its button."""
                 if err:
                     QMessageBox.warning(self, 'Fail', f"PTW #{ptwId}: {err}")
                     return
@@ -218,5 +267,6 @@ class DialogPtwAlarms(QDialog):
             ClientRequests.requestToClsPTW(user, ptwId, pa, ts, None, callback=onDone)
 
     def _refreshCloseAllState(self):
+        """Disable "Close All" once every validity-section row it covers has been closed."""
         if self.btnCloseAll and all(not btn.isEnabled() for btn in self._validityCloseButtons.values()):
             self.btnCloseAll.setEnabled(False)

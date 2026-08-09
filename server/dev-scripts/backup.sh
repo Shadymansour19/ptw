@@ -5,12 +5,17 @@
 # take a consistent read-only snapshot).
 #
 # Usage: ./backup.sh [backup_root]
-#   backup_root defaults to /home/shady/ptw-backups
+#   backup_root defaults to paths.BACKUP_DIR (the same on-disk location the
+#   in-app Admin "Backups" tab / POST /backups already writes to - see
+#   server/backupService.py). Pass an explicit path to back up somewhere else
+#   (e.g. off this machine's disk entirely, which is the point of running this
+#   on a schedule rather than relying on the in-app button alone).
 set -euo pipefail
 
 SERVER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DATA_DIR="$(cd "$SERVER_DIR" && python3 -c "from paths import DATA_DIR; print(DATA_DIR)")"
-BACKUP_ROOT="${1:-/home/shady/ptw-backups}"
+mapfile -t _PTW_PATHS < <(cd "$SERVER_DIR" && python3 -c "from paths import DATA_DIR, BACKUP_DIR; print(DATA_DIR); print(BACKUP_DIR)")
+DATA_DIR="${_PTW_PATHS[0]}"
+BACKUP_ROOT="${1:-${_PTW_PATHS[1]}}"
 RETENTION_DAYS=14
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 DEST="$BACKUP_ROOT/$TIMESTAMP"

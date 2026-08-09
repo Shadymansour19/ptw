@@ -1,3 +1,8 @@
+"""Small reusable UI building blocks and color helpers shared across the client's
+dialogs: colored tab-bar buttons (`TabButton`) and the vertical timeline used to render
+approval/isolation history panes (`Timeline`/`TimelineEntry`, see DialogPTW/DialogIC via
+TabbedDialog)."""
+
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtWidgets import (QToolButton, QWidget, QVBoxLayout, QHBoxLayout, QFrame,
                               QLabel, QScrollArea, QSizePolicy)
@@ -6,6 +11,8 @@ import qtawesome as qta
 
 
 def lightenColor(color: QColor, amount: float = 0.4) -> QColor:
+    """Blend `color` toward white by `amount` (0 = unchanged, 1 = pure white) and
+    return the resulting QColor."""
     return QColor(
         int(color.red()   + (255 - color.red())   * amount),
         int(color.green() + (255 - color.green()) * amount),
@@ -22,6 +29,10 @@ def bestForegroundColor(bgColor: QColor) -> QColor:
 
 
 class TabButton(QToolButton):
+    """Tab-bar button used by TabbedDialog: shows an optional qtawesome icon plus text,
+    toggles a bold "selected" look, and can be recolored to contrast an arbitrary bar
+    background via `setHighlightColor()`."""
+
     # Default look before any bar color has been applied (see setHighlightColor below) -
     # tracks the OS palette live, same as any other unstyled/theme-aware widget would.
     TAB_BTN_STYLE = """
@@ -76,6 +87,9 @@ class TabButton(QToolButton):
     """
 
     def __init__(self, parent = None, text = '', icon = ''):
+        """Build the button with the given `text` and optional qtawesome `icon` name,
+        using the default (palette-following) unselected style until a bar color is
+        applied via `setHighlightColor()`."""
         super().__init__(parent)
         self.setText(text)
         self.setFont(QFont("Helvetica", 12, QFont.Weight.Bold))
@@ -92,6 +106,10 @@ class TabButton(QToolButton):
         self.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
 
     def setIcon(self, isSelected):
+        """Push the appropriate pre-colored icon for the button's current state: the
+        selected-state icon when `isSelected` is True (falling back to the unselected
+        one if none was set), the unselected icon otherwise, or a null icon if neither
+        was set."""
         super().setIcon(self.selection_icon if isSelected and self.selection_icon else self.icon if self.icon else QIcon())
 
     def setHighlightColor(self, selectedBgColor: QColor, selectedTextColor: QColor, unselectedTextColor: QColor):
@@ -115,11 +133,17 @@ class TabButton(QToolButton):
 
 
 class TimelineEntry(QWidget):
+    """One row of a `Timeline`: a colored dot on a vertical rail (connected to the next
+    entry's dot by a line, unless it's the last one) alongside an arbitrary content
+    widget."""
+
     DOT_SIZE = 14
     RAIL_WIDTH = 20
     GAP = 26
 
     def __init__(self, color: QColor, contentWidget: QWidget, isLast: bool = False, parent=None):
+        """Lay out the rail (dot, plus a connecting line unless `isLast`) next to
+        `contentWidget`, with `color` filling the dot."""
         super().__init__(parent)
         lyt = QHBoxLayout(self)
         lyt.setContentsMargins(0, 0, 0, 0)
@@ -159,7 +183,13 @@ class TimelineEntry(QWidget):
 
 
 class Timeline(QScrollArea):
+    """Scrollable vertical timeline of colored dots and content widgets, used to render
+    approval/isolation history panes (see DialogPTW/DialogIC via TabbedDialog). Shows
+    `emptyText` in place of the rail when there are no entries."""
+
     def __init__(self, entries: list[tuple[QColor, QWidget]], emptyText: str, parent=None):
+        """Build a `TimelineEntry` row for each `(color, contentWidget)` pair in
+        `entries`, in order, or show `emptyText` if `entries` is empty."""
         super().__init__(parent)
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.Shape.NoFrame)

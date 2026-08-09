@@ -1,3 +1,6 @@
+"""Shared Flask/Mail app setup, database singletons, and the initial/periodic
+GlobalData cache load — imported by every routes/ module and by app.py."""
+
 import os
 import logging
 import threading
@@ -35,6 +38,7 @@ _DB_PERIODIC_REFRESH_INTERVAL = 5 * 60
 
 @app.before_request
 def _log_request():
+    """Log the method and path of every incoming request at DEBUG level."""
     log.debug("%s %s", request.method, request.path)
 
 
@@ -65,6 +69,8 @@ def syncPtwCache(ptw_id):
 
 
 def _periodic_refresh():
+    """Run forever on a background thread, calling globalData.refresh() every
+    _DB_PERIODIC_REFRESH_INTERVAL seconds to fully resync the cache from the database."""
     while True:
         sleep(_DB_PERIODIC_REFRESH_INTERVAL)
         try:

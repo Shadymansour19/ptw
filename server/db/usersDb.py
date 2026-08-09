@@ -1,3 +1,6 @@
+"""Data access layer for the `users` table, including bcrypt password
+hashing/verification and first-boot admin account seeding."""
+
 import secrets
 import logging
 import bcrypt
@@ -11,9 +14,12 @@ log = logging.getLogger(__name__)
 
 
 def _hash_password(plain: str) -> str:
+    """Hash a plaintext password with bcrypt (random per-call salt)."""
     return bcrypt.hashpw(plain.encode(), bcrypt.gensalt()).decode()
 
 def _verify_password(plain: str, hashed: str) -> bool:
+    """Check a plaintext password against a bcrypt hash, returning False
+    (rather than raising) on empty input or a malformed hash."""
     if not plain or not hashed:
         return False
     try:
@@ -23,6 +29,9 @@ def _verify_password(plain: str, hashed: str) -> bool:
 
 
 class UsersDb:
+    """Data access layer for user accounts: credential verification, CRUD, and
+    per-user settings (theme, active status)."""
+
     def __init__(self):
         """Assumes the `users` table already exists — run server/dev-scripts/init_db.py once
         before first starting the server. Only seeds the initial admin account if the
@@ -47,6 +56,8 @@ class UsersDb:
                 raise Exception("Error initializing users database: " + str(e))
 
     def isUsernameExists(self, username: str):
+        """Return True if a user row with this username exists, False on any
+        error or if it doesn't (never raises)."""
         try:
             with CommonDB.get_conn() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
@@ -56,6 +67,16 @@ class UsersDb:
             return False
 
     def getVerifiedUser(self, username: str, password: str) -> User | None:
+        """Look up the user by username and verify the given password against
+        its stored bcrypt hash.
+
+        Returns:
+            A User instance if the username exists and the password matches,
+            otherwise None. Does not check whether the account is active.
+
+        Raises:
+            Exception: wrapping any underlying database error.
+        """
         try:
             with CommonDB.get_conn() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
@@ -68,6 +89,12 @@ class UsersDb:
             raise Exception("Error verifying user credentials")
 
     def updateUserPassword(self, username: str, newPassword: str):
+        """Hash and set a new password for the given username (used by the
+        password reset flow).
+
+        Raises:
+            Exception: wrapping any underlying database error.
+        """
         try:
             with CommonDB.get_conn() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
@@ -80,6 +107,11 @@ class UsersDb:
             raise Exception(f"Error updating password for user {username} in database")
 
     def getSecuredUser(self, username: str):
+        """Fetch one user as a SecuredUser (password hash excluded).
+
+        Raises:
+            Exception: wrapping any underlying database error.
+        """
         try:
             with CommonDB.get_conn() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
@@ -90,6 +122,11 @@ class UsersDb:
             raise Exception("Error fetching user from database")
 
     def getAllUsers(self):
+        """Fetch every user row as full User instances (including password hash).
+
+        Raises:
+            Exception: wrapping any underlying database error.
+        """
         try:
             with CommonDB.get_conn() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
@@ -100,6 +137,15 @@ class UsersDb:
             raise Exception("Error fetching users from database")
 
     def getAllSecuredUsers(self) -> dict:
+        """Fetch every user as SecuredUser instances (password hash excluded),
+        used to populate GlobalData.allUsers.
+
+        Returns:
+            dict mapping username to SecuredUser instance.
+
+        Raises:
+            Exception: wrapping any underlying database error.
+        """
         try:
             with CommonDB.get_conn() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
@@ -114,6 +160,11 @@ class UsersDb:
             raise Exception("Error fetching users from database")
 
     def getAllUsernames(self):
+        """Fetch the list of all usernames.
+
+        Raises:
+            Exception: wrapping any underlying database error.
+        """
         try:
             with CommonDB.get_conn() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
@@ -124,6 +175,12 @@ class UsersDb:
             raise Exception("Error fetching usernames from database")
 
     def addUserFromDict(self, userDict: dict):
+        """Insert a new user row from a plain dict, hashing its 'password'
+        field if present.
+
+        Returns:
+            None on success, or the caught exception on failure.
+        """
         try:
             userDict = dict(userDict)
             if userDict.get('password'):
@@ -135,6 +192,13 @@ class UsersDb:
             return e
 
     def updateUserFromDict(self, userDict: dict):
+        """Update an existing user row (matched by 'username') from a plain
+        dict, hashing 'password' if present, or leaving it untouched (popped
+        from the update) if absent/falsy.
+
+        Returns:
+            None on success, or the caught exception on failure.
+        """
         try:
             userDict = dict(userDict)
             if userDict.get('password'):
@@ -148,6 +212,11 @@ class UsersDb:
             return e
 
     def addUser(self, user: User):
+        """Insert a new user row from a User object, hashing its password.
+
+        Raises:
+            Exception: if the username already exists, or on any DB error.
+        """
         if self.isUsernameExists(user.getUsername()):
             raise Exception(f"Username {user.getUsername()} already exists")
         try:
@@ -162,6 +231,12 @@ class UsersDb:
             raise Exception(f"Error adding user {user.getUsername()} to database")
 
     def updateUser(self, user: User):
+        """Update password, name, department, email (and role, if set) for an
+        existing user, matched by username.
+
+        Raises:
+            Exception: if the username doesn't exist, or on any DB error.
+        """
         if not self.isUsernameExists(user.getUsername()):
             raise Exception(f"User {user.getUsername()} does not exist")
         try:
@@ -182,6 +257,11 @@ class UsersDb:
             raise Exception(f"Error updating user {user.getUsername()} in database")
 
     def updateTheme(self, username: str, theme: str | None):
+        """Set (or clear, with None) the stored UI theme preference for a user.
+
+        Raises:
+            Exception: wrapping any underlying database error.
+        """
         try:
             with CommonDB.get_conn() as conn:
                 with conn.cursor() as cursor:
@@ -191,6 +271,12 @@ class UsersDb:
             raise Exception(f"Error updating theme for user {username}")
 
     def setUserActive(self, username: str, is_active: bool):
+        """Set the is_active flag for a user, controlling whether they can
+        authenticate.
+
+        Raises:
+            Exception: if the username doesn't exist, or on any DB error.
+        """
         if not self.isUsernameExists(username):
             raise Exception(f"User {username} does not exist")
         try:
@@ -202,6 +288,11 @@ class UsersDb:
             raise Exception(f"Error updating active status for user {username}")
 
     def deleteUser(self, user: User):
+        """Delete the user row matching user's username.
+
+        Raises:
+            Exception: if the username doesn't exist, or on any DB error.
+        """
         if not self.isUsernameExists(user.getUsername()):
             raise Exception(f"User {user.getUsername()} does not exist")
         try:

@@ -1,3 +1,13 @@
+"""Server-side PTW (Permit To Work) domain model.
+
+Defines `PTW` — the permit's identifying fields, its approval-cycle and
+running-cycle (RunCycle) state machines, the shift/validity-window rules that
+govern when it may be run, and the tool/hazard/control requirement tables used
+by `validate()`/`updateRequirements()` — plus the smaller supporting models
+`RiskItem`, `RiskAssessment`, and `Attachment`. This is the server-side twin of
+`client/models/PTW.py`: the two are hand-kept in sync rather than shared.
+"""
+
 from datetime import datetime, timedelta
 import enum
 from typing import Iterable
@@ -8,7 +18,12 @@ from models.Isolation import Isolation
 
 
 class RiskItem:
+    """A single hazard/control row within a RiskAssessment: the hazard, its
+    effect, a free-text analysis, the control applied, the control's analysis,
+    and the resulting risk evaluation."""
+
     def __init__(self, hazard: str = None, effect: str = None, free_analysis: str = None, ctrl: str = None, ctrl_analysis: str = None, eval: str = None):
+        """Initialize a risk item from its individual fields, all optional."""
         self.hazard = hazard
         self.effect = effect
         self.free_analysis = free_analysis
@@ -17,6 +32,8 @@ class RiskItem:
         self.eval = eval
     
     def setAll(self, data: dict):
+        """Bulk-update attributes from a dict, silently skipping unknown keys
+        and failed assignments. Returns self for chaining."""
         for k,v in data.items():
             if hasattr(self, k):
                 try:
@@ -27,13 +44,22 @@ class RiskItem:
     
 
 class RiskAssessment:
+    """A named, dated risk assessment made up of an ordered list of RiskItem
+    rows, optionally tied to a specific PTW. Persisted via
+    server/db/risksDb.py and referenced from PTW.risks by title."""
+
     def __init__(self, title: str = None, date: str = None, risks: Iterable = None, ptw_id: int = None):
+        """Initialize a risk assessment, optionally with a title, date, PTW
+        id, and initial risk items."""
         self.title = title
         self.date = date
         self.ptw_id = ptw_id
         self.risks = list(risks) if risks is not None else []
     
     def setAll(self, data: dict):
+        """Bulk-update attributes from a dict; 'risks' is specially rebuilt as
+        a list of RiskItem objects instead of assigned directly. Returns self
+        for chaining."""
         for k,v in data.items():
             if hasattr(self, k):
                 try:
@@ -46,23 +72,57 @@ class RiskAssessment:
         return self
     
     def addRiskItem(self, riskItem):
+        """Append a RiskItem to this assessment's risks list. Returns self for
+        chaining."""
         self.risks.append(riskItem)
         return self
     
 
 class Attachment:
+    """A single file attached to a PTW: its local filesystem path, the remote
+    filename it is stored under, and whether the upload has completed."""
+
     def __init__(self, localPath: str = '', remoteName: str = '', uploaded: bool = False):
+        """Initialize an attachment, defaulting to an empty, not-yet-uploaded
+        state."""
         self.localPath  = localPath
         self.remoteName = remoteName
         self.uploaded   = uploaded
 
     def __str__(self):
+        """Return a human-readable summary of the path, remote name, and
+        upload status."""
         return f'localPath: {self.localPath}, remoteName: {self.remoteName}, uploaded: {self.uploaded}'
 
 
 class PTW:
+    """Permit To Work: the central domain object of the system.
+
+    Holds a permit's identifying fields (type, location, equipment, department,
+    description, requestor, etc.), its safety/work data (tools, hazards,
+    controls, declarative isolations, risk assessments, attachments, linked
+    ICs), and the two audit trails that drive its lifecycle: `approvals` (the
+    approval cycle) and `run_cycles` (the running cycle, see RunCycle).
+    `approval_status` and `running_status` are never stored directly —
+    `__updateStatus()` recomputes both from those two audit trails on every
+    construction/update (see `setAll()`) — and this class also enforces the
+    per-shift and 14-shift-validity windows that govern when a permit may be
+    run. The nested lookup tables (`ALL_TOOLS`, `ALL_HAZARDS`, `ALL_CONTROLS`)
+    and enums (`Types`, `ApprovalStatus`, `RunningStatus`, etc.) define the
+    permit's vocabulary and the rules `validate()`/`updateRequirements()`
+    enforce."""
+
     class Requirement:
+        """A dependent rule attached to a CheckBox: selecting that item also
+        requires the item of `type` named by `description` (e.g. selecting the
+        'Power Tools' tool requires the 'Power Tools Checklist' attachment).
+        Cascaded/checked by `updateRequirements()`/`validate()`/
+        `requiredAttachs()`."""
+
         class Types(enum.StrEnum):
+            """The kinds of dependent requirement a CheckBox can declare:
+            another TOOL/HAZARD/CONTROL selection, an ISOLATION, a RISK
+            assessment, an ATTACH(ment), or a DOC(ument)."""
             TOOL = enum.auto()
             HAZARD = enum.auto()
             CONTROL = enum.auto()
@@ -72,23 +132,35 @@ class PTW:
             DOC = enum.auto()
         
         def __init__(self, type: 'PTW.Requirement.Types', description: str):
+            """Initialize a requirement of the given type with its description."""
             self.type = type
             self.description = description
     
     class CheckBox:
+        """One selectable entry in the ALL_TOOLS/ALL_HAZARDS/ALL_CONTROLS
+        tables: a display title plus, per permit type, whether it is required
+        or restricted, and any dependent Requirements it cascades in when
+        selected."""
+
         def __init__(self, title: str, isRequired=None, isRestricted=None, requirements: list['PTW.Requirement'] = None):
+            """Initialize a CheckBox with its title and optional per-permit-type
+            required/restricted predicates and dependent requirements;
+            isRequired/isRestricted default to always-False when not given."""
             self.title = title
             self._isRequired = isRequired or (lambda ptwType: False)
             self._isRestricted = isRestricted or (lambda ptwType: False)
             self.requirements = requirements or []
 
         def isRequired(self, ptwType: 'PTW.Types') -> bool:
+            """Return whether this item is mandatory for the given PTW type."""
             return self._isRequired(ptwType)
 
         def isRestricted(self, ptwType: 'PTW.Types') -> bool:
+            """Return whether this item is disallowed for the given PTW type."""
             return self._isRestricted(ptwType)
 
         def __str__(self):
+            """Return the CheckBox's title as its string representation."""
             return self.title
     
     ALL_TOOLS: dict[str, CheckBox] = {
@@ -368,6 +440,9 @@ class PTW:
 
 
     class Types(enum.StrEnum):
+        """The permit types a PTW can be raised as: Cold Work (CW), Spark
+        (SP), Hot Work (HT), HydroCarbon (HC), Excavation (EX), and Confined
+        Space (CS)."""
         CW = 'Cold'
         SP = 'Spark'
         HT = 'Hot'
@@ -376,25 +451,38 @@ class PTW:
         CS = 'Confined Space'
 
     class AreaClasses(enum.StrEnum):
+        """The hazard classification of the work area: Hazardous (HAZ) or
+        Non-Hazardous (NHZ)."""
         HAZ = 'Hazard'
         NHZ = 'Non-Hazard'
 
     class Locations(enum.StrEnum):
+        """The site locations a PTW may be raised for."""
         PHVII  = 'Phase VII'
         PHV    = 'Phase V'
         SCARAB = 'Scarab'
         SIMIAN = 'Simian'
 
     class ApprovalActions(enum.StrEnum):
+        """The two actions an approver can take on a stage of the approval
+        cycle (see PTW.Approval)."""
         APPROVED = 'Approved'
         RETURNED = 'Returned'
 
     class ApprovalStatus(enum.StrEnum):
+        """The PTW's overall approval-cycle status — awaiting approvers
+        (UNDER_REVIEW), fully signed off (APPROVED), or sent back to the
+        requestor (RETURNED). Computed by __updateApprovalStatus(), not
+        stored."""
         UNDER_REVIEW = 'Under Review'
         APPROVED = 'Approved'
         RETURNED = 'Returned'
     
     class RunningStatus(enum.StrEnum):
+        """The PTW's running-cycle state, from not-yet-started through
+        RUNNING/HELD/CLOSED, including the WAITING_*_CONFIRM states while an
+        Issuing Authority response is pending. Computed by
+        __updateRunningStatus() from run_cycles, not stored."""
         NOT_RUNNING = 'Not Running'
         WAITING_RUN_CONFIRM = 'Waiting Run Confirm'
         RUNNING = 'Running'
@@ -430,13 +518,22 @@ class PTW:
         return PTW.shiftStart(dt) + timedelta(hours=PTW.SHIFT_DURATION_HOURS)
 
     class Approval:
+        """One entry in the PTW's approval-cycle audit trail: the action taken
+        (APPROVED/RETURNED), the acting user, when, and an optional comment.
+        The ordered list of these (PTW.approvals) is replayed by
+        __updateApprovalStatus() to derive approval_status."""
+
         def __init__(self, action = None, username: str = None, timestamp: str = None, comment: str = None):
+            """Initialize an approval record with its action, acting username,
+            timestamp, and optional comment."""
             self.action = action
             self.username = username
             self.timestamp = timestamp
             self.comment = comment
 
         def setAll(self, data: dict):
+            """Bulk-update attributes from a dict, silently skipping unknown
+            keys and failed assignments. Returns self for chaining."""
             for k,v in data.items():
                 if hasattr(self, k):
                     try:
@@ -446,29 +543,48 @@ class PTW:
             return self
             
         def __str__(self):
+            """Return a human-readable summary of who took this action and
+            when, falling back to a deleted-user placeholder if the acting
+            username no longer resolves in globalData.allUsers."""
             user = globalData.allUsers.get(self.username)
             if user is None:
                 return f"{self.action} by [deleted user: {self.username}] at {self.timestamp}"
             return f"{self.action} by {user.getRole()} {user.getName()} at {self.timestamp}"
 
     class Approver:
+        """A required-approver slot in a PTW's approval stage: a role,
+        optionally scoped to a specific department. Used by
+        requiredApprovers()/pendingApprovers() to describe who must sign off,
+        and matched against actual users via matchesUser()/matchesRoleDept()."""
+
         def __init__(self, role: 'UserRoles', department: 'UserDepartments' = None):
+            """Initialize an approver slot for the given role, optionally
+            scoped to a department."""
             self.role = role
             self.department = department
 
         def matchesRoleDept(self, role, department) -> bool:
+            """Return whether the given role/department pair satisfies this
+            slot — department is ignored when this slot has none set."""
             return role == self.role and (self.department is None or self.department == department)
 
         def matchesUser(self, user) -> bool:
+            """Return whether the given user (or None) satisfies this approver
+            slot."""
             return user is not None and self.matchesRoleDept(user.getRole(), user.getDepartment())
 
         def __eq__(self, other):
+            """Return whether two Approver slots have the same role and
+            department."""
             return isinstance(other, PTW.Approver) and self.role == other.role and self.department == other.department
 
         def __hash__(self):
+            """Hash by (role, department), matching __eq__."""
             return hash((self.role, self.department))
 
         def __str__(self):
+            """Return a display string for this slot: the department for a
+            plain USER role, otherwise the role name."""
             if self.role == UserRoles.USER:
                 return str(self.department) if self.department else str(self.role)
             return str(self.role)
@@ -480,10 +596,14 @@ class PTW:
         stop_* fields are filled in later, in place, as the same cycle progresses."""
 
         class StopTypes(enum.StrEnum):
+            """The two ways a running PTW can be stopped: HOLD (paused,
+            selected isolations may be kept) or CLOSE (work complete)."""
             HOLD = 'Hold'
             CLOSE = 'Close'
 
         class Actions(enum.StrEnum):
+            """The two responses the Issuing Authority can give to a run or
+            stop request."""
             APPROVED = 'Approved'
             REJECTED = 'Rejected'
 
@@ -492,6 +612,9 @@ class PTW:
                      stop_pa: str = None, stop_pa_request: str = None, stop_pa_comment: str = None, stop_pa_timestamp: str = None,
                      stop_ia: str = None, stop_ia_action: str = None, stop_ia_comment: str = None, stop_ia_timestamp: str = None,
                      held_ics: list = None):
+            """Initialize a run cycle, optionally with any of its run-request/
+            response and stop-request/response fields already filled in (e.g.
+            when reconstructing from stored data)."""
             self.run_pa = run_pa
             self.run_pa_timestamp = run_pa_timestamp
             self.run_ia = run_ia
@@ -509,6 +632,8 @@ class PTW:
             self.held_ics = list(held_ics) if held_ics else []
 
         def setAll(self, data: dict):
+            """Bulk-update attributes from a dict, silently skipping unknown
+            keys and failed assignments. Returns self for chaining."""
             for k,v in data.items():
                 if hasattr(self, k):
                     try:
@@ -532,6 +657,12 @@ class PTW:
 
 
     def __init__(self, data: dict = {}):
+        """Initialize a PTW from an optional dict of stored/incoming values
+        (e.g. a `ptws` row or a JSON payload). request_date is always set to
+        now regardless of `data`; run_cycles/isolations/approvals are rebuilt
+        into their proper object types. approval_status/running_status seed
+        from `data` if present but are immediately recomputed by
+        __updateStatus()."""
         self.id : str = data.get('id')
         self.type : str = data.get('type')
         self.request_date : str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
@@ -567,6 +698,11 @@ class PTW:
         self.__updateStatus()
     
     def setAll(self, data: dict = {}, namespace : SimpleNamespace = None):
+        """Bulk-update this PTW from a dict and/or a SimpleNamespace (e.g. a DB
+        row via dictToObj), rebuilding approvals/isolations/run_cycles into
+        their proper object types rather than leaving them as raw
+        dicts/namespaces, then recomputing approval_status/running_status via
+        __updateStatus(). Returns self for chaining."""
         if namespace:
             self.__dict__.update(vars(namespace))
             self.approvals = [PTW.Approval().setAll(approval.__dict__) for approval in self.approvals]
@@ -589,97 +725,137 @@ class PTW:
         return self
     
     def setId(self, id: int):
+        """Set the PTW's id and return self for chaining."""
         self.id = id
         return self
     
     def setType(self, type: Types):
+        """Set the PTW's permit type and return self for chaining."""
         self.type = type
         return self
     
     def setLocation(self, location: str):
+        """Set the PTW's location and return self for chaining."""
         self.location = location
         return self
     
     def setEquipment(self, equipment: str):
+        """Set the PTW's equipment field and return self for chaining."""
         self.equipment = equipment
         return self
     
     def setAreaClass(self, areaClass: AreaClasses):
+        """Set the PTW's area classification and return self for chaining."""
         self.area_class = areaClass
         return self
     
     def setDepartment(self, department: str):
+        """Set the PTW's responsible department and return self for chaining."""
         self.department = department
         return self
     
     def setDescription(self, description: str):
+        """Set the PTW's work description and return self for chaining."""
         self.description = description
         return self
     
     def setDate(self, date: str):
+        """Set the PTW's request date and return self for chaining."""
         self.request_date = date
         return self
     
     def setRequestor(self, requestor: str):
+        """Set the PTW's requestor username and return self for chaining."""
         self.requestor = requestor
         return self
     
     def setMiwi(self, miwi: str):
+        """Set the PTW's linked MIWI document reference and return self for
+        chaining."""
         self.miwi = miwi
         return self
     
     def setMos(self, mos: str):
+        """Set the PTW's Method of Statement text and return self for
+        chaining."""
         self.mos = mos
         return self
 
     def setFastTrack(self, fast_track: bool):
+        """Set whether the PTW is flagged for fast-track processing and return
+        self for chaining."""
         self.fast_track = fast_track
         return self
 
     def addIsolation(self, isolation: Isolation):
+        """Add an isolation to the PTW's declarative isolations list if not
+        already present. Returns self for chaining."""
         if isolation not in self.isolations:
             self.isolations.append(isolation)
         return self
     
     def addHazard(self, hazard: str):
+        """Add a hazard to the PTW's hazards list if not already present.
+        Returns self for chaining."""
         if hazard not in self.hazards:
             self.hazards.append(hazard)
         return self
     
     def addTool(self, tool: str):
+        """Add a tool to the PTW's tools list if not already present. Returns
+        self for chaining."""
         if tool not in self.tools:
             self.tools.append(tool)
         return self
     
     def addControl(self, control: str):
+        """Add a control to the PTW's controls list if not already present.
+        Returns self for chaining."""
         if control not in self.controls:
             self.controls.append(control)
         return self
 
     def removeTool(self, tool: str):
+        """Remove a tool from the PTW's tools list if present. Returns self
+        for chaining."""
         if tool in self.tools:
             self.tools.remove(tool)
         return self
     
     def removeControl(self, control: str):
+        """Remove a control from the PTW's controls list if present. Returns
+        self for chaining."""
         if control in self.controls:
             self.controls.remove(control)
         return self
     
     def removeHazard(self, hazard: str):
+        """Remove a hazard from the PTW's hazards list if present. Returns
+        self for chaining."""
         if hazard in self.hazards:
             self.hazards.remove(hazard)
         return self
 
     def addRisk(self, risk: str):
+        """Add a risk assessment title to the PTW's risks list if not already
+        present. Returns self for chaining."""
         if risk not in self.risks:
             self.risks.append(risk)
         return self
 
     def __str__(self):
+        """Return a one-line summary of the PTW's key identifying fields plus
+        its description."""
         return f"PTW #{self.id} ({self.type}) - {self.department} - {self.requestor} - {self.location} - {self.area_class} - {self.equipment}\nDescription: {self.description}"
     
     def validate(self) -> str:
+        """Check this PTW's core fields, its tools/hazards/controls selections
+        against the ALL_TOOLS/ALL_HAZARDS/ALL_CONTROLS rules (required,
+        restricted, and cascading requirements), and required attachments
+        (matched by filename prefix). Returns a descriptive error string for
+        the first violation found, or None if valid. Called client-side before
+        submit and server-side on POST /ptws; the server only rejects, it
+        never auto-corrects invalid data."""
         for key, field in [
             ('id', self.id),
             ('type', self.type),
@@ -725,7 +901,14 @@ class PTW:
         return None
     
     def updateRequirements(self):
+        """Auto-check required tools/hazards/controls and auto-uncheck
+        restricted ones for the PTW's current type, then cascade-add any
+        Requirements the (now-)selected items declare. Client-only — drives
+        the live checkbox UI in DialogPTW; never called server-side."""
         def __handleRequirement(requirement):
+            """Apply one cascading Requirement by adding the tool/control/
+            hazard/risk it names (ATTACH/DOC requirements aren't auto-added;
+            those need a manual upload/reference instead)."""
             if requirement.type == PTW.Requirement.Types.TOOL:
                 self.addTool(requirement.description)
             elif requirement.type == PTW.Requirement.Types.CONTROL:
@@ -784,6 +967,9 @@ class PTW:
             i += 1
 
     def requiredAttachs(self) -> list[str]:
+        """Return the attachment titles required by the PTW's currently
+        selected tools, controls, and hazards (used by validate() to check
+        that a matching attachment was uploaded)."""
         docs = []
         for tool in self.tools:
             if tool not in PTW.ALL_TOOLS:
@@ -806,16 +992,23 @@ class PTW:
         return docs
     
     def requiredDocsToPrint(self) -> list[str]:
+        """Return the report keys to generate for this PTW: always 'toolbox'
+        and 'audit', plus 'gas-test' if Initial Gas Test is among the selected
+        controls."""
         docs = ['toolbox', 'audit']
         if 'Initial Gas Test' in self.controls:
             docs.append('gas-test')
         return docs
     
     def updateApprovals(self, approval):
+        """Append an approval action to the audit trail and recompute
+        approval_status/running_status."""
         self.approvals.append(approval)
         self.__updateStatus()
 
     def clearApprovals(self):
+        """Discard all approval and run-cycle history, resetting the PTW back
+        to UNDER_REVIEW/NOT_RUNNING, and recompute status. Returns self."""
         self.approvals = []
         self.run_cycles = []
         self.__updateStatus()
@@ -841,26 +1034,44 @@ class PTW:
         return None
 
     def getPerforming(self) -> str:
+        """Return the Performing Authority's username for the current open run
+        cycle, or None if no cycle is open."""
         cycle = self.currentRunCycle()
         return cycle.run_pa if cycle else None
 
     def getPerformingTimestamp(self) -> str:
+        """Return the run-request timestamp of the current open run cycle, or
+        None if no cycle is open."""
         cycle = self.currentRunCycle()
         return cycle.run_pa_timestamp if cycle else None
 
     def getIssuing(self) -> str:
+        """Return the Issuing Authority's username who approved the current
+        open run cycle's run request, or None if there's no open cycle or its
+        run request wasn't approved."""
         cycle = self.currentRunCycle()
         return cycle.run_ia if cycle and cycle.run_ia_action == PTW.RunCycle.Actions.APPROVED else None
 
     def getIssuingTimestamp(self) -> str:
+        """Return the timestamp the Issuing Authority approved the current
+        open run cycle's run request, or None if not applicable."""
         cycle = self.currentRunCycle()
         return cycle.run_ia_timestamp if cycle and cycle.run_ia_action == PTW.RunCycle.Actions.APPROVED else None
 
     def getHeldICs(self) -> list[str]:
+        """Return the isolation tags kept linked for the PTW's operative run
+        cycle (selected when it was last put on hold), or an empty list if
+        there's no operative cycle."""
         cycle = self.operativeRunCycle()
         return cycle.held_ics if cycle else []
     
     def requiredApprovers(self) -> list[list['PTW.Approver']]:
+        """Build the ordered list of required-approver stages for this PTW's
+        approval cycle: Coordinator (Prod); for Excavation permits, one
+        parallel stage of a User from each affected department; Issuing (Prod)
+        and Safety (Safety) in parallel; and, for Hot Work/Confined Space
+        permits, PGM (Prod) then DFGM. Each stage must be fully satisfied
+        (see _stageSatisfied()) before the next one counts."""
         requiredApprovers = [
             [PTW.Approver(UserRoles.COORDINATOR, UserDepartments.PROD)],
         ]
@@ -887,6 +1098,8 @@ class PTW:
         return requiredApprovers
 
     def _stageSatisfied(self, stage: list['PTW.Approver']) -> bool:
+        """Return whether every Approver slot in the given stage has a
+        matching APPROVED entry in this PTW's approvals."""
         approvedBy = [globalData.allUsers.get(a.username) for a in self.approvals if a.action == PTW.ApprovalActions.APPROVED]
         return all(any(approver.matchesUser(user) for user in approvedBy) for approver in stage)
 
@@ -910,6 +1123,9 @@ class PTW:
         ]
 
     def __updateStatus(self):
+        """Recompute both approval_status and running_status from the
+        approvals/run_cycles audit trails. Called after every mutation that
+        could affect either."""
         self.__updateApprovalStatus()
         self.__updateRunningStatus()
 
@@ -953,6 +1169,10 @@ class PTW:
         self.running_status = status
 
     def __updateApprovalStatus(self):
+        """Derive approval_status from the approvals log: RETURNED if any
+        entry anywhere is a RETURNED action, APPROVED once every
+        required-approver stage is satisfied, otherwise UNDER_REVIEW
+        (including when there are no approvals yet)."""
         if len(self.approvals) == 0:
             self.approval_status = PTW.ApprovalStatus.UNDER_REVIEW
         elif any(approval.action == PTW.ApprovalActions.RETURNED for approval in self.approvals):
@@ -963,6 +1183,11 @@ class PTW:
             self.approval_status = PTW.ApprovalStatus.UNDER_REVIEW
 
     def getApprovalStatus(self, role = None, department = None):
+        """Return the overall approval_status if no role is given; otherwise
+        the most recent approval action taken by a user with the given
+        role/department, or UNDER_REVIEW if that role/department currently
+        has a pending approver slot, or None if it has no stake in this PTW's
+        approval cycle at all."""
         if role is None:
             return self.approval_status
 

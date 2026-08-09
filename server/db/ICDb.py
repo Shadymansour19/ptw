@@ -1,3 +1,5 @@
+"""Data access layer for the `ics` (Isolation Certificate) table."""
+
 import json
 from psycopg2.extras import RealDictCursor
 
@@ -7,14 +9,22 @@ from db.commonDb import CommonDB
 
 
 class ICDb:
-    """Assumes the `ics` table already exists — run server/dev-scripts/init_db.py once before
+    """Data access layer for IC (Isolation Certificate) records.
+
+    Assumes the `ics` table already exists — run server/dev-scripts/init_db.py once before
     first starting the server."""
 
     def addICFromDict(self, icDict: dict):
+        """Insert a new IC row from a plain dict and return the generated id."""
         with CommonDB.get_conn() as conn:
             return CommonDB.addRecordFromDict(conn, 'ics', icDict, 'id')
 
     def updateICFromDict(self, icDict: dict):
+        """Update an existing IC row (matched by 'id') from a plain dict.
+
+        Returns:
+            None on success, or the caught exception on failure.
+        """
         try:
             with CommonDB.get_conn() as conn:
                 CommonDB.updateRecordFromDict(conn, 'ics', icDict, 'id')
@@ -23,6 +33,14 @@ class ICDb:
             return e
 
     def getICById(self, icId: int):
+        """Fetch a single IC by id.
+
+        Returns:
+            An IC instance, or None if no row matches.
+
+        Raises:
+            Exception: wrapping any underlying database error.
+        """
         try:
             with CommonDB.get_conn() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
@@ -35,6 +53,18 @@ class ICDb:
             raise Exception("Error fetching IC from database: " + str(e))
 
     def getAllICs(self, department: str = None) -> dict:
+        """Fetch all ICs, optionally filtered by requestor department (case-insensitive).
+
+        Args:
+            department: if given, only ICs whose requestor_department matches
+                (ILIKE) are returned; None returns every IC.
+
+        Returns:
+            dict mapping IC id to IC instance.
+
+        Raises:
+            Exception: wrapping any underlying database error.
+        """
         ics = {}
         try:
             with CommonDB.get_conn() as conn:
@@ -52,6 +82,7 @@ class ICDb:
         return ics
 
     def updateICApprovals(self, icId: int, approval: 'IC.Approval'):
+        """Append a single approval entry to the IC's `approvals` array column."""
         with CommonDB.get_conn() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 cursor.execute(
@@ -61,6 +92,11 @@ class ICDb:
             conn.commit()
 
     def deleteIC(self, icId: int):
+        """Delete the IC row with the given id.
+
+        Returns:
+            None on success, or the caught exception on failure.
+        """
         try:
             with CommonDB.get_conn() as conn:
                 CommonDB.deleteRecord(conn, 'ics', 'id', icId)

@@ -1,3 +1,6 @@
+"""Main window for the Coordinator role - reviews and approves PTWs in the
+coordination stage."""
+
 from PyQt6.QtGui import QKeySequence, QShortcut
 import qtawesome as qta
 
@@ -7,7 +10,15 @@ from windows.MainWindow import MainWindow
 
 
 class CoordinatorMainWindow(MainWindow):
+    """Coordinator role window: PTW tabs cover Under Review through Archived. Has
+    view-only visibility across every IC tab Issuing has - same breadth, without
+    Issuing's accept/request-edits/confirm/return/execute privileges - plus the
+    Link-to-PTW action it already has on the PTW side. The FAB (and Ctrl+P) prints
+    the PTWs in whichever tab is currently open."""
+
     def __init__(self, loggedUser: User):
+        """Build the Coordinator window: wire PTW/IC tab options and the
+        print-current-tab FAB with its Ctrl+P shortcut."""
         super().__init__(loggedUser)
         self.setWindowTitle("PTW (Permit To Work) - Coordinator Window")
 
@@ -71,6 +82,8 @@ class CoordinatorMainWindow(MainWindow):
         shortcut.activated.connect(self.btnFABHandler)
 
     def stackTabChanged(self):
+        """Show the FAB except on the Welcome and any IC tab; lazily fetch archived
+        PTWs the first time that tab is opened."""
         super().stackTabChanged()
         tab = self.stack.currentWidget()
         self.btnFAB.setVisible(tab != self.tabWelcome and tab not in self._icTabsWidgets)
@@ -78,8 +91,10 @@ class CoordinatorMainWindow(MainWindow):
             self.refreshArchivedPTWs()
 
     def refreshGUI(self, refreshArchivedPTWs: bool = False):
+        """Reload PTW/user/IC data from the server and rebuild the PTW and IC tabs."""
         super().refreshPtwUserGUI(refreshArchivedPTWs=refreshArchivedPTWs)
 
     def btnFABHandler(self):
+        """Print the PTWs listed in the currently active tab, if the FAB is visible."""
         if self.btnFAB.isVisible(): 
             self.printPTWs()

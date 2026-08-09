@@ -1,3 +1,5 @@
+"""Logged-in user's own Settings dialog: profile fields, theme, and close-behavior preference."""
+
 from PyQt6.QtCore import Qt, QSettings
 from PyQt6.QtWidgets import QDialog, QFormLayout, QLineEdit, QComboBox, QDialogButtonBox, QMessageBox
 from models.User import User, UserRoles, UserDepartments
@@ -13,7 +15,19 @@ _CLOSE_BEHAVIOR_REVERSE = {v: k for k, v in _CLOSE_BEHAVIOR_MAP.items()}
 
 
 class DialogSettings(QDialog):
+    """Edit the logged-in user's own profile (name, password, department, email, extension),
+    theme, and the "on close" behavior preference (always ask / minimize to tray / exit),
+    the latter stored locally via QSettings and consulted by MainWindow.closeEvent()."""
+
     def __init__(self, parent, loggedUser: User):
+        """Build the form, prefilled from `loggedUser` and the saved close-behavior QSettings value.
+
+        Args:
+            parent: Parent widget.
+            loggedUser: The currently logged-in user; mutated in place on accept
+                (password/name/department/email/extension only - role and
+                department combos are shown but disabled).
+        """
         super().__init__(parent)
         self.setWindowTitle("Settings")
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowMaximizeButtonHint & ~Qt.WindowType.WindowMinimizeButtonHint)
@@ -71,6 +85,13 @@ class DialogSettings(QDialog):
         lyt.addWidget(btns)
 
     def collectData(self):
+        """Apply the form fields to `loggedUser`, persist the close-behavior choice, and accept.
+
+        Triggered by the OK button. Validates the new password's minimum length
+        (if one was entered) and that the name isn't blank before saving the
+        close-behavior preference to QSettings and calling accept(); otherwise
+        shows an error and leaves the dialog open.
+        """
         new_pass = self.txtPassword.text()
         if new_pass and len(new_pass) < 8:
             QMessageBox.critical(self, "Error", "Password must be at least 8 characters!")

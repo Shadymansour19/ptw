@@ -1,3 +1,5 @@
+"""Dialog for creating a PTW's declarative required-isolation entry (type/tag/description)."""
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QDialog, QFormLayout, QComboBox, QTextEdit, QDialogButtonBox, QMessageBox
 
@@ -7,7 +9,12 @@ from widgets.SearchableComboBox import SearchableComboBox
 
 
 class DialogIsolation(QDialog):
+    """Create a single declarative Isolation record (type, tag, description) to add
+    to a PTW's list of expected isolations. Carries no runtime/linkage state -
+    that lives on IC instead."""
+
     def __init__(self, parent=None):
+        """Build the form: a type combo, a tag combo scoped to the chosen type, and a description field."""
         super().__init__(parent)
         self.setWindowTitle("New Isolation")
         self.setModal(True)
@@ -42,16 +49,30 @@ class DialogIsolation(QDialog):
         lyt.addWidget(btns)
 
     def _on_type_changed(self, _=None):
+        """Restrict the tag combo's choices to tags belonging to the newly selected type.
+
+        Triggered by the type combo's currentTextChanged signal (and once directly
+        from __init__ to seed the initial tag list).
+        """
         self.boxTag.setItems(self._tagsForType[self.typeCombo.currentText()])
 
     def _on_tag_selected(self, tag):
+        """Autofill (or clear) the description to match the selected tag's library entry.
+
+        Triggered by the tag combo box's itemSelected signal.
+        """
         isolation = PTW.ALL_ISOLATIONS.get(tag)
         self.boxDescription.setText(isolation.description if isolation else '')
 
     def getIsolation(self):
+        """Return the Isolation built on accept, or None if not yet accepted."""
         return self.isolation
 
     def accept(self):
+        """Validate the form and build the resulting Isolation, then close the dialog.
+
+        Triggered by the OK button. Requires a tag and description to be set.
+        """
         type = self.typeCombo.currentText()
         tag = self.boxTag.currentText()
         description = self.boxDescription.toPlainText()

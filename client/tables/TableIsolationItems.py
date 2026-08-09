@@ -1,3 +1,8 @@
+"""Embedded, editable list of an IC's isolation items (tag/description/state/
+lock #/lock box #) shown inside DialogIC's Isolation Items tab. Emits
+`itemsChanged` on any add/edit/bulk-delete so the P&ID/Wiring tab can prompt
+to resync its highlights."""
+
 from PyQt6.QtCore import Qt, QPoint, QSize, pyqtSignal
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem,
                               QAbstractItemView, QHeaderView, QPushButton, QDialog, QMessageBox,
@@ -15,6 +20,10 @@ class TableIsolationItems(QWidget):
     itemsChanged = pyqtSignal()
 
     def __init__(self, parent, items, readonly):
+        """Build the isolation-item table (Tag/Description/State/Lock #/Lock
+        Box #) from `items`, plus, when not readonly, the floating "New
+        Isolation Item" button and its Ctrl+N shortcut and right-click delete
+        menu. Double-clicking a row always opens it for editing/viewing."""
         super().__init__(parent)
         lyt = QVBoxLayout()
         self.tbl = QTableWidget()
@@ -70,21 +79,29 @@ class TableIsolationItems(QWidget):
             shortcut.activated.connect(self.newItemDialog)
 
     def resizeEvent(self, event):
+        """Reposition the floating "New Isolation Item" button whenever the
+        widget is resized, then delegate to the base implementation."""
         self.btnFABUpdatePosition()
         return super().resizeEvent(event)
 
     def btnFABUpdatePosition(self):
+        """Move the floating "New Isolation Item" button to the widget's
+        bottom-right corner, inset by a fixed margin."""
         margin = 40
         x = self.width() - self.btnNewItem.width() - margin
         y = self.height() - self.btnNewItem.height() - margin
         self.btnNewItem.move(x, y)
 
     def clear(self):
+        """Remove all rows and clear the underlying items list."""
         self.tbl.clearContents()
         self.items.clear()
         self.tbl.setRowCount(0)
 
     def __addItemToGUI(self, item: 'IC.IsolationItem'):
+        """Append one new row displaying `item`'s fields, stashing the item
+        object itself in the tag cell's UserRole so double-click can resolve
+        it after re-sorting."""
         self.tbl.insertRow(self.tbl.rowCount())
         data = [str(getattr(item, f)) for f in self.summeryFields]
         for i, d in enumerate(data):
@@ -96,12 +113,18 @@ class TableIsolationItems(QWidget):
             self.tbl.setItem(self.tbl.rowCount()-1, i, cell)
 
     def addItem(self, item: 'IC.IsolationItem'):
+        """Add `item` to the list and GUI, refresh the table, and emit
+        `itemsChanged`."""
         self.__addItemToGUI(item)
         self.items.append(item)
         self.refreshGUI()
         self.itemsChanged.emit()
 
     def newItemDialog(self):
+        """Slot for the "New Isolation Item" button/shortcut: open
+        `DialogIsolationItem` and, on acceptance, add the new item unless its
+        tag duplicates an existing one (in which case a warning is shown
+        instead)."""
         dialog = DialogIsolationItem(self)
         resp = dialog.exec()
         if resp == QDialog.DialogCode.Accepted:
@@ -112,6 +135,8 @@ class TableIsolationItems(QWidget):
             self.addItem(item)
 
     def _onCellDoubleClicked(self, row: int, col: int):
+        """Slot for cellDoubleClicked: resolve the double-clicked row's item
+        (stashed in the tag cell's UserRole) and open it for editing/viewing."""
         cell = self.tbl.item(row, 0)
         if cell is None:
             return
@@ -121,6 +146,10 @@ class TableIsolationItems(QWidget):
         self.editItemDialog(item)
 
     def editItemDialog(self, existingItem: 'IC.IsolationItem'):
+        """Open `existingItem` in `DialogIsolationItem` (edit or view-only
+        depending on `self.readonly`); on acceptance, replace it in the list
+        unless the new tag duplicates another item's tag, then refresh the
+        table and emit `itemsChanged`."""
         dialog = DialogIsolationItem(self, item=existingItem, readonly=self.readonly)
         resp = dialog.exec()
         if self.readonly or resp != QDialog.DialogCode.Accepted:
@@ -135,19 +164,25 @@ class TableIsolationItems(QWidget):
         self.itemsChanged.emit()
 
     def refreshGUI(self):
+        """Rebuild the entire table from the current `items` list."""
         self.tbl.clearContents()
         self.tbl.setRowCount(0)
         for item in self.items:
             self.__addItemToGUI(item)
 
     def deleteItem(self, row: int):
+        """Remove the item at `row` from both the list and the table."""
         self.items.pop(row)
         self.tbl.removeRow(row)
 
     def getItems(self):
+        """Return the current list of isolation items."""
         return self.items
 
     def deleteSelectedRows(self):
+        """Delete every currently-selected row (highest index first so
+        earlier indices stay valid), then emit `itemsChanged` if anything
+        was deleted."""
         selectedRows = sorted(set(row.row() for row in self.tbl.selectedIndexes() if row.isValid()), reverse=True)
         for row in selectedRows:
             self.deleteItem(row)
@@ -155,6 +190,8 @@ class TableIsolationItems(QWidget):
             self.itemsChanged.emit()
 
     def showContextMenu(self, pos: QPoint):
+        """Slot for customContextMenuRequested: show a right-click menu with
+        a Delete action that removes the selected rows."""
         row = self.tbl.indexAt(pos)
         if not row.isValid():
             return

@@ -1,3 +1,11 @@
+"""Generic risk-assessment library CRUD table, also embeddable as a read-only checkbox picker.
+
+`TableRisks` lists the generic risk assessments (`ptw_id IS NULL`) from the
+Safety admin tab, where Safety users can add/view/edit them; the same widget
+is reused in a selectable, non-editable mode by `DialogSelectGenericRisks` to
+pick assessments to copy into a PTW's own risk-item table.
+"""
+
 import copy
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QCheckBox, QPushButton,
@@ -11,7 +19,22 @@ from models.PTW import RiskAssessment
 from models.User import User
 
 class TableRisks(QWidget):
+    """List widget over a dict of risk assessments, keyed by title.
+
+    Each row is a `RecordWidget` showing the assessment's title with
+    View/Edit buttons and, when `selectable`, a checkbox synced to the list's
+    own multi-selection. Used both as the Safety admin's full CRUD table
+    (`readonly=False, selectable=False`) and as the read-only, checkbox-driven
+    picker embedded in `DialogSelectGenericRisks` (`readonly=True, selectable=True`).
+    """
+
     class RecordWidget(QWidget):
+        """Single row: a risk assessment's (truncated) title plus checkbox/View/Edit controls.
+
+        Re-emits button interactions as signals carrying the risk title, so
+        the owning `TableRisks` can react without the row needing a back-reference.
+        """
+
         MAX_DISPLAY_NAME_LENGTH = 50
 
         checkRiskChanged = pyqtSignal(str)
@@ -20,6 +43,7 @@ class TableRisks(QWidget):
         # deleteRiskClicked = pyqtSignal(str)
 
         def __init__(self, parent, riskTitle: str, readonly: bool = True, selectable: bool = True):
+            """Build the row's checkbox/label/buttons for `riskTitle`, hiding the checkbox unless selectable and the Edit button when readonly."""
             super().__init__(parent)
 
             lyt = QHBoxLayout()
@@ -49,6 +73,7 @@ class TableRisks(QWidget):
 
 
     def __init__(self, parent, loggedUser: User, label: str = None, risks: dict[str, RiskAssessment] = {}, readonly: bool = True, selectable: bool = True):
+        """Build the list widget and populate it with `risks`, optionally under a bold `label`."""
         super().__init__(parent)
         lyt = QVBoxLayout()
         lyt.setContentsMargins(0, 0, 0, 0)
@@ -79,6 +104,7 @@ class TableRisks(QWidget):
             self.addRiskToGUI(riskTitle)
 
     def getSelectedRiskAssessments(self) -> list[RiskAssessment]:
+        """Return the RiskAssessment objects for all currently checked/selected rows."""
         selected: list[RiskAssessment] = []
         for item in self.lstRisks.selectedItems():
             riskRecord: TableRisks.RecordWidget = self.lstRisks.itemWidget(item)
@@ -86,6 +112,7 @@ class TableRisks(QWidget):
         return selected
     
     def checkRisk(self, title):
+        """Select the row whose risk title matches `title`, if present."""
         for i in range(self.lstRisks.count()):
             item: QListWidgetItem = self.lstRisks.item(i)
             riskRecord: TableRisks.RecordWidget = self.lstRisks.itemWidget(item)
@@ -94,10 +121,12 @@ class TableRisks(QWidget):
                 break
 
     def clear(self):
+        """Empty both the underlying `risks` dict and the list widget."""
         self.risks.clear()
         self.lstRisks.clear()
     
     def addRiskToGUI(self, riskTitle: str):
+        """Append a list row for `riskTitle`, wiring its RecordWidget signals to this table's handlers."""
         item = QListWidgetItem()
         record = TableRisks.RecordWidget(self, riskTitle, self.readonly, self.selectable)
         item.setSizeHint(record.sizeHint())
@@ -113,17 +142,20 @@ class TableRisks(QWidget):
         # record.deleteRiskClicked.connect(lambda riskTitle: self.deleteRiskAssessment(riskTitle))
 
     def setRiskAssessmentsInGUI(self, risks: dict[str, RiskAssessment]):
+        """Replace the table's data and rebuild the list from `risks`."""
         self.lstRisks.clear()
         self.risks = risks
         for riskTitle in self.risks:
             self.addRiskToGUI(riskTitle)
 
     def refreshGUI(self):
+        """Rebuild the list rows from the current `risks` dict without changing its contents."""
         self.lstRisks.clear()
         for riskTitle in self.risks:
             self.addRiskToGUI(riskTitle)
 
     def addRiskAssessment(self, riskAssessment: RiskAssessment):
+        """Persist a new generic risk assessment to the server and add it to the table on success."""
         def on_done(err, _):
             self.window()._refreshOverlay.hideBusy()
             if err:
@@ -135,10 +167,12 @@ class TableRisks(QWidget):
         ClientRequests.addNewRiskAssessment(self.loggedUser, riskAssessment, callback=on_done)
     
     def itemDoubleClicked(self, item: QListWidgetItem):
+        """Open the double-clicked row's risk assessment in the read-only preview."""
         riskRecord: TableRisks.RecordWidget = self.lstRisks.itemWidget(item)
         self.viewRiskAssessment(riskRecord.riskTitle)
 
     def checkRiskStateUpdate(self, riskTitle: str):
+        """Sync the list widget's selection state for `riskTitle`'s row to its checkbox state."""
         for i in range(self.lstRisks.count()):
             item: QListWidgetItem = self.lstRisks.item(i)
             riskRecord: TableRisks.RecordWidget = self.lstRisks.itemWidget(item)
@@ -147,17 +181,20 @@ class TableRisks(QWidget):
                 break
     
     def setCheckBoxes(self):
+        """Sync every row's checkbox to reflect the list widget's current selection."""
         for i in range(self.lstRisks.count()):
             item: QListWidgetItem = self.lstRisks.item(i)
             riskRecord: TableRisks.RecordWidget = self.lstRisks.itemWidget(item)
             riskRecord.btnCheck.setChecked(item.isSelected())
 
     def viewRiskAssessment(self, riskTitle: str):
+        """Open the assessment titled `riskTitle` in a read-only popup preview."""
         title = f"View Mode - Risk Assessment {riskTitle}"
         dialog = RiskAssessmentPreview(self, self.risks[riskTitle], readonly=True, popup=True)
         dialog.exec()
 
     def editRiskAssessment(self, riskTitle: str):
+        """Edit a deep copy of the assessment titled `riskTitle` in a popup, saving to the server if accepted."""
         riskAssessment = copy.deepcopy(self.risks[riskTitle])
         title = f"Edit Mode - Risk Assessment {riskTitle}"
         dialog = RiskAssessmentPreview(self, riskAssessment, readonly=False, popup=True)
@@ -175,6 +212,7 @@ class TableRisks(QWidget):
         ClientRequests.updateRiskAssessment(self.loggedUser, riskAssessment, callback=on_done)
     
     def deleteRiskAssessment(self, riskTitle: str):
+        """Confirm with the user, then delete the assessment titled `riskTitle` on the server and refresh the list."""
         reply = QMessageBox.question(self, 'Delete Risk Assessment', f"Are you sure you want to delete Risk Assessment '{riskTitle}'?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.No:
             return
@@ -191,6 +229,7 @@ class TableRisks(QWidget):
         ClientRequests.deleteRiskAssessment(self.loggedUser, riskTitle, ptw_id, callback=on_done)
     
     def addNewRiskAssessmentDialog(self):
+        """Prompt for a new, non-duplicate title, then open a blank risk assessment editor and save it if accepted."""
         from PyQt6.QtWidgets import QLineEdit, QDialogButtonBox
         dlgPromptTitle = QDialog(self)
         dlgPromptTitle.setWindowTitle("New Risk Assessment")

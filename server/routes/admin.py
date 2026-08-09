@@ -1,3 +1,6 @@
+"""Flask blueprint for admin-only server maintenance endpoints: log file
+listing/download and on-demand database/file backup management.
+"""
 import os
 from flask import Blueprint, request, jsonify, send_file
 
@@ -12,6 +15,12 @@ adminBp = Blueprint("admin", __name__)
 
 @adminBp.route("/logs", methods=["GET"])
 def getLogs():
+    """List log filenames, or download a specific log file.
+
+    GET, ``ADMIN`` role only. Body carries an optional ``filename``; with
+    it set, streams that log file (400 on a path-traversal attempt, 404 if
+    missing); otherwise responds with ``{"success": True, "logs": [...]}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None or user.getRole() != UserRoles.ADMIN:
         log.warning("GET /logs unauthorized: requester='%s' (ip=%s)", user.getUsername() if user else "unauthenticated", request.remote_addr)
@@ -42,6 +51,15 @@ def getLogs():
 
 @adminBp.route("/backups", methods=["GET", "POST", "DELETE"])
 def backups():
+    """List, create, download, or delete on-demand backups.
+
+    GET/POST/DELETE, ``ADMIN`` role only. GET with a ``name`` (and
+    ``which``, ``"dump"``/``"files"``) in the body downloads that backup
+    archive; GET without a body returns the backup summary from
+    ``backupService.listBackups()``. POST takes no body and creates a new
+    backup via ``backupService.createBackup()``. DELETE takes ``name`` in
+    the body and removes that backup via ``backupService.deleteBackup()``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None or user.getRole() != UserRoles.ADMIN:
         log.warning("/backups unauthorized: requester='%s' (ip=%s)", user.getUsername() if user else "unauthenticated", request.remote_addr)

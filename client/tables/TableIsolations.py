@@ -1,3 +1,7 @@
+"""Embedded, editable list of a PTW's declarative required isolations
+(type/tag/description only, no runtime state) shown inside DialogPTW's
+Isolation tab."""
+
 from PyQt6.QtCore import Qt, QPoint, QSize
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem,
                               QAbstractItemView, QHeaderView, QPushButton, QDialog, QMessageBox,
@@ -13,6 +17,9 @@ class TablePTWIsolations(QWidget):
     """Editable isolation list embedded inside a PTW form."""
 
     def __init__(self, parent, isolations, readonly):
+        """Build the isolation table (Type/Tag/Description) from `isolations`,
+        plus, when not readonly, the floating "New Isolation" button and its
+        Ctrl+N shortcut and right-click delete menu."""
         super().__init__(parent)
         lyt = QVBoxLayout()
         self.tbl = QTableWidget()
@@ -67,21 +74,27 @@ class TablePTWIsolations(QWidget):
             shortcut.activated.connect(self.newIsolationDialog)
 
     def resizeEvent(self, event):
+        """Reposition the floating "New Isolation" button whenever the widget
+        is resized, then delegate to the base implementation."""
         self.btnFABUpdatePosition()
         return super().resizeEvent(event)
 
     def btnFABUpdatePosition(self):
+        """Move the floating "New Isolation" button to the widget's
+        bottom-right corner, inset by a fixed margin."""
         margin = 40
         x = self.width() - self.btnNewIsolation.width() - margin
         y = self.height() - self.btnNewIsolation.height() - margin
         self.btnNewIsolation.move(x, y)
 
     def clear(self):
+        """Remove all rows and clear the underlying isolations list."""
         self.tbl.clearContents()
         self.isolations.clear()
         self.tbl.setRowCount(0)
 
     def __addIsolationToGUI(self, isolation: Isolation):
+        """Append one new row displaying `isolation`'s type/tag/description."""
         self.tbl.insertRow(self.tbl.rowCount())
         data = [str(getattr(isolation, f)) for f in self.summeryFields]
         for i, d in enumerate(data):
@@ -89,11 +102,15 @@ class TablePTWIsolations(QWidget):
             self.tbl.setItem(self.tbl.rowCount()-1, i, cell)
 
     def addIsolation(self, isolation: Isolation):
+        """Add `isolation` to the list and GUI, then refresh the table."""
         self.__addIsolationToGUI(isolation)
         self.isolations.append(isolation)
         self.refreshGUI()
 
     def newIsolationDialog(self):
+        """Slot for the "New Isolation" button/shortcut: open `DialogIsolation`
+        and, on acceptance, add the new isolation unless its tag duplicates
+        an existing one (in which case a warning is shown instead)."""
         dialog = DialogIsolation(self)
         resp = dialog.exec()
         if resp == QDialog.DialogCode.Accepted:
@@ -104,24 +121,31 @@ class TablePTWIsolations(QWidget):
             self.addIsolation(isolation)
 
     def refreshGUI(self):
+        """Rebuild the entire table from the current `isolations` list."""
         self.tbl.clearContents()
         self.tbl.setRowCount(0)
         for isolation in self.isolations:
             self.__addIsolationToGUI(isolation)
 
     def deleteIsolation(self, row: int):
+        """Remove the isolation at `row` from both the list and the table."""
         self.isolations.pop(row)
         self.tbl.removeRow(row)
 
     def getIsolations(self):
+        """Return the current list of isolations."""
         return self.isolations
 
     def deleteSelectedRows(self):
+        """Delete every currently-selected row, highest index first so
+        earlier indices stay valid during the loop."""
         selectedRows = sorted(set(row.row() for row in self.tbl.selectedIndexes() if row.isValid()), reverse=True)
         for row in selectedRows:
             self.deleteIsolation(row)
 
     def showContextMenu(self, pos: QPoint):
+        """Slot for customContextMenuRequested: show a right-click menu with
+        a Delete action that removes the selected rows."""
         row = self.tbl.indexAt(pos)
         if not row.isValid():
             return

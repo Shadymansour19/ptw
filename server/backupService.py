@@ -1,3 +1,10 @@
+"""On-demand backup helpers backing GET/POST/DELETE /backups: POST triggers
+createBackup(), which pg_dump -Fc's the database and tars/gzips the MIWI store
+and PTW/IC attachment folders into a timestamped BACKUP_DIR subfolder; GET lists
+or downloads existing backups; DELETE removes one. Mirrors the on-disk layout
+produced by dev-scripts/backup.sh|.ps1 so backups from either path are
+interchangeable with dev-scripts/restore.sh|.ps1."""
+
 import os
 import re
 import shutil
@@ -12,6 +19,9 @@ _BACKUP_RETENTION_DAYS = 14                        # matches dev-scripts/backup.
 
 
 def _dbConfig() -> tuple[str, str, str, str]:
+    """Return the (host, dbName, dbUser, dbPassword) tuple from environment
+    variables (DB_HOST, DB_NAME, DB_USER, DB_PASSWORD), applying the same
+    localhost/ptw_database/postgres defaults used elsewhere for the DB connection."""
     return (
         os.environ.get('DB_HOST', 'localhost'),
         os.environ.get('DB_NAME', 'ptw_database'),
@@ -36,6 +46,9 @@ def _backupTargets() -> list[tuple[str, str]]:
 
 
 def _backupRow(name: str) -> dict:
+    """Build the summary dict (name, created timestamp, dump/files/total sizes
+    in bytes, and whether both the dump and files archive are present) for the
+    named backup folder under BACKUP_DIR."""
     dest = os.path.join(BACKUP_DIR, name)
     _, dbName, _, _ = _dbConfig()
     dumpPath = os.path.join(dest, f'{dbName}.dump')
@@ -81,6 +94,13 @@ def createBackup() -> dict:
 
 
 def listBackups() -> dict:
+    """List all backup folders under BACKUP_DIR matching the timestamp naming
+    convention, newest first, alongside retention policy and free disk space.
+
+    Returns:
+        dict with "backups" (list of _backupRow() summaries), "retentionDays",
+        "freeBytes" (None if BACKUP_DIR doesn't exist), and "lastBackupAt".
+    """
     rows = []
     if os.path.isdir(BACKUP_DIR):
         for entry in os.listdir(BACKUP_DIR):
@@ -96,6 +116,13 @@ def listBackups() -> dict:
 
 
 def resolveBackupDir(name: str) -> str:
+    """Validate a backup name against the timestamp pattern and resolve it to
+    an absolute path confined under BACKUP_DIR, guarding against path traversal.
+
+    Raises:
+        ValueError: if the name doesn't match the expected pattern or would
+            resolve outside BACKUP_DIR.
+    """
     if not _BACKUP_NAME_RE.match(name or ''):
         raise ValueError("Invalid backup name")
     path = os.path.abspath(os.path.join(BACKUP_DIR, name))
@@ -105,6 +132,11 @@ def resolveBackupDir(name: str) -> str:
 
 
 def deleteBackup(name: str):
+    """Remove the named backup folder (and everything in it) from BACKUP_DIR.
+
+    Raises:
+        ValueError: if the name is invalid or the backup doesn't exist.
+    """
     path = resolveBackupDir(name)
     if not os.path.isdir(path):
         raise ValueError("Backup not found")
@@ -112,6 +144,12 @@ def deleteBackup(name: str):
 
 
 def backupFilePath(name: str, which: str) -> str:
+    """Return the path to a specific file ('dump' or 'files') within the named
+    backup, for download.
+
+    Raises:
+        ValueError: if the backup name is invalid or `which` isn't recognized.
+    """
     dest = resolveBackupDir(name)
     _, dbName, _, _ = _dbConfig()
     if which == 'dump':

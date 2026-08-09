@@ -1,3 +1,7 @@
+"""PTW list table widget: one instance per status tab, with per-column filters,
+a right-click context menu of role-supplied actions (e.g. Excel export), and
+double-click drill-down into a PTW."""
+
 from PyQt6.QtCore import Qt, QSize, QPoint
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
                               QLabel, QPushButton, QAbstractItemView, QHeaderView, QFrame,
@@ -19,14 +23,26 @@ class _FastTrackItem(QTableWidgetItem):
     separate cell widget). Sorts by the real Yes/No value stashed in UserRole."""
 
     def __lt__(self, other):
+        """Compare by the stashed real Yes/No value instead of the empty display text."""
         if isinstance(other, QTableWidgetItem):
             return self.data(Qt.ItemDataRole.UserRole) < other.data(Qt.ItemDataRole.UserRole)
         return super().__lt__(other)
 
 
 class TablePTWs(QWidget):
+    """PTW list table for a single status tab: filterable columns, a
+    role-configurable right-click context menu, and double-click drill-down.
+    `filterColumn(label, values)` is also called externally by the home
+    dashboard's clickable donut segments to pre-filter this tab."""
+
     class MenuOption:
+        """Describes one right-click context menu entry: label, handler, icon,
+        whether it acts on all selected rows at once, and an optional
+        visibility predicate."""
+
         def __init__(self, lbl, fun, icn, allAtOnce : bool = False, visibleFor = None):
+            """Store the menu entry's label, handler, icon, batching mode, and
+            visibility predicate for later use by showContextMenu()."""
             self.lbl = lbl
             self.fun = fun
             self.icn = icn
@@ -34,6 +50,8 @@ class TablePTWs(QWidget):
             self.visibleFor = visibleFor
 
     def __init__(self, parent, loggedUser, label: str):
+        """Build the labeled table, filter bar, and header/context-menu wiring
+        for one PTW status tab."""
         super().__init__(parent)
         lyt = QVBoxLayout()
         lyt.setContentsMargins(0, 0, 0, 0)
@@ -115,6 +133,9 @@ class TablePTWs(QWidget):
         self.tbl.horizontalHeader().sortIndicatorChanged.connect(self._onSorted)
 
     def _toggleFilters(self, checked):
+        """Slot for the filter button's toggled signal: show/hide the filter
+        bar, (re)populating and applying filters when shown, or clearing all
+        row hiding when hidden."""
         self._filterBar.setVisible(checked)
         if checked:
             self._populateFilters()
@@ -124,6 +145,8 @@ class TablePTWs(QWidget):
             self._showAllRows()
 
     def _populateFilters(self):
+        """Rebuild each column's filter combo options from the table's current
+        cell values, preserving any existing checked selections."""
         col_values = [set() for _ in self.summeryLabels]
         for row in range(self.tbl.rowCount()):
             for col in range(len(self.summeryLabels)):
@@ -134,6 +157,8 @@ class TablePTWs(QWidget):
             combo.setItems(col_values[col], preserve_selection=True)
 
     def _syncFilterWidths(self):
+        """Resize each filter combo to match its column's current header
+        width, keeping the filter bar aligned with the table columns."""
         if not self._filterBar.isVisible():
             return
         header = self.tbl.horizontalHeader()
@@ -142,6 +167,8 @@ class TablePTWs(QWidget):
         self._filterCombos[-1].setMinimumWidth(header.sectionSize(len(self._filterCombos) - 1))
 
     def _applyFilters(self):
+        """Hide any row that doesn't match every currently-checked filter
+        combo; called whenever a filter combo's selection changes."""
         active = [
             (col, combo.checkedItems())
             for col, combo in enumerate(self._filterCombos)
@@ -155,10 +182,22 @@ class TablePTWs(QWidget):
             self.tbl.setRowHidden(row, hide)
 
     def _showAllRows(self):
+        """Unhide every row in the table."""
         for row in range(self.tbl.rowCount()):
             self.tbl.setRowHidden(row, False)
 
     def filterColumn(self, label: str, values: set):
+        """Programmatically filter one column down to a specific set of values.
+
+        Used by the home dashboard's clickable donut segments to drill down
+        into this tab: clicking a segment calls this to open the filter bar
+        (if not already open) and check only the matching values in that
+        column's combo, e.g. narrowing the PTW list to a single location.
+
+        Args:
+            label: column label as it appears in `summeryLabels`.
+            values: the set of cell values to keep checked in that column.
+        """
         if label not in self.summeryLabels:
             return
         col = self.summeryLabels.index(label)
@@ -170,11 +209,16 @@ class TablePTWs(QWidget):
         self._filterCombos[col].setCheckedOnly(values)
 
     def _onSorted(self):
+        """Slot for the header's sortIndicatorChanged signal: keep
+        `ptwsData` in row order after a sort and reapply active filters."""
         self._syncPtwsData()
         if self._filterBar.isVisible():
             self._applyFilters()
 
     def ptwToRecord(self, ptw):
+        """Convert a PTW model into the list of display strings for its row,
+        resolving the requestor id to a display name and Yes/No-ing the
+        fast-track flag."""
         record = []
         for field in self.summeryFields:
             value = getattr(ptw, field)
@@ -188,6 +232,8 @@ class TablePTWs(QWidget):
         return record
 
     def _makeCell(self, col: int, value: str) -> QTableWidgetItem:
+        """Build the QTableWidgetItem for one cell, using `_FastTrackItem`
+        (empty text, real value in UserRole) for the F.T. column."""
         if col == self._ftCol:
             cell = _FastTrackItem("")
             cell.setData(Qt.ItemDataRole.UserRole, value)
@@ -196,10 +242,13 @@ class TablePTWs(QWidget):
 
     @staticmethod
     def _cellFilterText(item: QTableWidgetItem) -> str:
+        """Return the value to filter/compare on for a cell: its stashed
+        UserRole data if present, otherwise its display text."""
         userData = item.data(Qt.ItemDataRole.UserRole)
         return userData if userData is not None else item.text()
 
     def _applyFastTrackStyle(self, cell: QTableWidgetItem, fastTrack: bool):
+        """Bold and enlarge a cell's font when its row is fast-tracked."""
         if fastTrack:
             font = cell.font()
             font.setBold(True)
@@ -210,6 +259,8 @@ class TablePTWs(QWidget):
             cell.setFont(font)
 
     def _fastTrackIconWidget(self, fastTrack: bool) -> QWidget:
+        """Build the F.T. column's cell widget: an empty container, or a
+        bolt-icon badge when the row is fast-tracked."""
         container = QWidget()
         container.setStyleSheet("background: transparent;")
         layout = QHBoxLayout(container)
@@ -225,6 +276,8 @@ class TablePTWs(QWidget):
         return container
     
     def addPTWToGUI(self, ptw):
+        """Append a new row for `ptw`, refresh cached data, and reapply
+        filters if the filter bar is open."""
         self.ptwsData.append(ptw)
         data = self.ptwToRecord(ptw)
         self.tbl.setSortingEnabled(False)
@@ -245,12 +298,16 @@ class TablePTWs(QWidget):
             self._applyFilters()
 
     def addOption(self, options: MenuOption):
+        """Register a single context-menu option."""
         self.options.append(options)
 
     def addOptions(self, options: Iterable[MenuOption]):
+        """Register multiple context-menu options at once."""
         self.options.extend(options)
 
     def updatePTWInGUI(self, row: int, ptw):
+        """Overwrite an existing row in place with `ptw`'s current data,
+        refresh cached data, and reapply filters if the filter bar is open."""
         self.ptwsData[row] = ptw
         data = self.ptwToRecord(ptw)
         self.tbl.setSortingEnabled(False)
@@ -269,7 +326,11 @@ class TablePTWs(QWidget):
             self._applyFilters()
 
     def updatePTW(self, row: int, ptw):
+        """Send `ptw`'s updated data to the server, then update the row in
+        the GUI on success (or show a warning on failure)."""
         def on_done(err, _):
+            """Callback for updatePTW's request: update the GUI row on
+            success, or show a warning on failure."""
             if err:
                 QMessageBox.warning(self, "Fail", err)
                 return
@@ -277,7 +338,11 @@ class TablePTWs(QWidget):
         ClientRequests.updatePTW(self.loggedUser, ptw, callback=on_done)
 
     def deletePTW(self, row: int):
+        """Confirm with the user, then request deletion of the PTW at `row`
+        and remove it from the table on success."""
         def on_done(err, _):
+            """Callback for deletePTW's request: remove the row on success,
+            or show a warning on failure."""
             if err:
                 QMessageBox.warning(self, "Fail", err)
                 return
@@ -304,6 +369,8 @@ class TablePTWs(QWidget):
         return False
 
     def clear(self):
+        """Remove all rows and cached PTWs, and reset every filter combo back
+        to its empty "Select All" state."""
         self.tbl.clearContents()
         self.ptwsData.clear()
         self.tbl.setRowCount(0)
@@ -313,19 +380,29 @@ class TablePTWs(QWidget):
             combo._updateText()
 
     def sort(self):
+        """Sort rows by PTW# ascending then F.T. descending (fast-tracked
+        rows first), and resync cached data to match."""
         self.tbl.sortItems(0, Qt.SortOrder.AscendingOrder)
         self.tbl.sortItems(1, Qt.SortOrder.DescendingOrder)
         self._syncPtwsData()
 
     def _syncPtwsData(self):
+        """Reorder `ptwsData` to match the table's current (possibly
+        user-sorted) row order, keyed by the PTW# column."""
         id_to_ptw = {str(p.id): p for p in self.ptwsData}
         self.ptwsData = [id_to_ptw[self.tbl.item(r, 0).text()] for r in range(self.tbl.rowCount())]
 
     def doubleClickHandler(self, row, col):
+        """Slot for cellDoubleClicked: invoke the first registered menu
+        option's handler on the double-clicked row's PTW."""
         if len(self.options) > 0:
             self.options[0].fun(row, self.ptwsData[row])
 
     def optionDoForAllSelected(self, fun, allAtOnce: bool):
+        """Run a context-menu option's handler over the current selection:
+        once with all selected rows/PTWs together if `allAtOnce`, otherwise
+        once per row (in reverse order, so row indices stay valid as rows are
+        removed)."""
         selectedRows = list(set(row.row() for row in self.tbl.selectedIndexes() if row.isValid()))
         if allAtOnce:
             fun(selectedRows, [self.ptwsData[row] for row in selectedRows])
@@ -334,6 +411,9 @@ class TablePTWs(QWidget):
                 fun(row, self.ptwsData[row])
 
     def showContextMenu(self, pos: QPoint):
+        """Slot for customContextMenuRequested: build and show a right-click
+        menu of the registered options at `pos`, wired to run each option's
+        handler over the selected rows on trigger."""
         row = self.tbl.indexAt(pos)
 
         if not row.isValid():

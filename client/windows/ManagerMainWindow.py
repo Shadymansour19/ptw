@@ -1,3 +1,5 @@
+"""Main window shared by the four manager approval roles - PDH, PGM, SOD, and DFGM."""
+
 import qtawesome as qta
 
 from GlobalData import globalData
@@ -6,7 +8,16 @@ from windows.MainWindow import MainWindow
 
 
 class ManagerMainWindow(MainWindow):
+    """Single shared window class parameterized by role: `main.py` instantiates it as
+    `ManagerMainWindow(loggedUser, role)` for whichever of PDH/PGM/SOD/DFGM the user is -
+    it is not four separate classes. PTW tabs cover Under Review/Returned/Approved/
+    Running/Held/Closed/Archived; the only IC tab is Under Review, since managers are
+    only ever involved in a PSIC's approval chain (after Issuing). The FAB prints the
+    PTWs in whichever tab is currently open."""
+
     def __init__(self, loggedUser: User, role: str):
+        """Build the manager window for the given `role` label, wiring PTW/IC tab
+        options and the print-current-tab FAB."""
         super().__init__(loggedUser)
         self.setWindowTitle(f"PTW (Permit To Work) - {role} Window")
 
@@ -45,6 +56,8 @@ class ManagerMainWindow(MainWindow):
         self.btnFAB.setToolTip("Print current widget PTWs")
 
     def stackTabChanged(self):
+        """Show the FAB except on the Welcome and Under Review ICs tabs; lazily fetch
+        archived PTWs the first time that tab is opened."""
         super().stackTabChanged()
         tab = self.stack.currentWidget()
         self.btnFAB.setVisible(tab != self.tabWelcome and tab != self.tabUnderReviewICs)
@@ -52,7 +65,9 @@ class ManagerMainWindow(MainWindow):
             self.refreshArchivedPTWs()
 
     def refreshGUI(self, refreshArchivedPTWs: bool = False):
+        """Reload PTW/user/IC data from the server and rebuild the PTW and IC tabs."""
         super().refreshPtwUserGUI(refreshArchivedPTWs=refreshArchivedPTWs)
 
     def btnFABHandler(self):
+        """Print the PTWs listed in the currently active tab."""
         self.printPTWs()

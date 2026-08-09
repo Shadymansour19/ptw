@@ -1,3 +1,7 @@
+"""Authentication routes (/login, /reset-password-request, /reset-password,
+/events) and getVerifiedUser(), the shared HTTP Basic Auth primitive every
+other route module calls to authenticate and authorize a request."""
+
 import os
 import queue
 import threading
@@ -20,6 +24,26 @@ _RESET_CODE_PRUNE_INTERVAL = 5 * 60
 
 
 def getVerifiedUser(auth) -> User:
+    """Resolve HTTP Basic Auth credentials to a User, the shared check every
+    route calls via `getVerifiedUser(request.authorization)` before deciding
+    whether/how to serve a request.
+
+    Checks the real `users` table first via userDB.getVerifiedUser (bcrypt
+    password verification): if a matching user exists, it is returned only
+    when active (deactivated accounts are rejected on every request, not just
+    login). Otherwise, if no password was supplied and the username does not
+    belong to any real account, an ephemeral, non-persisted User with role
+    GUEST is constructed and returned instead — a guest can never shadow or
+    spoof a real username, since the real-account check takes priority.
+
+    Args:
+        auth: request.authorization (werkzeug Authorization), or any object
+            exposing .username/.password.
+
+    Returns:
+        The authenticated (or guest) User, or None if credentials are missing,
+        invalid, or belong to a deactivated/colliding account.
+    """
     try:
         username = auth.username
         password = auth.password
@@ -43,6 +67,11 @@ def getVerifiedUser(auth) -> User:
 
 @authBp.get("/events")
 def sse_stream():
+    """GET /events: open a Server-Sent Events stream for the authenticated
+    user (any valid user or guest, via getVerifiedUser). Registers a per-role
+    queue with sse.registerClient, streams "event: <object>\\ndata: <json>"
+    messages as they're broadcast (with periodic heartbeats when idle), and
+    unregisters the queue on disconnect. Returns 401 JSON if unauthorized."""
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("SSE connection rejected: unauthorized (ip=%s)", request.remote_addr)
@@ -72,6 +101,10 @@ def sse_stream():
 
 @authBp.route("/login", methods=["POST"])
 def login():
+    """POST /login: authenticate via HTTP Basic Auth credentials (not a JSON
+    body). No prior auth required — this route establishes it. Returns 403 if
+    the account exists but is inactive, 401 on invalid credentials, 400 on a
+    malformed request, or 200 with the serialized user on success."""
     try:
         auth = request.authorization
         username = auth.username if auth else None
@@ -91,6 +124,8 @@ def login():
 
 
 def _sendResetPasswordEmail(username, userEmail, code):
+    """Build and synchronously send the HTML password-reset verification code
+    email to userEmail via Flask-Mail (blocks the calling request)."""
     msg = Message(
         subject='PTW Reset Password Verification Code',
         sender=os.environ.get('MAIL_USERNAME'),
@@ -159,6 +194,12 @@ def _sendResetPasswordEmail(username, userEmail, code):
 
 @authBp.route("/reset-password-request", methods=["POST"])
 def requestResetPassword():
+    """POST /reset-password-request: no auth required. Body: {"username"}.
+    Looks up the user's registered email in globalData.allUsers, generates a
+    6-digit code, sends it synchronously via email, and stores it (with a
+    timestamp) in resetCodes keyed by username, valid for _RESET_CODE_TTL
+    seconds. Returns 401 if username is missing, 400 if the user or their
+    email can't be found, 500 if the email send fails, else 200."""
     payload = request.get_json(silent=True) or {}
     username = payload.get('username')
     if not username:
@@ -186,6 +227,12 @@ def requestResetPassword():
 
 @authBp.route("/reset-password", methods=["POST"])
 def resetPassword():
+    """POST /reset-password: no auth required. Body:
+    {"username", "new-password", "verification-code"}. Validates the code
+    against resetCodes (checking expiry against _RESET_CODE_TTL) before
+    updating the password and clearing the pending code. Returns 400 for
+    missing fields, an expired code, or a DB update failure; 404 if there's no
+    pending reset for the username; 400 for a wrong code; else 200."""
     payload = request.get_json(silent=True) or {}
     username = payload.get('username')
     newPassword = payload.get('new-password')
@@ -216,6 +263,8 @@ def resetPassword():
 
 
 def _prune_reset_codes():
+    """Run forever on a background thread, deleting expired entries from
+    resetCodes every _RESET_CODE_PRUNE_INTERVAL seconds."""
     while True:
         sleep(_RESET_CODE_PRUNE_INTERVAL)
         cutoff = time() - _RESET_CODE_TTL

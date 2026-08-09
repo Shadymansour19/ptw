@@ -1,3 +1,5 @@
+"""Add/edit/view dialog for a single IC isolation item (tag, description, state)."""
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QDialog, QFormLayout, QComboBox, QLineEdit, QTextEdit, QDialogButtonBox, QMessageBox
 
@@ -7,7 +9,22 @@ from widgets.SearchableComboBox import SearchableComboBox
 
 
 class DialogIsolationItem(QDialog):
+    """Create, edit, or view one IC.IsolationItem (tag/description/state).
+
+    Lock #/Lock Box # are always shown read-only here regardless of mode -
+    they are set later by the isolator when completing physical isolation
+    (see DialogCompleteIsolation), never entered by the requestor.
+    """
+
     def __init__(self, parent=None, item: IC.IsolationItem = None, readonly: bool = False):
+        """Build the form, prefilling from `item` when editing/viewing an existing one.
+
+        Args:
+            parent: Parent widget.
+            item: Existing IsolationItem to prefill for edit/view mode, or None to
+                create a new item.
+            readonly: If True, disable all fields and hide the Cancel button.
+        """
         super().__init__(parent)
         self.readonly = readonly
         self._originalItem = item  # only consulted for lock_num/lock_box_num, which the user never edits here
@@ -60,6 +77,11 @@ class DialogIsolationItem(QDialog):
             btns.button(QDialogButtonBox.StandardButton.Cancel).hide()
 
     def _on_tag_selected(self, tag):
+        """Autofill the description when a picked tag matches a known library entry.
+
+        Triggered by the tag combo box's itemSelected signal. Does nothing in
+        readonly mode.
+        """
         if self.readonly:
             return
         # Only autofill from the library when the tag actually matches a known entry - a
@@ -70,9 +92,17 @@ class DialogIsolationItem(QDialog):
             self.boxDescription.setText(isolation.description)
 
     def getItem(self):
+        """Return the IsolationItem built on accept, or None if not yet accepted."""
         return self.item
 
     def accept(self):
+        """Validate the form and build the resulting IsolationItem, then close the dialog.
+
+        Triggered by the OK button. In readonly mode just closes without validation.
+        Otherwise requires a tag and description, then constructs `self.item`,
+        carrying over the lock fields from the original item unchanged (or from
+        the read-only lock boxes, which stay blank for a brand-new item).
+        """
         if self.readonly:
             super().accept()
             return

@@ -1,3 +1,5 @@
+"""Isolator's "Complete Isolation" table dialog for entering Lock #/Lock Box # per IC item."""
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QTableWidget, QTableWidgetItem,
                               QAbstractItemView, QHeaderView, QDialogButtonBox)
@@ -12,6 +14,12 @@ class DialogCompleteIsolation(QDialog):
     only the lock fields are editable."""
 
     def __init__(self, parent, items: list['IC.IsolationItem']):
+        """Build the items table, copying the given items so edits don't mutate the caller's list until accept.
+
+        Args:
+            parent: Parent widget.
+            items: The IC's IsolationItem list to display, one row each.
+        """
         super().__init__(parent)
         self.setWindowTitle(t("Complete Isolation"))
         self.setModal(True)
@@ -55,6 +63,7 @@ class DialogCompleteIsolation(QDialog):
         self.setMinimumSize(600, 300)
 
     def getItems(self) -> list['IC.IsolationItem']:
+        """Write back the edited Lock #/Lock Box # cell values and return the updated items."""
         for row in range(self.tbl.rowCount()):
             self._items[row].lock_num = self.tbl.item(row, 3).text()
             self._items[row].lock_box_num = self.tbl.item(row, 4).text()

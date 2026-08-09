@@ -1,3 +1,13 @@
+"""Base main-window chrome for the PTW desktop client.
+
+Defines `MainWindow`, the `QMainWindow` subclass every role-specific window in
+`client/windows/` (e.g. `AdminMainWindow`, `UserMainWindow`,
+`IssuingMainWindow`) inherits from. Provides the shared sidebar/topbar/home-page
+scaffolding, the PTW and IC action handlers (approvals, run/hold/close
+requests, isolate/de-isolate cycle, linking), the SSE-driven real-time sync
+path, the system tray/background-notification behavior, and the client-side
+PTW run-cycle-shift and 14-shift-validity alarm polling.
+"""
 from datetime import datetime, timedelta
 from collections import Counter
 import copy
@@ -41,6 +51,21 @@ SETTINGS_CLOSE_BEHAVIOR_KEY = "app/closeBehavior"
 
 
 class MainWindow(QMainWindow):
+    """Base main-window class that every role-specific window subclasses.
+
+    Builds the shared chrome — sidebar navigation, topbar menus, floating
+    action button, status bar, and template-method home-page dashboard — plus
+    the full set of PTW and IC action handlers (approvals, run/hold/close
+    requests and responses, isolate/de-isolate cycle, PTW-IC linking) common
+    to all roles. Owns the SSE listener and patches incoming PTW/IC events
+    into the cached data and the appropriate tab rather than doing a full
+    refresh, manages the system tray icon and close-to-tray behavior, and
+    polls for PTW run-cycle-shift-ended and 14-shift-validity-expired alarms.
+    Subclasses call `setAvailableTabs()` to declare their role's sidebar/
+    topbar buttons and may override `buildHomePage()`/`updateHomeDashboard()`/
+    `refreshGUI()` to customize the home dashboard and data refresh.
+    """
+
     on_logout = pyqtSignal()
 
     # See _checkPtwAlarms(): condition is polled this often, but a dismissed popup is only
@@ -49,6 +74,10 @@ class MainWindow(QMainWindow):
     _PTW_ALARM_REPEAT_MINUTES = 5
 
     def __init__(self, loggedUser: User):
+        """Build the base window for `loggedUser`: PTW/IC action menu options, the
+        stacked tab widgets, sidebar/topbar button maps, the home page welcome
+        banner, the floating action button, the status bar, the system tray icon,
+        the SSE listener, and the PTW alarm-check timer."""
         super().__init__()
         self.loggedUser = loggedUser
         self.setWindowTitle("PTW (Permit To Work)")
@@ -504,18 +533,26 @@ class MainWindow(QMainWindow):
         self._ptwAlarmTimer.start()
 
     def _on_request_done_generic(self, err, _):
+        """Default callback for PTW/IC action requests: warn on error, otherwise do
+        nothing since the resulting SSE event drives the GUI refresh."""
         if err:
             QMessageBox.warning(self, 'Fail', err)
             return
         # self.refreshGUI()  # SSE event handles refresh
 
     def toggleTheme(self):
+        """Handle a click of the theme button: flip between light and dark theme via
+        `_applyThemeChange`."""
         hints = QApplication.styleHints()
         is_dark = hints.colorScheme() == Qt.ColorScheme.Dark
         new_theme = 'light' if is_dark else 'dark'
         self._applyThemeChange(new_theme)
 
     def _applyThemeChange(self, new_theme: str | None):
+        """Apply a pending switch to `new_theme` (None for system default): ask the
+        user via a modal to restart now, defer, or cancel the change; save the new
+        theme preference to the server; and, if the user chose to restart now, log
+        out immediately so the app can relaunch with the new theme."""
         import os, sys
         label = new_theme.capitalize() if new_theme else "Default (System)"
         msg = QMessageBox(self)
@@ -546,15 +583,22 @@ class MainWindow(QMainWindow):
 
 
     def _sideBarStretch(self):
+        """Add an expanding spacer widget to the sidebar so buttons added after it are
+        pushed to the opposite end of the toolbar."""
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.sideBarLayout.addWidget(spacer)
 
     def resizeEvent(self, event):
+        """Qt resize event override: reposition the floating action button whenever
+        the window is resized."""
         self.btnFABUpdatePosition()
         super().resizeEvent(event)
 
     def _moveSidebar(self, area: Qt.ToolBarArea):
+        """Dock the sidebar toolbar to `area` (left/right/bottom), first collapsing it
+        out of its hover-expanded state if needed, and refresh the dock-position
+        menu's checked state to match."""
         if self._sidebarExpanded:
             self._sidebarExpanded = False
             self._sidebarAnim.stop()
@@ -572,11 +616,15 @@ class MainWindow(QMainWindow):
         self._updateSidebarDockActions()
 
     def _updateSidebarDockActions(self):
+        """Sync the checked state of the Left/Right/Bottom dock-position actions with
+        the sidebar toolbar's actual current dock area."""
         current = self.toolBarArea(self.sideBarLayout)
         for area, act in self._sidebarDockActions.items():
             act.setChecked(area == current)
 
     def _sideBarMoveMenu(self, pos):
+        """Show a context menu, triggered by a right-click on the sidebar, offering to
+        move it to the left, right, or bottom dock area."""
         current = self.toolBarArea(self.sideBarLayout)
         menu = QMenu(self)
         for area, label in [
@@ -590,6 +638,9 @@ class MainWindow(QMainWindow):
         menu.exec(self.sideBarLayout.mapToGlobal(pos))
 
     def _initSidebarHover(self):
+        """Set up the sidebar's hover-to-expand behavior: initial collapsed/expanded
+        widths, the width animation, the hover-delay timer, and the event filter used
+        to detect mouse enter/leave on the sidebar and its buttons."""
         self._sidebarExpanded = False
         self._sidebarCollapsedW = 52
         self._sidebarExpandedW = 320
@@ -607,6 +658,10 @@ class MainWindow(QMainWindow):
             btn.installEventFilter(self)
 
     def eventFilter(self, obj, event):
+        """Qt event filter: suppress the native tooltip popup on sidebar buttons
+        (their label is shown via the hover-expanded sidebar instead) and start/stop
+        the hover-expand timer, and trigger the collapse, as the mouse enters/leaves
+        the sidebar toolbar."""
         if obj in self._sideBarBtnMap and event.type() == QEvent.Type.ToolTip:
             return True  # suppress tooltip popup while keeping toolTip() text intact
         if obj is self.sideBarLayout:
@@ -621,6 +676,9 @@ class MainWindow(QMainWindow):
         return super().eventFilter(obj, event)
 
     def _expandSidebar(self):
+        """Expand the sidebar to show each button's label next to its icon, invoked
+        once the hover-delay timer elapses; highlights the button for the currently
+        selected tab at full opacity and dims the others."""
         if self._sidebarExpanded:
             return
         self._sidebarExpanded = True
@@ -646,6 +704,8 @@ class MainWindow(QMainWindow):
         self._sidebarAnim.start()
 
     def _collapseSidebar(self):
+        """Animate the sidebar back to its narrow, icon-only width, invoked when the
+        mouse leaves it, restoring the selected/dimmed opacity of each button."""
         if not self._sidebarExpanded:
             return
         self._sidebarExpanded = False
@@ -665,6 +725,8 @@ class MainWindow(QMainWindow):
 
 
     def _onSidebarAnimFinished(self):
+        """Slot for the sidebar width animation's `finished` signal: once a collapse
+        animation ends, clear each button's text and style back to icon-only."""
         if not self._sidebarExpanded:
             for btn in self._sideBarBtnMap:
                 btn.setText("")
@@ -672,9 +734,14 @@ class MainWindow(QMainWindow):
                 btn.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
 
     def createPopupMenu(self):
+        """Qt override: disable QMainWindow's default toolbar/dock-widget right-click
+        context menu by returning None."""
         return None
 
     def stackTabChanged(self):
+        """Slot for the stacked widget's `currentChanged` signal (also invoked once at
+        startup): update every sidebar button's selected/highlighted appearance to
+        match whichever tab is now current."""
         self.update()
         current = self.stack.currentWidget()
         for btn, tab in self._sideBarBtnMap.items():
@@ -690,9 +757,14 @@ class MainWindow(QMainWindow):
             btn.update()
 
     def btnFABHandler(self):
+        """Handle a click of the floating action button; base implementation is a
+        no-op, overridden by role-specific windows that need a FAB action (e.g.
+        creating a new PTW or IC)."""
         return
     
     def logout(self):
+        """Handle a logout request: stop the SSE listener, hide the tray icon, force
+        a real close (bypassing the close-to-tray prompt), and emit `on_logout`."""
         self._sseListener.stop()
         self._sseListener.wait(1000)
         self._trayIcon.hide()
@@ -701,6 +773,11 @@ class MainWindow(QMainWindow):
         self.close()
 
     def closeEvent(self, event):
+        """Qt close event override triggered by the window's close (X) button: apply a
+        remembered close-to-tray/exit preference immediately if one is set, otherwise
+        ask the user (with an optional 'remember my choice' checkbox) whether to keep
+        running in the tray or exit completely, and act on the answer — Cancel just
+        re-ignores the event."""
         if self._forceClose:
             event.accept()
             return
@@ -748,6 +825,8 @@ class MainWindow(QMainWindow):
         self._minimizeToTray()
 
     def _minimizeToTray(self):
+        """Hide the main window and show a tray notification that PTW is still
+        running in the background."""
         self.hide()
         self._trayIcon.showMessage(
             "PTW", "Still running in the background. Click the tray icon to reopen.",
@@ -755,15 +834,23 @@ class MainWindow(QMainWindow):
         )
 
     def _onTrayActivated(self, reason):
+        """Slot for the tray icon's `activated` signal: restore the main window on a
+        single (Trigger) or double click."""
         if reason in (QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick):
             self._restoreFromTray()
 
     def _restoreFromTray(self):
+        """Show, raise, and activate the main window, restoring it from the system
+        tray (used by both the tray icon's activation and its 'Open PTW' menu
+        action)."""
         self.show()
         self.raise_()
         self.activateWindow()
 
     def _quitApp(self):
+        """Fully quit the application (from the tray menu's 'Quit' action or a
+        close-behavior of 'exit'): stop the SSE listener, hide the tray icon, and
+        call `QApplication.quit()`."""
         self._sseListener.stop()
         self._sseListener.wait(1000)
         self._trayIcon.hide()
@@ -771,18 +858,24 @@ class MainWindow(QMainWindow):
         QApplication.quit()
     
     def viewPTW(self, row: int, ptw: PTW):
+        """Open a read-only `DialogPTW` for `ptw`, e.g. from a table's View action."""
         self._refreshOverlay.showBusy()
         viewPTWDialog = DialogPTW(self, self.loggedUser, ptw, None, False, True, f'View Mode - PTW# {ptw.id}')
         self._refreshOverlay.hideBusy()
         viewPTWDialog.exec()
 
     def _savePTWRiskAssessment(self, ptwId: int, risk: RiskAssessment, callback=None):
+        """Save `risk` as the PTW's risk assessment on the server, or delete the
+        existing one for `ptwId` if `risk` is falsy."""
         if risk:
             ClientRequests.updateRiskAssessment(self.loggedUser, risk, callback=callback)
         else:
             ClientRequests.deleteRiskAssessment(self.loggedUser, str(ptwId), ptwId, callback=callback)
 
     def editPTW(self, row: int, ptw: PTW):
+        """Open `ptw` in an editable `DialogPTW`; on acceptance, clear its approval
+        history if it had been RETURNED, save its risk assessment, and update the
+        row in the current table."""
         toEditPtw = copy.deepcopy(ptw)
         wasReturned = toEditPtw.approval_status == PTW.ApprovalStatus.RETURNED
         self._refreshOverlay.showBusy()
@@ -802,6 +895,11 @@ class MainWindow(QMainWindow):
             self.stack.currentWidget().updatePTW(row, ptw)
 
     def addPTWDialog(self, row: int = None, ptw: PTW = None):
+        """Open a new-PTW dialog, or a re-request dialog pre-filled from `ptw` (e.g.
+        for a rejected/deleted permit) when `ptw` is given; on acceptance, submit the
+        new PTW, save its risk assessment, and upload any pending attachments —
+        additionally copying `ptw`'s own attachments (and, server-side, its risk rows)
+        onto the new PTW when re-requesting."""
         newPTW = copy.deepcopy(ptw) if ptw else PTW()
         if ptw:
             newPTW.setId(None).clearApprovals()
@@ -847,12 +945,17 @@ class MainWindow(QMainWindow):
 
 
     def deletePTW(self, row: int, ptw: PTW):
+        """Delete `ptw` at `row` via the current table's own delete handling."""
         self.stack.currentWidget().deletePTW(row)
     
     def archivePTWs(self, rows: list, ptws: list[PTW]):
+        """Archive the given PTWs in one bulk request, e.g. from a table's Archive
+        action."""
         ClientRequests.archivePTWs(self.loggedUser, [ptw.id for ptw in ptws], callback=self._on_request_done_generic)
     
     def requestToRunPTW(self, row: int, ptw: PTW):
+        """Send a run request for `ptw` as the current user acting as Performing
+        Authority, refusing if the user is already the PA on another PTW."""
         for p in globalData.allPTWs.values():
             if p.getPerforming() == self.loggedUser.getUsername():
                 QMessageBox.warning(self, 'Not Allowed', f"You are already the PA for PTW# {p.id}.")
@@ -863,6 +966,8 @@ class MainWindow(QMainWindow):
         ClientRequests.requestToRunPTW(self.loggedUser, ptw.id, pa, ts, callback=self._on_request_done_generic)
 
     def runAcceptTW(self, row: int, ptw: PTW):
+        """Prompt for confirmation and an optional comment, then accept `ptw`'s
+        pending run request as the Issuing Authority."""
         proceed, comment = self.getOptionalComment(f'Accept PTW#{ptw.id} Run', f"Are you sure you want to accept run request for PTW#{ptw.id}?")
         if not proceed:
             return
@@ -872,6 +977,8 @@ class MainWindow(QMainWindow):
         ClientRequests.runResponsePTW(self.loggedUser, ptw.id, ia, ts, True, comment, callback=self._on_request_done_generic)
 
     def runRejectTW(self, row: int, ptw: PTW):
+        """Prompt for confirmation and an optional comment, then reject `ptw`'s
+        pending run request as the Issuing Authority."""
         proceed, comment = self.getOptionalComment(f'Reject PTW#{ptw.id} Run', f"Are you sure you want to reject run request for PTW#{ptw.id}?")
         if not proceed:
             return
@@ -881,6 +988,8 @@ class MainWindow(QMainWindow):
         ClientRequests.runResponsePTW(self.loggedUser, ptw.id, ia, ts, False, comment, callback=self._on_request_done_generic)
 
     def requestToClsPTW(self, row: int, ptw: PTW, callback=None):
+        """Prompt for confirmation and an optional comment, then send a close request
+        for `ptw` as the Performing Authority."""
         proceed, comment = self.getOptionalComment('Close PTW', f"Are you sure you want to close PTW#{ptw.id}?")
         if not proceed:
             return
@@ -890,6 +999,8 @@ class MainWindow(QMainWindow):
         ClientRequests.requestToClsPTW(self.loggedUser, ptw.id, pa, ts, comment, callback=callback or self._on_request_done_generic)
 
     def clsAcceptPTW(self, row: int, ptw: PTW):
+        """Prompt for confirmation and an optional comment, then accept `ptw`'s
+        pending close request as the Issuing Authority (irreversible)."""
         proceed, comment = self.getOptionalComment(f'Accept PTW#{ptw.id} Close', f"Are you sure you want to accept close request for PTW#{ptw.id}? This is irreversible")
         if not proceed:
             return
@@ -899,6 +1010,8 @@ class MainWindow(QMainWindow):
         ClientRequests.clsResponsePTW(self.loggedUser, ptw.id, ia, ts, True, comment, callback=self._on_request_done_generic)
 
     def clsRejectPTW(self, row: int, ptw: PTW):
+        """Prompt for confirmation and an optional comment, then reject `ptw`'s
+        pending close request as the Issuing Authority."""
         proceed, comment = self.getOptionalComment(f'Reject PTW#{ptw.id} Close', f"Are you sure you want to reject close request for PTW#{ptw.id}?")
         if not proceed:
             return
@@ -908,10 +1021,15 @@ class MainWindow(QMainWindow):
         ClientRequests.clsResponsePTW(self.loggedUser, ptw.id, ia, ts, False, comment, callback=self._on_request_done_generic)
 
     def _linkedICsFor(self, ptw: PTW) -> list[IC]:
+        """Resolve `ptw.linked_ics` (a list of IC id strings) to the actual `IC`
+        objects from the global cache."""
         icsById = {str(ic.id): ic for ic in globalData.ics.values()}
         return [icsById[icId] for icId in ptw.linked_ics if icId in icsById]
 
     def requestToHldPTW(self, row: int, ptw: PTW, callback=None):
+        """If `ptw` has linked ICs, prompt the PA to pick which ones to keep held;
+        then, after confirmation with an optional comment, send a hold request for
+        `ptw` carrying the selected IC ids."""
         heldICs = []
         linkedICs = self._linkedICsFor(ptw)
         if linkedICs:
@@ -928,16 +1046,22 @@ class MainWindow(QMainWindow):
         ClientRequests.requestToHldPTW(self.loggedUser, ptw.id, pa, ts, comment, heldICs, callback=callback or self._on_request_done_generic)
 
     def hldAcceptPTW(self, row: int, ptw: PTW, comment: str = None):
+        """Accept `ptw`'s pending hold request as the Issuing Authority."""
         ia = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         ClientRequests.hldResponsePTW(self.loggedUser, ptw.id, ia, ts, True, comment, callback=self._on_request_done_generic)
 
     def hldRejectPTW(self, row: int, ptw: PTW, comment: str = None):
+        """Reject `ptw`'s pending hold request as the Issuing Authority."""
         ia = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         ClientRequests.hldResponsePTW(self.loggedUser, ptw.id, ia, ts, False, comment, callback=self._on_request_done_generic)
 
     def hldTakeAction(self, row: int, ptw: PTW):
+        """Act on `ptw`'s pending hold request as Issuing Authority: refuse if it
+        isn't actually waiting on a hold confirmation, otherwise show the linked-ICs
+        review dialog to pick accept/reject, then confirm with an optional comment
+        and dispatch to `hldAcceptPTW`/`hldRejectPTW`."""
         if ptw.running_status != PTW.RunningStatus.WAITING_HLD_CONFIRM:
             QMessageBox.warning(self, 'Not Allowed', f"PTW# {ptw.id} is not waiting for hold confirmation.")
             return
@@ -955,6 +1079,8 @@ class MainWindow(QMainWindow):
             self.hldRejectPTW(row, ptw, comment)
 
     def viewHeldICs(self, row: int, ptw: PTW):
+        """Open a read-only view of which linked ICs are currently kept held for
+        `ptw`."""
         dlg = DialogSelectHeldICs(
             self, self._linkedICsFor(ptw), held=ptw.getHeldICs(),
             selectable=False, view_only=True,
@@ -963,10 +1089,13 @@ class MainWindow(QMainWindow):
         dlg.exec()
 
     def viewIC(self, row: int, ic: IC):
+        """Open a read-only `DialogIC` for `ic`."""
         dlg = DialogIC(self, self.loggedUser, ic, False, True, f"IC — {ic.type}")
         dlg.exec()
 
     def printIC(self, row: int, ic: IC):
+        """Generate and open a printable report for `ic`, showing the busy overlay
+        while it's produced."""
         self._refreshOverlay.showBusy()
         try:
             ReportGenerator.icReport(self.loggedUser, ic)
@@ -974,6 +1103,8 @@ class MainWindow(QMainWindow):
             self._refreshOverlay.hideBusy()
 
     def acceptIC(self, row: int, ic: IC):
+        """Confirm and, if confirmed, record an irreversible approval for `ic` on its
+        approval chain."""
         reply = QMessageBox.question(
             self, f'Accept IC #{ic.id}', f"Are you sure you want to approve IC #{ic.id}? This is irreversible",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
@@ -984,6 +1115,8 @@ class MainWindow(QMainWindow):
         ClientRequests.updateApprovalIC(self.loggedUser, ic.id, approval, callback=self._on_request_done_generic)
 
     def requestEditsIC(self, row: int, ic: IC):
+        """Prompt for a mandatory comment and return `ic` to its requestor for edits,
+        recording a RETURNED approval action."""
         comment = self.getComment(f'Return IC #{ic.id} to be Edited')
         if not comment:
             return
@@ -991,6 +1124,8 @@ class MainWindow(QMainWindow):
         ClientRequests.updateApprovalIC(self.loggedUser, ic.id, approval, callback=self._on_request_done_generic)
 
     def requestIsolateIC(self, row: int, ic: IC):
+        """Confirm and, if confirmed, request isolation for `ic`, notifying the
+        Issuing Authority to confirm."""
         reply = QMessageBox.question(
             self, f'Request Isolate #{ic.id}', f"Request isolation for IC #{ic.id}? This will notify Issuing to confirm.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
@@ -1000,6 +1135,8 @@ class MainWindow(QMainWindow):
         ClientRequests.requestIsolateIC(self.loggedUser, ic.id, callback=self._on_request_done_generic)
 
     def confirmIsolateIC(self, row: int, ic: IC):
+        """Confirm and, if confirmed, confirm `ic`'s isolate request as Issuing
+        Authority, notifying the isolator to carry it out."""
         reply = QMessageBox.question(
             self, f'Confirm Isolate #{ic.id}', f"Confirm isolation for IC #{ic.id}? The isolator will then be notified to carry it out.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
@@ -1009,6 +1146,8 @@ class MainWindow(QMainWindow):
         ClientRequests.confirmIsolateIC(self.loggedUser, ic.id, True, callback=self._on_request_done_generic)
 
     def returnIsolateIC(self, row: int, ic: IC):
+        """Confirm and, if confirmed, return `ic`'s isolate request, requiring the
+        requestor to request isolation again."""
         reply = QMessageBox.question(
             self, f'Return Isolate Request #{ic.id}', f"Return the isolate request for IC #{ic.id}? The requestor will need to request isolation again.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
@@ -1018,6 +1157,9 @@ class MainWindow(QMainWindow):
         ClientRequests.confirmIsolateIC(self.loggedUser, ic.id, False, callback=self._on_request_done_generic)
 
     def executeIsolateIC(self, row: int, ic: IC):
+        """Carry out `ic`'s isolation as the isolator: if `ic` has items, collect
+        per-item lock details via `DialogCompleteIsolation`; otherwise just confirm
+        physical completion; then submit the isolation as executed."""
         if ic.items:
             dlg = DialogCompleteIsolation(self, ic.items)
             if dlg.exec() != QDialog.DialogCode.Accepted:
@@ -1034,6 +1176,8 @@ class MainWindow(QMainWindow):
         ClientRequests.executeIsolateIC(self.loggedUser, ic.id, items, callback=self._on_request_done_generic)
 
     def requestDeisolateIC(self, row: int, ic: IC):
+        """Confirm and, if confirmed, request de-isolation for `ic`, notifying the
+        Issuing Authority to confirm."""
         reply = QMessageBox.question(
             self, f'Request De-isolate #{ic.id}', f"Request de-isolation for IC #{ic.id}? This will notify Issuing to confirm.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
@@ -1043,6 +1187,8 @@ class MainWindow(QMainWindow):
         ClientRequests.requestDeisolateIC(self.loggedUser, ic.id, callback=self._on_request_done_generic)
 
     def confirmDeisolateIC(self, row: int, ic: IC):
+        """Confirm and, if confirmed, confirm `ic`'s de-isolate request as Issuing
+        Authority, notifying the isolator to carry it out."""
         reply = QMessageBox.question(
             self, f'Confirm De-isolate #{ic.id}', f"Confirm de-isolation for IC #{ic.id}? The isolator will then be notified to carry it out.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
@@ -1052,6 +1198,8 @@ class MainWindow(QMainWindow):
         ClientRequests.confirmDeisolateIC(self.loggedUser, ic.id, True, callback=self._on_request_done_generic)
 
     def returnDeisolateIC(self, row: int, ic: IC):
+        """Confirm and, if confirmed, return `ic`'s de-isolate request, requiring the
+        requestor to request de-isolation again."""
         reply = QMessageBox.question(
             self, f'Return De-isolate Request #{ic.id}', f"Return the de-isolate request for IC #{ic.id}? The requestor will need to request de-isolation again.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
@@ -1061,6 +1209,8 @@ class MainWindow(QMainWindow):
         ClientRequests.confirmDeisolateIC(self.loggedUser, ic.id, False, callback=self._on_request_done_generic)
 
     def executeDeisolateIC(self, row: int, ic: IC):
+        """Confirm and, if confirmed, carry out `ic`'s de-isolation as the
+        isolator."""
         reply = QMessageBox.question(
             self, f'Complete De-isolation #{ic.id}', f"Confirm that de-isolation for IC #{ic.id} has been physically carried out?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
@@ -1070,6 +1220,8 @@ class MainWindow(QMainWindow):
         ClientRequests.executeDeisolateIC(self.loggedUser, ic.id, callback=self._on_request_done_generic)
 
     def linkPTWToIC(self, row: int, ic: IC):
+        """Prompt for a PTW number and link it to `ic`, refusing if that PTW is
+        already linked."""
         ptwId, ok = QInputDialog.getText(self, f'Link IC #{ic.id} to PTW', 'PTW #:')
         if not ok or not ptwId.strip():
             return
@@ -1080,6 +1232,8 @@ class MainWindow(QMainWindow):
         ClientRequests.linkPTWToIC(self.loggedUser, ic.id, ptwId, callback=self._on_request_done_generic)
 
     def linkICToPTW(self, row: int, ptw: PTW):
+        """Prompt for an IC number and link `ptw` to it, validating the input is
+        numeric and refusing if it's already linked."""
         certIdText, ok = QInputDialog.getText(self, f'Link PTW #{ptw.id} to IC', 'IC #:')
         if not ok or not certIdText.strip():
             return
@@ -1094,16 +1248,25 @@ class MainWindow(QMainWindow):
         ClientRequests.linkPTWToIC(self.loggedUser, icId, ptw.id, callback=self._on_request_done_generic)
 
     def requestToSuctionTestPTW(self, row: int, ptw: PTW):
+        """Placeholder for requesting a suction-for-test action on `ptw`; not yet
+        implemented."""
         pass
 
     def suctionTestAcceptPTW(self, row: int, ptw: PTW):
+        """Placeholder for approving a pending suction-for-test request on `ptw`; not
+        yet implemented."""
         pass
 
     def suctionTestRejectPTW(self, row: int, ptw: PTW):
+        """Placeholder for rejecting a pending suction-for-test request on `ptw`; not
+        yet implemented."""
         pass
 
 
     def viewUser(self, username: str, role: str):
+        """Open a read-only `DialogUser` for `username` (labeled with `role`, e.g.
+        'PA'/'IA'/'Requestor'), warning instead if no username is assigned or the
+        user can't be found."""
         if username is None or username.strip() == '':
             QMessageBox.warning(self, f'No {role} Assigned', f"No {role} assigned yet.")
             return
@@ -1113,15 +1276,20 @@ class MainWindow(QMainWindow):
         DialogUser(self, True, False, self.loggedUser, globalData.allUsers[username], f"{role} - View Mode - User {username}").exec()
     
     def viewRequestorPTW(self, row: int, ptw: PTW):
+        """View `ptw`'s requestor via `viewUser`."""
         self.viewUser(ptw.requestor, 'Requestor')
 
     def viewPerformingPTW(self, row: int, ptw: PTW):
+        """View `ptw`'s current Performing Authority via `viewUser`."""
         self.viewUser(ptw.getPerforming(), 'PA')
 
     def viewIssuing(self, row: int, ptw: PTW):
+        """View `ptw`'s current Issuing Authority via `viewUser`."""
         self.viewUser(ptw.getIssuing(), 'IA')
     
     def chgLanguage(self):
+        """Toggle the stored language flag between English and Arabic when the
+        language button is clicked, and update its tooltip accordingly."""
         if self.language == 'en':
             self.language = 'ar'
             self.btnLanguage.setToolTip("Switch to English")
@@ -1131,6 +1299,10 @@ class MainWindow(QMainWindow):
         # self.refreshGUI()
 
     def dlgSettings(self):
+        """Open the Settings dialog, invoked from the settings button or the welcome
+        banner's name link; blocks Guest users. On acceptance, save the updated user
+        profile to the server, refresh the welcome banner's name/role text, and
+        prompt to apply a theme change if the theme was changed."""
         if self.loggedUser.getRole() == UserRoles.GUEST:
             QMessageBox.warning(self, "Access Denied", "Guest users cannot access settings.")
             return
@@ -1154,12 +1326,16 @@ class MainWindow(QMainWindow):
         ClientRequests.updateUser(self.loggedUser, user, callback=on_update_done)
         
     def btnFABUpdatePosition(self):
+        """Reposition the floating action button to the bottom-right corner of the
+        window, above the status bar."""
         margin = 40
         x = self.width() - self.btnFAB.width() - margin
         y = self.height() - self.btnFAB.height() - margin - self.statusBar().height()
         self.btnFAB.move(x, y)
     
     def _footerButtons(self) -> list[QPushButton]:
+        """Return the sidebar's footer button group (theme/settings, refresh,
+        logout), omitting theme/settings for Guest users."""
         footer: list[QPushButton] = []
         if self.loggedUser.getRole() != UserRoles.GUEST:
             footer.extend([self.btnTheme, self.btnSettings])
@@ -1167,6 +1343,10 @@ class MainWindow(QMainWindow):
         return footer
 
     def setAvailableTabs(self, sidebarGroups: list[list[QPushButton]], topbarGroups: dict[str, list[QPushButton | None]]):
+        """Declare the role's full sidebar/topbar button layout in one call: record
+        which nav buttons and tabs this role can reach, then build the sidebar, the
+        topbar, and the home page from them. Called once by each role-specific
+        window's `__init__`."""
         self._availableNavButtons = (
             {btn for group in sidebarGroups for btn in group} |
             {btn for group in topbarGroups.values() for btn in group if btn is not None}
@@ -1180,6 +1360,9 @@ class MainWindow(QMainWindow):
         self.buildHomePage()
 
     def setSidebarButtons(self, groups: list[list[QPushButton]]):
+        """Populate the sidebar toolbar from `groups` (capped to 9 nav buttons total,
+        separators between groups), append the shared footer buttons, and wire
+        Alt+1..Alt+8 quick-nav shortcuts to the first 8 nav buttons."""
         FOOTER_BTNS = self._footerButtons()
 
         capped_groups = []
@@ -1301,6 +1484,8 @@ class MainWindow(QMainWindow):
                 self.toolbar.addWidget(make_menu_btn(name, [nav_action(w) if isinstance(w, QPushButton) else w for w in btns]))
 
     def _approvalCycleTabs(self):
+        """Return the (label, sidebar button, tab, color) tuples for the four
+        approval-cycle stages shown on the home-page dashboard."""
         return [
             ('Requested',    self.btnRequestedPTWs,   self.tabRequestedPTWs,   APPROVAL_CYCLE_COLORS['Requested']),
             ('Under Review', self.btnUnderReviewPTWs, self.tabUnderReviewPTWs, APPROVAL_CYCLE_COLORS['Under Review']),
@@ -1348,10 +1533,14 @@ class MainWindow(QMainWindow):
             ])
 
     def _openRunningFilteredByLocation(self, location: str):
+        """Navigate to the Running PTWs tab and filter it down to `location`,
+        invoked when a running-PTWs-by-location donut segment is clicked."""
         self.btnRunningPTWs.click()
         self.tabRunningPTWs.filterColumn('Location', {location})
 
     def _showAboutPTW(self):
+        """Show the 'About PTW' dialog, with a usage summary tailored to the logged-in
+        user's role."""
         role = self.loggedUser.getRole()
         role_descriptions = {
             UserRoles.USER: (
@@ -1417,9 +1606,16 @@ class MainWindow(QMainWindow):
         )
 
     def refreshGUI(self, refreshArchivedPTWs: bool = False):
+        """Template method for a full data-and-GUI refresh; base implementation is a
+        no-op, overridden by role-specific windows (typically to call
+        `refreshPtwUserGUI`)."""
         pass
 
     def _onSSEEvent(self, event_type: str, data: dict):
+        """Slot for the SSE listener's `eventReceived` signal, fired on every incoming
+        real-time PTW/IC change event: beep and show a tray/status-bar notification
+        summarizing it, then patch the touched record into the cache and its tab via
+        `_applyPTWEvent`/`_applyICEvent` instead of doing a full refresh."""
         obj = data.get("object")
         objectId = data.get("object_id")
         action = data.get("action")
@@ -1457,6 +1653,9 @@ class MainWindow(QMainWindow):
             self._showPtwAlarms(validityExpired, shiftExpired)
 
     def _showPtwAlarms(self, validityExpired: list[PTW], shiftExpired: list[PTW]):
+        """Beep and show a tray notification with the total alarmed-PTW count, then
+        open the grouped `DialogPtwAlarms` popup for `validityExpired`/`shiftExpired`
+        and, once dismissed, snooze the next check for `_PTW_ALARM_REPEAT_MINUTES`."""
         total = len(validityExpired) + len(shiftExpired)
         QApplication.beep()
         self._trayIcon.showMessage(
@@ -1470,6 +1669,8 @@ class MainWindow(QMainWindow):
         self._ptwAlarmSnoozeUntil = datetime.now() + timedelta(minutes=self._PTW_ALARM_REPEAT_MINUTES)
 
     def _allPTWTabs(self) -> list[TablePTWs]:
+        """Return every PTW status tab (excluding Registered/Template and Archived)
+        that a full refresh or an SSE patch needs to consider."""
         return [
             self.tabRequestedPTWs,
             self.tabUnderReviewPTWs,
@@ -1518,6 +1719,8 @@ class MainWindow(QMainWindow):
             self.tabMeetingPTWs.addPTWToGUI(ptw)
 
     def _removePTWFromTabs(self, ptwId):
+        """Remove the PTW with id `ptwId` from every PTW tab it might currently be
+        sitting in."""
         for tab in self._allPTWTabs():
             tab.removePTWById(ptwId)
 
@@ -1543,6 +1746,8 @@ class MainWindow(QMainWindow):
         ClientRequests.getPTWById(self.loggedUser, ptwId, callback=on_done)
 
     def _allICTabs(self) -> list[TableICs]:
+        """Return every IC status tab that a full refresh or an SSE patch needs to
+        consider."""
         return [
             self.tabRequestedICs,
             self.tabUnderReviewICs,
@@ -1585,6 +1790,8 @@ class MainWindow(QMainWindow):
         return self.tabUnderReviewICs if myTurn else self.tabRequestedICs
 
     def _removeICFromTabs(self, icId):
+        """Remove the IC with id `icId` from every IC tab it might currently be
+        sitting in."""
         for tab in self._allICTabs():
             tab.removeICById(icId)
 
@@ -1605,6 +1812,8 @@ class MainWindow(QMainWindow):
         ClientRequests.getICById(self.loggedUser, icId, callback=on_done)
 
     def refreshWelcomePage(self):
+        """Re-fetch the current user's own data (and users), then update the welcome
+        banner's role/name text, showing the busy overlay meanwhile."""
         def on_done(err, _):
             self._refreshOverlay.hideBusy()
             if err:
@@ -1615,6 +1824,10 @@ class MainWindow(QMainWindow):
         globalData.refresh(self.loggedUser, self.loggedUser.getDepartment() if self.loggedUser.getRole() in (UserRoles.USER, UserRoles.GUEST, UserRoles.ISOLATOR) else None, refreshUsers=True, callback=on_done)
 
     def refreshPtwUserGUI(self, refreshArchivedPTWs: bool = False):
+        """Do a full data refresh (users/PTWs/risk assessments/MIWIs/ICs) from the
+        server, then clear and repopulate every PTW tab, the risks tab, and the IC
+        tabs from the refreshed cache; optionally also refresh archived PTWs; and
+        update the home dashboard."""
         def on_done(err, _):
             tabs = self._allPTWTabs()
 
@@ -1649,6 +1862,7 @@ class MainWindow(QMainWindow):
         )
 
     def refreshICsGUI(self):
+        """Clear and repopulate every IC tab from the currently cached IC data."""
         tabs = self._allICTabs()
         for tab in tabs:
             tab.clear()
@@ -1662,6 +1876,8 @@ class MainWindow(QMainWindow):
             tab.sort()
 
     def refreshArchivedPTWs(self):
+        """Fetch archived PTWs from the server (on demand) and repopulate the
+        Archived PTWs tab from them."""
         self.tabArchivedPTWs.clear()
 
         def on_done(err, _):
@@ -1682,6 +1898,8 @@ class MainWindow(QMainWindow):
         )
 
     def acceptPTW(self, row: int, ptw: PTW):
+        """Confirm and, if confirmed, record an irreversible approval for `ptw` on
+        its approval chain."""
         reply = QMessageBox.question(
             self, f'Accept PTW#{ptw.id}', f"Are you sure you want to approve request for PTW#{ptw.id}? This is irreversible", 
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
@@ -1693,6 +1911,8 @@ class MainWindow(QMainWindow):
         ClientRequests.updateApprovalPTW(self.loggedUser, ptw.id, approval, callback=self._on_request_done_generic)
         
     def getComment(self, title: str, emptyCommentErr: str = 'Empty comment not allowed'):
+        """Prompt for a mandatory multi-line comment, re-prompting with a warning
+        until non-empty text is entered; returns None if the dialog is cancelled."""
         while True:
             comment, ok = QInputDialog.getMultiLineText(self, title, "Comment:")
             if not ok:
@@ -1707,6 +1927,8 @@ class MainWindow(QMainWindow):
         return ok, (comment or None)
     
     def requestEditsPTW(self, row: int, ptw: PTW):
+        """Prompt for a mandatory comment and return `ptw` to its requestor for
+        edits, recording a RETURNED approval action."""
         comment = self.getComment(f'Return PTW# {ptw.id} to be Edited')
         if not comment:
             return
@@ -1714,6 +1936,8 @@ class MainWindow(QMainWindow):
         ClientRequests.updateApprovalPTW(self.loggedUser, ptw.id, approval, callback=self._on_request_done_generic)
 
     def exportPTWs(self, rows: list, ptws: list[PTW]):
+        """Export the selected PTWs to an Excel report, warning if none are selected
+        or if the export itself fails."""
         if not ptws:
             QMessageBox.information(self, "No PTWs Selected", "Please select at least one PTW to export.")
             return
@@ -1722,6 +1946,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Export Failed", err)
 
     def printPTW(self, row: int, ptw: PTW):
+        """Generate and open a printable report for `ptw`, showing the busy overlay
+        while it's produced."""
         self._refreshOverlay.showBusy()
         try:
             ReportGenerator.ptwReport(self.loggedUser, ptw)
@@ -1729,6 +1955,7 @@ class MainWindow(QMainWindow):
             self._refreshOverlay.hideBusy()
 
     def printPTWs(self):
+        """Print every PTW currently in the active tab, one report at a time."""
         tab: TablePTWs = self.stack.currentWidget()
         self._refreshOverlay.showBusy()
         try:

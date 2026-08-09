@@ -1,3 +1,9 @@
+"""Background thread that streams real-time PTW/IC events from GET /events.
+
+See "Real-Time Events (SSE)" in PROJECT.md for the server-side event envelope
+and the full list of broadcast object/action pairs.
+"""
+
 import json
 import time
 import requests
@@ -5,9 +11,19 @@ from PyQt6.QtCore import QThread, pyqtSignal
 
 
 class SSEListener(QThread):
+    """QThread that keeps a long-lived SSE connection to GET /events open.
+
+    Parses the ``event:``/``data:`` lines of the stream and re-emits each
+    event generically as ``eventReceived(event_type, data)`` — consumers
+    (``MainWindow._onSSEEvent``) dispatch on the ``data`` payload's own
+    ``{object, object_id, action, by}`` envelope, not on ``event_type``. Runs
+    until ``stop()`` is called, auto-reconnecting after any connection error.
+    """
+
     eventReceived = pyqtSignal(str, dict)   # (event_type, data)
 
     def __init__(self, server_url: str, username: str, password: str):
+        """Store the server URL and Basic Auth credentials for the eventual connection."""
         super().__init__()
         self._server_url = server_url
         self._username = username
@@ -15,10 +31,26 @@ class SSEListener(QThread):
         self._running = True
 
     def stop(self):
+        """Ask the thread's run loop to exit and quit the underlying QThread."""
         self._running = False
         self.quit()
 
     def run(self):
+        """Thread entry point: connect to GET /events and emit events until stopped.
+
+        Loops while ``_running``. Each iteration opens a streaming, Basic-Auth
+        GET to ``{server_url}/events`` (10s connect timeout, no read timeout)
+        and reads it line by line in the SSE wire format: a blank line resets
+        the current event type back to ``"message"``, a line starting with
+        ``:`` is a comment and is ignored, an ``event:`` line updates the
+        current event type, and a ``data:`` line JSON-decodes its payload and
+        emits ``eventReceived(event_type, data)`` — a JSON decode failure on
+        that line is silently swallowed rather than raised. If ``_running``
+        turns false while reading, the method returns immediately, ending the
+        thread. Any other exception (e.g. a dropped connection) is caught
+        broadly; if the listener hasn't been stopped, it sleeps 5 seconds and
+        the outer loop reconnects by opening a fresh stream.
+        """
         while self._running:
             try:
                 with requests.get(

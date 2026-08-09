@@ -1,3 +1,7 @@
+"""Flask blueprint for PTW (Permit To Work) endpoints: listing and CRUD,
+the approval chain, the run/hold/close running-cycle state machine, manual
+and automatic archiving, and PTW attachment management.
+"""
 import os
 import shutil
 import threading
@@ -43,6 +47,13 @@ def _ptwVisibleToDepartment(ptw: PTW, department: str) -> bool:
 
 @ptwsBp.route("/ptws", methods=["GET"])
 def getAllPTWs():
+    """Return all PTWs visible to the caller, optionally filtered by requestor.
+
+    GET, any authenticated user. USER/GUEST are restricted to their own
+    department; other roles may filter by an explicit ``department`` in
+    the JSON body (or see all when omitted). Optionally filters by
+    ``requestor``. Responds with ``{"success": True, "ptws": [...]}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("GET /ptws unauthorized (ip=%s)", request.remote_addr)
@@ -66,7 +77,12 @@ def getAllPTWs():
 
 @ptwsBp.route("/ptws/<int:ptwId>", methods=["GET"])
 def getPTWByIdRoute(ptwId):
-    """Single-record lookup for SSE-driven targeted refreshes — same visibility rule as GET /ptws."""
+    """Single-record lookup for SSE-driven targeted refreshes — same visibility rule as GET /ptws.
+
+    GET, any authenticated user; USER/GUEST are department-restricted.
+    Responds with ``{"success": True, "ptw": ...}``, or 404 if the PTW
+    doesn't exist or isn't visible to the caller's department.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("GET /ptws/%s unauthorized (ip=%s)", ptwId, request.remote_addr)
@@ -82,6 +98,12 @@ def getPTWByIdRoute(ptwId):
 
 @ptwsBp.route("/ptws/archive", methods=["GET"])
 def getArchivedPTWs():
+    """Return archived PTWs, optionally filtered by department.
+
+    GET, any authenticated user. USER/GUEST are restricted to their own
+    department; other roles may pass an explicit ``department`` in the
+    JSON body. Responds with ``{"success": True, "ptws": [...]}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("GET /ptws/archive unauthorized (ip=%s)", request.remote_addr)
@@ -99,6 +121,13 @@ def getArchivedPTWs():
 
 @ptwsBp.route("/ptws", methods=["POST"])
 def addPTWRequest():
+    """Create a new PTW.
+
+    POST, any authenticated user. Body is the full PTW dict; rejected with
+    400 if ``PTW.validate()`` fails. On success persists the PTW, updates
+    the in-memory cache, broadcasts a ``PTW created`` SSE event to USER and
+    COORDINATOR roles, and responds with ``{"success": True, "ptw-id": ...}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ptws unauthorized (ip=%s)", request.remote_addr)
@@ -125,6 +154,14 @@ def addPTWRequest():
 
 @ptwsBp.route("/ptws", methods=["PUT"])
 def updatePTWRequest():
+    """Edit and resubmit a RETURNED PTW.
+
+    PUT, any authenticated user. Only allowed on a PTW belonging to the
+    caller's own department whose ``approval_status`` is ``RETURNED`` (403
+    otherwise); body is the updated PTW dict, validated via
+    ``PTW.validate()``. Broadcasts a ``PTW updated`` SSE event to USER and
+    COORDINATOR roles and responds with ``{"success": True, "ptw-id": ...}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("PUT /ptws unauthorized (ip=%s)", request.remote_addr)
@@ -163,6 +200,14 @@ def updatePTWRequest():
 
 @ptwsBp.route("/ptws", methods=["DELETE"])
 def deletePTWRequest():
+    """Delete a PTW.
+
+    DELETE, any non-guest authenticated user (guest forbidden). Body
+    carries ``ptw-id``; if that PTW is currently cached its
+    ``approval_status`` must be ``RETURNED`` (403 otherwise), then it's
+    removed from the database and the in-memory cache and a ``PTW deleted``
+    SSE event is broadcast. Responds with ``{"success": True, "ptw": ...}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("DELETE /ptws unauthorized (ip=%s)", request.remote_addr)
@@ -190,6 +235,15 @@ def deletePTWRequest():
 
 @ptwsBp.route("/ptws/approvals", methods=["POST"])
 def updatePTWApprovals():
+    """Submit an approval or return action on a PTW's approval chain.
+
+    POST, any non-guest authenticated user. Body carries ``ptw-id`` and an
+    ``approval`` dict (built into ``PTW.Approval``); the caller must
+    currently be an eligible approver at the PTW's stage
+    (``getApprovalStatus`` == ``UNDER_REVIEW`` for their role/department),
+    else 403. Broadcasts a ``PTW approved``/``PTW returned`` SSE event and
+    responds with ``{"success": True, "ptw": ...}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ptws/approvals unauthorized (ip=%s)", request.remote_addr)
@@ -225,6 +279,14 @@ def updatePTWApprovals():
 
 @ptwsBp.route("/ptws/archive", methods=["POST"])
 def archivePTWs():
+    """Archive one or more CLOSED PTWs.
+
+    POST, any non-guest authenticated user. Body carries ``ptw-ids``; each
+    must resolve to a currently-cached PTW whose ``running_status`` is
+    ``CLOSED`` (404/403 otherwise). Archived PTWs are dropped from the
+    in-memory cache and a ``PTW archived`` SSE event is broadcast per id.
+    Responds with ``{"success": True, "ptw": ...}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ptws/archive unauthorized (ip=%s)", request.remote_addr)
@@ -261,6 +323,14 @@ def archivePTWs():
 
 @ptwsBp.route("/ptws/run-request", methods=["POST"])
 def requestToRunPTW():
+    """Record the Performing Authority's request to start work on a PTW.
+
+    POST, any non-guest authenticated user. Body carries ``ptw-id``, ``pa``,
+    and ``timestamp``. 403s if the PTW's 14-shift validity has expired or
+    any linked IC isn't ``Active``. Broadcasts a ``PTW run requested`` SSE
+    event to USER and ISSUING roles and responds with
+    ``{"success": True, "message": ...}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ptws/run-request unauthorized (ip=%s)", request.remote_addr)
@@ -307,6 +377,16 @@ def requestToRunPTW():
 
 @ptwsBp.route("/ptws/run", methods=["POST"])
 def runPTW():
+    """Record the Issuing Authority's accept/reject response to a run request.
+
+    POST, ``ISSUING`` role only. Body carries ``ptw-id``, ``ia``,
+    ``timestamp``, ``response`` (accept/reject) and an optional
+    ``comment``. Accepting 403s if the PTW's 14-shift validity has expired
+    or any linked IC isn't ``Active``; otherwise records the accept/reject
+    via ``ptwDB.runAcceptPTW``/``runRejectPTW``, broadcasts the matching
+    ``PTW run accepted``/``PTW run rejected`` SSE event, and responds with
+    ``{"success": True}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ptws/run unauthorized (ip=%s)", request.remote_addr)
@@ -360,6 +440,14 @@ def runPTW():
 
 @ptwsBp.route("/ptws/hold-request", methods=["POST"])
 def requestToHldPTW():
+    """Record the Performing Authority's request to hold work on a PTW.
+
+    POST, any non-guest authenticated user. Body carries ``ptw-id``, ``pa``,
+    ``timestamp``, an optional ``comment``, and ``held-ics`` (isolation
+    tags to keep linked through the hold). Broadcasts a ``PTW hold
+    requested`` SSE event to USER and ISSUING roles and responds with
+    ``{"success": True}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ptws/hold-request unauthorized (ip=%s)", request.remote_addr)
@@ -389,6 +477,14 @@ def requestToHldPTW():
 
 @ptwsBp.route("/ptws/hold", methods=["POST"])
 def hldPTW():
+    """Record the Issuing Authority's accept/reject response to a hold request.
+
+    POST, ``ISSUING`` role only. Body carries ``ptw-id``, ``ia``,
+    ``timestamp``, ``response`` and an optional ``comment``. Accepting also
+    runs ``checkAndAutoDeisolateICs`` over the PTW's linked ICs. Broadcasts
+    the matching ``PTW held``/``PTW hold rejected`` SSE event and responds
+    with ``{"success": True}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ptws/hold unauthorized (ip=%s)", request.remote_addr)
@@ -432,6 +528,15 @@ def hldPTW():
 
 @ptwsBp.route("/ptws/close-request", methods=["POST"])
 def requestToClsPTW():
+    """Record the Performing Authority's request to close a PTW.
+
+    POST, any non-guest authenticated user. Body carries ``ptw-id``, ``pa``,
+    ``timestamp`` and an optional ``comment``; 403s unless the PTW's
+    ``approval_status`` is ``APPROVED`` (covers both a normally-running
+    PTW and one that was approved but never run). Broadcasts a ``PTW close
+    requested`` SSE event to USER and ISSUING roles and responds with
+    ``{"success": True, "message": ...}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ptws/close-request unauthorized (ip=%s)", request.remote_addr)
@@ -473,6 +578,14 @@ def requestToClsPTW():
 
 @ptwsBp.route("/ptws/close", methods=["POST"])
 def clsPTW():
+    """Record the Issuing Authority's accept/reject response to a close request.
+
+    POST, ``ISSUING`` role only. Body carries ``ptw-id``, ``ia``,
+    ``timestamp``, ``response`` and an optional ``comment``. Accepting also
+    runs ``checkAndAutoDeisolateICs`` over the PTW's linked ICs. Broadcasts
+    the matching ``PTW closed``/``PTW close rejected`` SSE event and
+    responds with ``{"success": True}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ptws/close unauthorized (ip=%s)", request.remote_addr)
@@ -516,6 +629,15 @@ def clsPTW():
 
 @ptwsBp.route("/ptws/attachments", methods=["POST"])
 def addPtwAttachments():
+    """Upload one or more attachment files to a PTW.
+
+    POST, any authenticated user. Takes files from ``request.files`` and
+    ``ptw-id`` from the form fields; rejects a missing/invalid id, path-
+    traversal attempts, and filenames that already exist on disk (per-file
+    errors are collected and, if any occurred, none of the batch is
+    saved). Responds with ``{"success": True, "message": ...}`` or the
+    collected errors joined into ``error``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ptws/attachments unauthorized (ip=%s)", request.remote_addr)
@@ -572,6 +694,13 @@ def addPtwAttachments():
 
 @ptwsBp.route("/ptws/attachments", methods=["GET"])
 def getPtwAttachment():
+    """List a PTW's attachments, or download one by name.
+
+    GET, any authenticated user. Body carries ``ptw-id`` and an optional
+    ``filename``. With ``filename`` set, streams that file (404 if
+    missing, 400 on a path-traversal attempt); otherwise responds with
+    ``{"success": True, "attachments": [...]}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("GET /ptws/attachments unauthorized (ip=%s)", request.remote_addr)
@@ -616,6 +745,12 @@ def getPtwAttachment():
 
 @ptwsBp.route("/ptws/attachments", methods=["DELETE"])
 def deletePtwAttachments():
+    """Delete a PTW's attachments except those listed to keep.
+
+    DELETE, any authenticated user. Body carries ``ptw-id`` and
+    ``keep-filenames``; every file in that PTW's attachment directory not
+    in the keep list is removed. Responds with ``{"success": True}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("DELETE /ptws/attachments unauthorized (ip=%s)", request.remote_addr)
@@ -650,6 +785,16 @@ def deletePtwAttachments():
 
 @ptwsBp.route("/ptws/attachments/copy", methods=["POST"])
 def copyPtwAttachments():
+    """Copy one PTW's attachments (and risk assessment) onto another.
+
+    POST, any non-guest authenticated user. Body carries
+    ``source-ptw-id`` and ``target-ptw-id``; copies every file from the
+    source's attachment directory into the target's (creating it if
+    needed) and additively copies the source's PTW-specific risk
+    assessment onto the target via
+    ``risksDB.copyRiskAssessmentForPTW``. Responds with
+    ``{"success": True, "message": ..., "risk-copy-error": ...}``.
+    """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ptws/attachments/copy unauthorized (ip=%s)", request.remote_addr)
@@ -697,6 +842,15 @@ def copyPtwAttachments():
 
 
 def _auto_archive_closed_ptws():
+    """Background sweep that auto-archives long-CLOSED PTWs.
+
+    Runs forever on a daemon thread, sleeping
+    ``_AUTO_ARCHIVE_CHECK_INTERVAL`` seconds between passes. Each pass
+    archives every ``CLOSED`` PTW whose last run cycle's
+    ``stop_ia_timestamp`` is at least ``_AUTO_ARCHIVE_AFTER_DAYS`` days
+    old, evicts it from the in-memory cache, and broadcasts a ``PTW
+    archived`` SSE event with ``by="system"``.
+    """
     while True:
         sleep(_AUTO_ARCHIVE_CHECK_INTERVAL)
         try:

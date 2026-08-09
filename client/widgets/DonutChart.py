@@ -1,3 +1,10 @@
+"""Reusable clickable/hoverable donut-chart widget.
+
+Provides `DonutChart` (ring + legend, optional title) and `DonutSegment`
+(one slice's label/count/color/click-callback), used by the home-page
+dashboards (e.g. PTW approval-cycle and running-by-location donuts, the
+Admin users-by-department donut).
+"""
 import math
 from dataclasses import dataclass
 from typing import Callable, Optional
@@ -27,6 +34,8 @@ RING_MAX_SIDE = 420
 
 @dataclass
 class DonutSegment:
+    """One donut slice: its label, count, color, and optional click callback."""
+
     label: str
     count: int
     color: QColor
@@ -34,7 +43,10 @@ class DonutSegment:
 
 
 class _Ring(QWidget):
+    """The painted donut ring: draws segments and handles hover/click hit-testing."""
+
     def __init__(self, parent=None):
+        """Initialize empty segment state, enable mouse tracking, and set size constraints."""
         super().__init__(parent)
         self._segments: list[DonutSegment] = []
         self._hoverIndex: int | None = None
@@ -43,9 +55,11 @@ class _Ring(QWidget):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
     def sizeHint(self):
+        """Return the ring's preferred size for layout purposes."""
         return QSize(280, 280)
 
     def setSegments(self, segments: list[DonutSegment]):
+        """Replace the drawn segments, clear hover/tooltip/cursor state, and repaint."""
         self._segments = segments
         self._hoverIndex = None
         self.setToolTip("")
@@ -53,6 +67,12 @@ class _Ring(QWidget):
         self.update()
 
     def _geometry(self):
+        """Compute the ring's drawing rect and outer/inner radii.
+
+        The rect is centered in, and capped at `RING_MAX_SIDE` within, the
+        widget's own bounds; the inner radius is a fixed 0.55 fraction of the
+        outer radius (the donut hole).
+        """
         # The widget fills its whole layout cell (so it never sits left-biased next to the
         # legend); the drawn ring itself is centered within that cell and capped so it doesn't
         # balloon on very large windows.
@@ -64,6 +84,13 @@ class _Ring(QWidget):
         return rect, outerR, innerR
 
     def _cumulativeAngles(self):
+        """Compute each segment's (startAngle, span, segment) in degrees, proportional to its share of the total count.
+
+        Angles run clockwise from the top (0 degrees), matching both the
+        painting convention in `_segmentPath` and the hit-testing convention
+        in `_angleAt`. Segments with count <= 0 still get an entry with
+        span 0. Returns `([], 0)` if the total count is 0.
+        """
         total = sum(max(s.count, 0) for s in self._segments)
         result = []
         start = 0.0
@@ -76,6 +103,14 @@ class _Ring(QWidget):
         return result, total
 
     def _segmentPath(self, rect, outerR, innerR, phiStart, phiSpan):
+        """Build the donut-wedge QPainterPath for one segment's angle span.
+
+        `phiStart`/`phiSpan` are degrees clockwise from the top (as produced
+        by `_cumulativeAngles`); they're converted to Qt's arc-angle
+        convention (counterclockwise from 3 o'clock) via
+        `qtStart = 90 - phiStart`, `qtSpan = -phiSpan` before drawing the
+        outer arc, the connecting inner arc, and closing the path.
+        """
         center = rect.center()
         outerRect = QRectF(center.x() - outerR, center.y() - outerR, outerR * 2, outerR * 2)
         innerRect = QRectF(center.x() - innerR, center.y() - innerR, innerR * 2, innerR * 2)
@@ -89,6 +124,11 @@ class _Ring(QWidget):
         return path
 
     def paintEvent(self, event):
+        """Paint the ring: a gray placeholder wedge when there's no data, else each segment.
+
+        The hovered segment (if any) is drawn lightened. The total count (or
+        "No\\nData") is drawn centered in the donut's hole.
+        """
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         rect, outerR, innerR = self._geometry()
@@ -115,6 +155,13 @@ class _Ring(QWidget):
         painter.drawText(centerRect, Qt.AlignmentFlag.AlignCenter, str(total) if total > 0 else "No\nData")
 
     def _angleAt(self, pos):
+        """Convert a widget-local position to its angle on the ring, or None if outside the ring band.
+
+        Returns degrees measured clockwise from the top (0-360), matching
+        the convention used by `_cumulativeAngles`/`_segmentPath`. Positions
+        whose distance from center falls outside `[innerR, outerR]` (i.e.
+        not on the ring itself) return None.
+        """
         rect, outerR, innerR = self._geometry()
         center = rect.center()
         dx = pos.x() - center.x()
@@ -128,6 +175,7 @@ class _Ring(QWidget):
         return theta
 
     def _segmentAt(self, pos):
+        """Return the `(index, DonutSegment)` at a position, or None if not on any segment."""
         theta = self._angleAt(pos)
         if theta is None:
             return None
@@ -138,6 +186,13 @@ class _Ring(QWidget):
         return None
 
     def mouseMoveEvent(self, event):
+        """Qt handler for mouse movement over the ring; update hover highlight, tooltip, and cursor.
+
+        Triggered continuously as the pointer moves (mouse tracking is
+        enabled). Repaints when the hovered segment changes; shows a
+        "label: count (pct%)" tooltip and pointing-hand cursor while over a
+        segment with a callback, clearing both otherwise.
+        """
         hit = self._segmentAt(event.position())
         newIndex = hit[0] if hit else None
         if newIndex != self._hoverIndex:
@@ -155,6 +210,7 @@ class _Ring(QWidget):
         super().mouseMoveEvent(event)
 
     def leaveEvent(self, event):
+        """Qt handler triggered when the mouse leaves the ring; clear hover highlight and cursor."""
         if self._hoverIndex is not None:
             self._hoverIndex = None
             self.update()
@@ -162,6 +218,7 @@ class _Ring(QWidget):
         super().leaveEvent(event)
 
     def mousePressEvent(self, event):
+        """Qt handler triggered on a click inside the ring; invoke the clicked segment's callback, if any."""
         hit = self._segmentAt(event.position())
         if hit and hit[1].callback:
             hit[1].callback()
@@ -169,7 +226,14 @@ class _Ring(QWidget):
 
 
 class _LegendRow(QPushButton):
+    """One legend entry: a colored-dot icon plus "label — count (pct%)" text.
+
+    Acts as a clickable button (wired to the segment's callback) when the
+    segment has one; otherwise disabled and dimmed for zero-count segments.
+    """
+
     def __init__(self, segment: DonutSegment, percent: float, parent=None):
+        """Build the legend row: paint the colored-dot icon, set its text, and wire its click."""
         super().__init__(parent)
         pix = QPixmap(12, 12)
         pix.fill(Qt.GlobalColor.transparent)
@@ -199,7 +263,15 @@ class _LegendRow(QPushButton):
 
 
 class DonutChart(QWidget):
+    """Public donut-chart widget: an optional title, a clickable ring, and a legend column.
+
+    Reused across the home-page dashboards (PTW approval-cycle/location
+    donuts, Admin users-by-department donut); segments and their
+    click-callbacks are supplied via `setSegments()`.
+    """
+
     def __init__(self, title: str = "", parent=None):
+        """Build the optional title label and the ring+legend body layout."""
         super().__init__(parent)
         self._segments: list[DonutSegment] = []
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -237,6 +309,7 @@ class DonutChart(QWidget):
         layout.addLayout(body, 1)
 
     def setSegments(self, segments: list[DonutSegment]):
+        """Update the ring and rebuild the legend rows from the given segments."""
         self._segments = segments
         self._ring.setSegments(segments)
 

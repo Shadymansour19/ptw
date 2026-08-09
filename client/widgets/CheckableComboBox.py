@@ -1,3 +1,7 @@
+"""Reusable multi-select checkbox combo box: a closed combo box that summarizes how
+many of its items are checked, with a searchable, checkbox-per-row popup and a
+"(Select All)" pseudo-item pinned to the top."""
+
 from PyQt6.QtCore import Qt, pyqtSignal, QSortFilterProxyModel
 from PyQt6.QtWidgets import QComboBox, QStyle, QStylePainter, QStyleOptionComboBox, QLineEdit
 from PyQt6.QtGui import QStandardItemModel, QStandardItem
@@ -6,16 +10,28 @@ _SELECT_ALL = "(Select All)"
 
 
 class _FilterProxyModel(QSortFilterProxyModel):
+    """Filter proxy used by the popup's search box: always keeps row 0 (the
+    "(Select All)" pseudo-item) visible, filtering normally on every other row."""
+
     def filterAcceptsRow(self, source_row, source_parent):
+        """Accept row 0 unconditionally; delegate filtering to the base class otherwise."""
         if source_row == 0:
             return True
         return super().filterAcceptsRow(source_row, source_parent)
 
 
 class CheckableComboBox(QComboBox):
+    """Multi-select combo box: each popup row has its own checkbox plus a
+    "(Select All)" row that checks/unchecks every currently visible row, and a search
+    box to filter rows by text. The closed box shows a summary ("(All)", "(None)", the
+    single checked item's text, or "(n/total)") instead of a normal current-item text.
+    Emits `filterChanged` whenever the checked set changes."""
+
     filterChanged = pyqtSignal()
 
     def __init__(self, parent=None):
+        """Build the popup's checkable item model/proxy and insert the search box and
+        "(Select All)" row."""
         super().__init__(parent)
         self._model = QStandardItemModel(self)
         self._proxy = _FilterProxyModel(self)
@@ -36,6 +52,7 @@ class CheckableComboBox(QComboBox):
         layout.insertWidget(layout.indexOf(self.view()), self._searchEdit)
 
     def showPopup(self):
+        """Clear/focus the search box and grow the popup to fit it, then show as usual."""
         super().showPopup()
         self._searchEdit.clear()
         self._searchEdit.setFocus()
@@ -45,6 +62,8 @@ class CheckableComboBox(QComboBox):
         self.view().resize(self.view().width(), self.view().height() + extra)
 
     def paintEvent(self, event):
+        """Draw the closed combo box with the selection-summary text in place of the
+        (nonexistent) current item's text."""
         painter = QStylePainter(self)
         opt = QStyleOptionComboBox()
         self.initStyleOption(opt)
@@ -55,16 +74,21 @@ class CheckableComboBox(QComboBox):
         painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, self._summary_text)
 
     def _addSelectAllItem(self):
+        """Insert the always-checked, always-visible "(Select All)" row at position 0."""
         item = QStandardItem(_SELECT_ALL)
         item.setCheckState(Qt.CheckState.Checked)
         item.setFlags(Qt.ItemFlag.ItemIsEnabled)
         self._model.appendRow(item)
 
     def _onSearchTextChanged(self, text):
+        """Triggered as the user types in the search box: re-filter the popup rows to
+        `text` and resync the "(Select All)" checkbox to the now-visible rows."""
         self._proxy.setFilterFixedString(text)
         self._syncSelectAll()
 
     def _visibleRows(self):
+        """Return source-model row indices currently passing the search filter,
+        excluding the "(Select All)" row itself."""
         rows = []
         for r in range(self._proxy.rowCount()):
             source_row = self._proxy.mapToSource(self._proxy.index(r, 0)).row()
@@ -73,6 +97,9 @@ class CheckableComboBox(QComboBox):
         return rows
 
     def _handleItemPressed(self, index):
+        """Triggered by clicking a popup row: toggle its check state (or, for the
+        "(Select All)" row, toggle every currently visible row to match), keep the
+        popup open, refresh the summary text, and emit `filterChanged`."""
         row = self._proxy.mapToSource(index).row()
         item = self._model.item(row)
         new_state = Qt.CheckState.Unchecked if item.checkState() == Qt.CheckState.Checked else Qt.CheckState.Checked
@@ -88,6 +115,7 @@ class CheckableComboBox(QComboBox):
         self.filterChanged.emit()
 
     def _syncSelectAll(self):
+        """Check the "(Select All)" row only if every currently visible row is checked."""
         visible = self._visibleRows()
         all_checked = all(
             self._model.item(i).checkState() == Qt.CheckState.Checked for i in visible
@@ -97,12 +125,22 @@ class CheckableComboBox(QComboBox):
         )
 
     def hidePopup(self):
+        """Suppress one hide request if `_skip_hide` is set (a checkbox click just
+        toggled a row and shouldn't also close the popup), otherwise hide normally."""
         if self._skip_hide:
             self._skip_hide = False
             return
         super().hidePopup()
 
     def setItems(self, texts, preserve_selection=True, sort=True):
+        """Replace the popup's rows with `texts`, all checked by default.
+
+        Args:
+            preserve_selection: If True, texts that match a previously unchecked
+                item's text stay unchecked; everything else (including new texts)
+                is checked.
+            sort: If True, sort `texts` before inserting.
+        """
         prev_unchecked = set()
         if preserve_selection:
             for i in range(1, self._model.rowCount()):
@@ -125,6 +163,7 @@ class CheckableComboBox(QComboBox):
         self._updateText()
 
     def checkedItems(self):
+        """Return the set of item texts currently checked (excluding "(Select All)")."""
         result = set()
         for i in range(1, self._model.rowCount()):
             item = self._model.item(i)
@@ -133,6 +172,8 @@ class CheckableComboBox(QComboBox):
         return result
 
     def setCheckedOnly(self, values: set):
+        """Check exactly the items whose text is in `values`, uncheck every other item,
+        then refresh the summary text and emit `filterChanged`."""
         for i in range(1, self._model.rowCount()):
             item = self._model.item(i)
             item.setCheckState(Qt.CheckState.Checked if item.text() in values else Qt.CheckState.Unchecked)
@@ -141,10 +182,12 @@ class CheckableComboBox(QComboBox):
         self.filterChanged.emit()
 
     def isFiltering(self):
+        """Return True if fewer than all items are currently checked."""
         total = self._model.rowCount() - 1
         return len(self.checkedItems()) < total
 
     def _updateText(self):
+        """Recompute the closed-box summary text from the current checked count."""
         total = self._model.rowCount() - 1
         checked = len(self.checkedItems())
         if total == 0 or checked == total:
