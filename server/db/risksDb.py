@@ -61,7 +61,7 @@ class RisksDb:
             ptw_id = riskAssessment.get('ptw_id')
             with CommonDB.get_conn() as conn:
                 cursor = conn.cursor()
-                cursor.execute("DELETE FROM risks WHERE title = %s", (title,))
+                cursor.execute("DELETE FROM risks WHERE title = %s and ptw_id = %s", (title, ptw_id))
                 for riskItemDict in riskAssessment['risks']:
                     row = {**riskItemDict, 'title': title, 'date': date, 'ptw_id': ptw_id}
                     columns = list(row.keys())
