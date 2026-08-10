@@ -778,6 +778,7 @@ class MainWindow(QMainWindow):
         ask the user (with an optional 'remember my choice' checkbox) whether to keep
         running in the tray or exit completely, and act on the answer — Cancel just
         re-ignores the event."""
+        self._ptwAlarmTimer.stop()
         if self._forceClose:
             event.accept()
             return
