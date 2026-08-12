@@ -12,6 +12,7 @@ import qtawesome as qta
 
 from models.Isolation import IC
 from dialogs.DialogIsolationItem import DialogIsolationItem
+from helper.i18n import t
 
 
 class TableIsolationItems(QWidget):
@@ -30,7 +31,7 @@ class TableIsolationItems(QWidget):
         self.readonly = readonly
         self.items: list[IC.IsolationItem] = items
 
-        self.summeryLabels = ['Tag', 'Description', 'State', 'Lock #', 'Lock Box #']
+        self.summeryLabels = [t('Tag'), t('Description'), t('State'), t('Lock #'), t('Lock Box #')]
         self.summeryFields = ['tag', 'description', 'state', 'lock_num', 'lock_box_num']
 
         self.setLayout(lyt)
@@ -69,7 +70,7 @@ class TableIsolationItems(QWidget):
                 background-color: #0D47A1;
             }
         """)
-        self.btnNewItem.setToolTip("New Isolation Item [Ctrl+N]")
+        self.btnNewItem.setToolTip(t("New Isolation Item [Ctrl+N]"))
         self.btnNewItem.clicked.connect(self.newItemDialog)
         self.btnNewItem.setVisible(not readonly)
         self.btnFABUpdatePosition()
@@ -130,7 +131,7 @@ class TableIsolationItems(QWidget):
         if resp == QDialog.DialogCode.Accepted:
             item = dialog.getItem()
             if item.tag in [i.tag for i in self.items]:
-                QMessageBox.warning(self, "Error", "An isolation item with the same tag already exists.")
+                QMessageBox.warning(self, t("Error"), t("An isolation item with the same tag already exists."))
                 return
             self.addItem(item)
 
@@ -157,7 +158,7 @@ class TableIsolationItems(QWidget):
         newItem = dialog.getItem()
         otherTags = [i.tag for i in self.items if i is not existingItem]
         if newItem.tag in otherTags:
-            QMessageBox.warning(self, "Error", "An isolation item with the same tag already exists.")
+            QMessageBox.warning(self, t("Error"), t("An isolation item with the same tag already exists."))
             return
         self.items[self.items.index(existingItem)] = newItem
         self.refreshGUI()
@@ -196,7 +197,7 @@ class TableIsolationItems(QWidget):
         if not row.isValid():
             return
         menu = QMenu(self.tbl)
-        actionDelete = QAction('Delete', self.tbl)
+        actionDelete = QAction(t('Delete'), self.tbl)
         actionDelete.triggered.connect(self.deleteSelectedRows)
         menu.addAction(actionDelete)
         menu.exec(self.tbl.mapToGlobal(pos))

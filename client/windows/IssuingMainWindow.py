@@ -6,6 +6,7 @@ import qtawesome as qta
 from GlobalData import globalData
 from models.User import User
 from windows.MainWindow import MainWindow
+from helper.i18n import t
 
 
 class IssuingMainWindow(MainWindow):
@@ -19,7 +20,7 @@ class IssuingMainWindow(MainWindow):
     def __init__(self, loggedUser: User):
         """Build the Issuing window: wire PTW/IC tab options and the print-current-tab FAB."""
         super().__init__(loggedUser)
-        self.setWindowTitle("PTW (Permit To Work) - Issuing Window")
+        self.setWindowTitle(t("PTW (Permit To Work) - Issuing Window"))
 
         self.tabUnderReviewPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestEditsPTW, self.optionAcceptPTW, self.optionPrintPTW, self.optionExportPTW])
         self.tabMeetingPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestEditsPTW, self.optionAcceptPTW, self.optionPrintPTW, self.optionExportPTW])
@@ -77,7 +78,7 @@ class IssuingMainWindow(MainWindow):
 
         # Create Floating Option Button
         self.btnFAB.setIcon(qta.icon('fa6s.print', color='white'))
-        self.btnFAB.setToolTip("Print current widget PTWs")
+        self.btnFAB.setToolTip(t("Print current widget PTWs"))
 
     def stackTabChanged(self):
         """Show the FAB except on the Welcome and any IC tab; lazily fetch archived

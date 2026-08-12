@@ -15,6 +15,7 @@ from network.clientRequests import ClientRequests
 from models.PTW import PTW
 from widgets.CheckableComboBox import CheckableComboBox
 from GlobalData import globalData
+from helper.i18n import t
 
 
 class _FastTrackItem(QTableWidgetItem):
@@ -75,7 +76,7 @@ class TablePTWs(QWidget):
         lblLyt.addWidget(lbl)
 
         self._filterBtn = QPushButton(qta.icon('fa6s.filter'), "")
-        self._filterBtn.setToolTip("Filter")
+        self._filterBtn.setToolTip(t("Filter"))
         self._filterBtn.setIconSize(QSize(32, 32))
         self._filterBtn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._filterBtn.setStyleSheet("""
@@ -332,7 +333,7 @@ class TablePTWs(QWidget):
             """Callback for updatePTW's request: update the GUI row on
             success, or show a warning on failure."""
             if err:
-                QMessageBox.warning(self, "Fail", err)
+                QMessageBox.warning(self, t("Fail"), err)
                 return
             self.updatePTWInGUI(row, ptw)
         ClientRequests.updatePTW(self.loggedUser, ptw, callback=on_done)
@@ -344,15 +345,15 @@ class TablePTWs(QWidget):
             """Callback for deletePTW's request: remove the row on success,
             or show a warning on failure."""
             if err:
-                QMessageBox.warning(self, "Fail", err)
+                QMessageBox.warning(self, t("Fail"), err)
                 return
             self.ptwsData.pop(row)
             self.tbl.removeRow(row)
             if self._filterBar.isVisible():
                 self._populateFilters()
-        
+
         ptw = self.ptwsData[row]
-        reply = QMessageBox.question(self, 'Delete PTW', f"Are you sure you want to delete PTW# '{ptw.id}'?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        reply = QMessageBox.question(self, t('Delete PTW'), t("Are you sure you want to delete PTW# '{0}'?").format(ptw.id), QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
             ClientRequests.deletePTW(self.loggedUser, ptw.id, callback=on_done)
 

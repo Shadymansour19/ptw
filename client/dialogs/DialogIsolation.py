@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import QDialog, QFormLayout, QComboBox, QTextEdit, QDialogB
 from models.PTW import PTW
 from models.Isolation import Isolation
 from widgets.SearchableComboBox import SearchableComboBox
+from helper.i18n import t
 
 
 class DialogIsolation(QDialog):
@@ -16,7 +17,7 @@ class DialogIsolation(QDialog):
     def __init__(self, parent=None):
         """Build the form: a type combo, a tag combo scoped to the chosen type, and a description field."""
         super().__init__(parent)
-        self.setWindowTitle("New Isolation")
+        self.setWindowTitle(t("New Isolation"))
         self.setModal(True)
         self.isolation = None
 
@@ -43,9 +44,9 @@ class DialogIsolation(QDialog):
         btns.accepted.connect(self.accept)
         btns.rejected.connect(self.reject)
         
-        lyt.addRow("Type:", self.typeCombo)
-        lyt.addRow("Tag:", self.boxTag)
-        lyt.addRow("Description:", self.boxDescription)
+        lyt.addRow(t("Type:"), self.typeCombo)
+        lyt.addRow(t("Tag:"), self.boxTag)
+        lyt.addRow(t("Description:"), self.boxDescription)
         lyt.addWidget(btns)
 
     def _on_type_changed(self, _=None):
@@ -78,10 +79,10 @@ class DialogIsolation(QDialog):
         description = self.boxDescription.toPlainText()
 
         if not tag:
-            QMessageBox.warning(self, "Invalid Input", "Please select a tag or enter a new one.")
+            QMessageBox.warning(self, t("Invalid Input"), t("Please select a tag or enter a new one."))
             return
         if not description:
-            QMessageBox.warning(self, "Invalid Input", "Please enter a description.")
+            QMessageBox.warning(self, t("Invalid Input"), t("Please enter a description."))
             return
 
         self.isolation = Isolation(type=type, tag=tag, description=description)

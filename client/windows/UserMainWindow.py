@@ -6,6 +6,7 @@ import qtawesome as qta
 
 from GlobalData import globalData
 from windows.MainWindow import MainWindow
+from helper.i18n import t
 
 
 class UserMainWindow(MainWindow):
@@ -20,7 +21,7 @@ class UserMainWindow(MainWindow):
         """Build the User window: wire PTW/IC tab options, sidebar/topbar, and the
         new-PTW/new-IC FAB with its Ctrl+N shortcut."""
         super().__init__(loggedUser)
-        self.setWindowTitle("PTW (Permit To Work) - User Window")
+        self.setWindowTitle(t("PTW (Permit To Work) - User Window"))
 
         self.tabRegisteredPTWs.addOptions([self.optionViewPTW, self.optionEditPTW, self.optionRequestPTW, self.optionViewRequestorPTW, self.optionDltPTW, self.optionExportPTW])
         self.tabRequestedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
@@ -69,7 +70,7 @@ class UserMainWindow(MainWindow):
             },
         )
 
-        self.btnFAB.setToolTip("Request New PTW [Ctrl+N]")
+        self.btnFAB.setToolTip(t("Request New PTW [Ctrl+N]"))
         self.btnFAB.setIcon(qta.icon('fa6s.plus', color='white'))
 
         shortcut = QShortcut(QKeySequence("Ctrl+N"), self)
@@ -82,7 +83,7 @@ class UserMainWindow(MainWindow):
         super().stackTabChanged()
         tab = self.stack.currentWidget()
         self.btnFAB.setVisible(tab in [self.tabRequestedPTWs, self.tabWelcome, self.tabRequestedICs])
-        self.btnFAB.setToolTip("New IC" if tab == self.tabRequestedICs else "Request New PTW [Ctrl+N]")
+        self.btnFAB.setToolTip(t("New IC") if tab == self.tabRequestedICs else t("Request New PTW [Ctrl+N]"))
         if tab == self.tabArchivedPTWs and not globalData.archivedPTWs:
             self.refreshArchivedPTWs()
 

@@ -17,6 +17,7 @@ from network.clientRequests import ClientRequests
 from reports.ImportUsersExcel import ImportUsersExcel, DialogUsersPreview
 from GlobalData import globalData
 from widgets.CheckableComboBox import CheckableComboBox
+from helper.i18n import t
 
 class TableUsers(QWidget):
     """Table widget listing all users, for the Admin user-management tab.
@@ -48,7 +49,7 @@ class TableUsers(QWidget):
         lblLyt.addWidget(lbl)
 
         self._filterBtn = QPushButton(qta.icon('fa6s.filter'), "")
-        self._filterBtn.setToolTip("Filter")
+        self._filterBtn.setToolTip(t("Filter"))
         self._filterBtn.setIconSize(QSize(32, 32))
         self._filterBtn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._filterBtn.setStyleSheet("""
@@ -204,7 +205,7 @@ class TableUsers(QWidget):
         for field in self.summeryFields:
             value = getattr(user, field)
             if field == 'is_active':
-                value = 'Active' if value else 'Inactive'
+                value = t('Active') if value else t('Inactive')
             record.append(str(value))
         return record
     
@@ -233,7 +234,7 @@ class TableUsers(QWidget):
             """Handle the addNewUser response; show an error or add the row to the GUI."""
             self.window()._refreshOverlay.hideBusy()
             if err:
-                QMessageBox.warning(self, "Fail", err)
+                QMessageBox.warning(self, t("Fail"), err)
                 return
             self.addUserToGUI(newUser)
         self.window()._refreshOverlay.showBusy()
@@ -263,13 +264,13 @@ class TableUsers(QWidget):
         user = self.users[row]
         menu = QMenu(self.tbl)
 
-        actionView = QAction(qta.icon('fa6s.eye'), 'View', self.tbl)
-        actionEdit = QAction(qta.icon('fa6s.pen'), 'Edit', self.tbl)
+        actionView = QAction(qta.icon('fa6s.eye'), t('View'), self.tbl)
+        actionEdit = QAction(qta.icon('fa6s.pen'), t('Edit'), self.tbl)
         # actionDelete = QAction(qta.icon('fa5s.trash'), 'Delete', self.tbl)
         if user.getIsActive():
-            actionToggleActive = QAction(qta.icon('fa6s.user-slash'), 'Inactivate', self.tbl)
+            actionToggleActive = QAction(qta.icon('fa6s.user-slash'), t('Inactivate'), self.tbl)
         else:
-            actionToggleActive = QAction(qta.icon('fa6s.user-check'), 'Activate', self.tbl)
+            actionToggleActive = QAction(qta.icon('fa6s.user-check'), t('Activate'), self.tbl)
 
         actionView.triggered.connect(lambda: self.viewUser(row))
         actionEdit.triggered.connect(lambda: self.updateUser(row))
@@ -286,12 +287,12 @@ class TableUsers(QWidget):
     def viewUser(self, row: int):
         """Open the read-only user dialog for the given row."""
         user = self.users[row]
-        DialogUser(self, True, False, self.loggedUser, user, f"Edit User - User {user.getUsername()}").exec()
+        DialogUser(self, True, False, self.loggedUser, user, t("Edit User - User {0}").format(user.getUsername())).exec()
         
     def updateUser(self, row: int):
         """Open the edit dialog for a row and submit changes to the server if accepted."""
         user = copy.deepcopy(self.users[row])
-        dialog = DialogUser(self, False, False, self.loggedUser, user, f"Edit Mode - User {user.getUsername()}")
+        dialog = DialogUser(self, False, False, self.loggedUser, user, t("Edit Mode - User {0}").format(user.getUsername()))
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
@@ -299,7 +300,7 @@ class TableUsers(QWidget):
             """Handle the updateUser response; show an error or refresh the row and filters."""
             self.window()._refreshOverlay.hideBusy()
             if err:
-                QMessageBox.warning(self, "Fail", err)
+                QMessageBox.warning(self, t("Fail"), err)
                 return
             self.users[row] = user
             data = self.userToRecord(user)
@@ -318,7 +319,7 @@ class TableUsers(QWidget):
     def deleteUser(self, row: int):
         """Confirm with the user, then delete the user at the given row via the server."""
         user = self.users[row]
-        reply = QMessageBox.question(self, 'Delete User', f"Are you sure you want to delete user '{user.getUsername()}'?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        reply = QMessageBox.question(self, t('Delete User'), t("Are you sure you want to delete user '{0}'?").format(user.getUsername()), QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.No:
             return
         
@@ -326,7 +327,7 @@ class TableUsers(QWidget):
             """Handle the deleteUser response; remove the row on success or show an error."""
             self.window()._refreshOverlay.hideBusy()
             if err:
-                QMessageBox.warning(self, "Fail", err)
+                QMessageBox.warning(self, t("Fail"), err)
                 return
             self.users.pop(row)
             self.tbl.removeRow(row)
@@ -340,9 +341,10 @@ class TableUsers(QWidget):
         """Confirm with the user, then activate or inactivate the user at the given row via the server."""
         user = self.users[row]
         activate = not user.getIsActive()
-        action = "activate" if activate else "inactivate"
+        title = t("Activate User") if activate else t("Inactivate User")
+        message = (t("Are you sure you want to activate user '{0}'?") if activate else t("Are you sure you want to inactivate user '{0}'?")).format(user.getUsername())
         reply = QMessageBox.question(
-            self, f"{action.capitalize()} User", f"Are you sure you want to {action} user '{user.getUsername()}'?", 
+            self, title, message,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -352,7 +354,7 @@ class TableUsers(QWidget):
             """Handle the setUserActive response; update the row's status on success or show an error."""
             self.window()._refreshOverlay.hideBusy()
             if err:
-                QMessageBox.warning(self, "Fail", err)
+                QMessageBox.warning(self, t("Fail"), err)
                 return
             user.setIsActive(activate)
             data = self.userToRecord(user)
@@ -372,7 +374,7 @@ class TableUsers(QWidget):
         """Open the new-user dialog and, if accepted, submit the new user to the server."""
         from models.User import User
         newUser = User()
-        dialog = DialogUser(self, False, True, self.loggedUser, newUser, "New User")
+        dialog = DialogUser(self, False, True, self.loggedUser, newUser, t("New User"))
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.addUser(newUser)
 
@@ -384,22 +386,22 @@ class TableUsers(QWidget):
         submits each parsed row to the server and shows a result dialog once
         every row has finished.
         """
-        filepath, _ = QFileDialog.getOpenFileName(self, "Select Users File", QDir.homePath(), "Excel/CSV Files (*.xlsx *.csv);;Excel Files (*.xlsx);;CSV Files (*.csv);;All Files (*)")
+        filepath, _ = QFileDialog.getOpenFileName(self, t("Select Users File"), QDir.homePath(), "Excel/CSV Files (*.xlsx *.csv);;Excel Files (*.xlsx);;CSV Files (*.csv);;All Files (*)")
         if not filepath:
             return
 
         try:
             rows = ImportUsersExcel.parseFile(filepath, set(globalData.allUsers.keys()))
         except Exception as e:
-            QMessageBox.critical(self, "Import Failed", f"Could not read the selected file.\n{e}")
+            QMessageBox.critical(self, t("Import Failed"), t("Could not read the selected file.\n{0}").format(e))
             return
 
         if not rows:
-            QMessageBox.information(self, "Import", "The selected file has no data rows.")
+            QMessageBox.information(self, t("Import"), t("The selected file has no data rows."))
             return
 
         headers = ImportUsersExcel.HEADERS + ['Password', 'Status']
-        preview = DialogUsersPreview(self, "Preview Import", headers, [r.asRecord() for r in rows], mode='confirm')
+        preview = DialogUsersPreview(self, t("Preview Import"), headers, [r.asRecord() for r in rows], mode='confirm')
         if preview.exec() != QDialog.DialogCode.Accepted:
             return
 
@@ -437,18 +439,18 @@ class TableUsers(QWidget):
         """
         succeededCount = sum(1 for r in rows if r.status == "Success")
         attemptedCount = sum(1 for r in rows if r.user is not None)
-        summary = f"{succeededCount} of {attemptedCount} user(s) imported successfully."
+        summary = t("{0} of {1} user(s) imported successfully.").format(succeededCount, attemptedCount)
 
         headers = ImportUsersExcel.HEADERS + ['Password', 'Status']
 
         def onExport():
             """Slot for the result dialog's export action; save the import results to a chosen Excel file."""
-            savePath, _ = QFileDialog.getSaveFileName(self, "Save Import Result", "import_result.xlsx", "Excel Files (*.xlsx)")
+            savePath, _ = QFileDialog.getSaveFileName(self, t("Save Import Result"), "import_result.xlsx", "Excel Files (*.xlsx)")
             if not savePath:
                 return
             try:
                 ImportUsersExcel.exportResult(savePath, rows)
             except Exception as e:
-                QMessageBox.critical(self, "Export Failed", f"Could not save the result file.\n{e}")
+                QMessageBox.critical(self, t("Export Failed"), t("Could not save the result file.\n{0}").format(e))
 
-        DialogUsersPreview(self, "Import Result", headers, [r.asRecord() for r in rows], mode='result', summary=summary, onExport=onExport).exec()
+        DialogUsersPreview(self, t("Import Result"), headers, [r.asRecord() for r in rows], mode='result', summary=summary, onExport=onExport).exec()

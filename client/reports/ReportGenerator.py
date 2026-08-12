@@ -30,12 +30,40 @@ import os
 import subprocess
 from network.clientRequests import ClientRequests
 from helper.utils import resource_path
+from reports.ArabicText import pdfMarkup, isRtlBase, REGULAR_FONT_NAME, BOLD_FONT_NAME
 
 
 class ReportGenerator:
     """Namespace of report-building routines invoked directly on the class: PDF
     PTW/IC reports, MOS and risk-assessment PDF supplements, and an Excel PTW
     export."""
+
+    def _registerArabicFonts():
+        """Register the bundled Noto Sans Arabic fonts with ReportLab, once - every
+        report-building method calls this before building any Paragraph, since none
+        of ReportLab's built-in fonts (Helvetica et al.) carry Arabic glyphs at all
+        (see reports/ArabicText.py, which tags Arabic runs with these font names)."""
+        try:
+            pdfmetrics.getFont(REGULAR_FONT_NAME)
+        except KeyError:
+            pdfmetrics.registerFont(TTFont(REGULAR_FONT_NAME, resource_path('fonts/NotoSansArabic/NotoSansArabic-Regular.ttf')))
+            pdfmetrics.registerFont(TTFont(BOLD_FONT_NAME, resource_path('fonts/NotoSansArabic/NotoSansArabic-Bold.ttf')))
+
+    def arabicParagraph(text, style, forceAlignment=True):
+        """Build a `Paragraph` from `text`, the Arabic-aware way: bidi-reorder/reshape
+        and Arabic-font-tag any Arabic-script runs (see reports/ArabicText.py), and -
+        if `forceAlignment` - right-align the whole paragraph when its own base
+        direction is Arabic, regardless of what language the rest of the report (or
+        the app) is in. A drop-in replacement for `Paragraph(html.escape(text), style)`
+        wherever `text` is a plain (non-markup) string that might be Arabic, English,
+        or a mix of both - every printed field is free text a user typed, so any of
+        them can be. Pass `forceAlignment=False` for a slot whose own centered/other
+        alignment should win regardless of content (e.g. a narrow signature-block
+        cell) - the Arabic shaping/font-tagging still applies either way."""
+        text = text if text is not None else ''
+        if forceAlignment and isRtlBase(text):
+            style = ParagraphStyle(f'{style.name}-RTL', parent=style, alignment=TA_RIGHT)
+        return Paragraph(pdfMarkup(text), style)
 
     def _qrWithLogoFromRows(basicInfo: list, filePrefix: str):
         """Build a QR code encoding basicInfo, with the app logo composited over
@@ -136,6 +164,8 @@ class ReportGenerator:
         Returns:
             An error string if the MIWI document couldn't be fetched, else None.
         """
+        ReportGenerator._registerArabicFonts()
+
         QR_CODE_WIDTH = 60*mm
         LOGO_IMG_WIDTH = 40*mm
         TABLE_LABELS_WIDTH = 50*mm
@@ -164,23 +194,24 @@ class ReportGenerator:
 
         def listTo2ColsBullets(data: list, style):
             """Split data into two roughly equal halves and lay them out as a
-            two-column table of bulleted, HTML-escaped paragraphs."""
+            two-column table of bulleted, Arabic-aware paragraphs (see
+            ReportGenerator.arabicParagraph)."""
             mid = (len(data) + 1) // 2
             col1Data = data[:mid]
             col2Data = data[mid:]
             tableData = [
-                [Paragraph('• ' + _html.escape(col1Data[i]), style), (Paragraph('• ' + _html.escape(col2Data[i]), style) if i < len(col2Data) else None)]
+                [ReportGenerator.arabicParagraph('• ' + col1Data[i], style), (ReportGenerator.arabicParagraph('• ' + col2Data[i], style) if i < len(col2Data) else None)]
                 for i in range(len(col1Data))
             ]
             return Table(tableData)
 
         def listToBullets(data: list, style):
-            """Render a list of strings as a bulleted ListFlowable of HTML-escaped
-            paragraphs, or None if data is empty."""
+            """Render a list of strings as a bulleted ListFlowable of Arabic-aware
+            paragraphs (see ReportGenerator.arabicParagraph), or None if data is empty."""
             if not data:
                 return None
-            
-            bullets = [ListItem(Paragraph(_html.escape(element), style), bulletType='bullet', bulletFontSize=style.fontSize) for element in data]
+
+            bullets = [ListItem(ReportGenerator.arabicParagraph(element, style), bulletType='bullet', bulletFontSize=style.fontSize) for element in data]
             return ListFlowable(
                 bullets, 
                 bulletType='bullet', 
@@ -234,7 +265,7 @@ class ReportGenerator:
             elements.extend([title, Spacer(1, 0.2 * inch), table, PageBreak()])
 
         insertTable(Paragraph('Summery:', styles["Title"]), [
-            [Paragraph(row[0], styles['Heading3']), Paragraph(_html.escape(row[1]), styles['Normal'])]
+            [Paragraph(row[0], styles['Heading3']), ReportGenerator.arabicParagraph(row[1], styles['Normal'])]
             for row in basicInfo
         ])
 
@@ -304,7 +335,7 @@ class ReportGenerator:
                     else:
                         label, sig, ts = '', '', ''
                     header_row.append(Paragraph(label or '\u00a0',        label_style))
-                    name_row.append(  Paragraph(sig   or '\u00a0',    sig_style))
+                    name_row.append(  ReportGenerator.arabicParagraph(sig or '\u00a0', sig_style, forceAlignment=False))
                     date_row.append(  Paragraph(ts    or '\u00a0',        date_style))
                 table = Table(
                     [header_row, name_row, date_row],
@@ -507,6 +538,8 @@ class ReportGenerator:
         Returns:
             None.
         """
+        ReportGenerator._registerArabicFonts()
+
         QR_CODE_WIDTH = 60*mm
         LOGO_IMG_WIDTH = 40*mm
         TABLE_LABELS_WIDTH = 50*mm
@@ -544,12 +577,12 @@ class ReportGenerator:
             return globalData.allUsers[username].getName() if username in globalData.allUsers else str(username)
 
         def listToBullets(data: list, style):
-            """Render a list of strings as a bulleted ListFlowable of HTML-escaped
-            paragraphs, or None if data is empty."""
+            """Render a list of strings as a bulleted ListFlowable of Arabic-aware
+            paragraphs (see ReportGenerator.arabicParagraph), or None if data is empty."""
             if not data:
                 return None
 
-            bullets = [ListItem(Paragraph(_html.escape(element), style), bulletType='bullet', bulletFontSize=style.fontSize) for element in data]
+            bullets = [ListItem(ReportGenerator.arabicParagraph(element, style), bulletType='bullet', bulletFontSize=style.fontSize) for element in data]
             return ListFlowable(
                 bullets,
                 bulletType='bullet',
@@ -603,7 +636,7 @@ class ReportGenerator:
             elements.extend([title, Spacer(1, 0.2 * inch), table, PageBreak()])
 
         insertTable(Paragraph('Summery:', styles["Title"]), [
-            [Paragraph(row[0], styles['Heading3']), Paragraph(_html.escape(row[1]), styles['Normal'])]
+            [Paragraph(row[0], styles['Heading3']), ReportGenerator.arabicParagraph(row[1], styles['Normal'])]
             for row in basicInfo
         ])
 
@@ -621,11 +654,11 @@ class ReportGenerator:
             for i, item in enumerate(items, start=1):
                 rows.append([
                     Paragraph(str(i), styles['NormalCenter']),
-                    Paragraph(_html.escape(item.tag or ''), styles['Normal']),
-                    Paragraph(_html.escape(item.description or ''), styles['Normal']),
+                    ReportGenerator.arabicParagraph(item.tag or '', styles['Normal']),
+                    ReportGenerator.arabicParagraph(item.description or '', styles['Normal']),
                     Paragraph(_html.escape(item.state or ''), styles['NormalCenter']),
-                    Paragraph(_html.escape(item.lock_num or ''), styles['NormalCenter']),
-                    Paragraph(_html.escape(item.lock_box_num or ''), styles['NormalCenter']),
+                    ReportGenerator.arabicParagraph(item.lock_num or '', styles['NormalCenter'], forceAlignment=False),
+                    ReportGenerator.arabicParagraph(item.lock_box_num or '', styles['NormalCenter'], forceAlignment=False),
                 ])
             table = Table(rows, colWidths=[w * dataTableWidth / sum(weights) for w in weights], repeatRows=1)
             table.setStyle(TableStyle([
@@ -679,7 +712,7 @@ class ReportGenerator:
                     else:
                         label, sig, ts = '', '', ''
                     header_row.append(Paragraph(label or ' ',        label_style))
-                    name_row.append(  Paragraph(sig   or ' ',    sig_style))
+                    name_row.append(  ReportGenerator.arabicParagraph(sig or ' ', sig_style, forceAlignment=False))
                     date_row.append(  Paragraph(ts    or ' ',        date_style))
                 table = Table(
                     [header_row, name_row, date_row],
@@ -898,6 +931,11 @@ class ReportGenerator:
             return f'{r:02X}{g:02X}{b:02X}'
 
         cell_align = Alignment(vertical='center', wrap_text=True)
+        # Arabic cell values (department/requestor/location/equipment/description, etc.)
+        # read right-to-left, so right-align just those cells rather than the whole
+        # column - openpyxl/Excel already renders Arabic glyphs natively, no font or
+        # bidi-reordering fix is needed here the way it is for the PDF reports.
+        cell_align_rtl = Alignment(horizontal='right', vertical='center', wrap_text=True)
 
         for row_idx, ptw in enumerate(ptws, start=2):
             status = ptw.runningStatusDisplay()
@@ -923,7 +961,7 @@ class ReportGenerator:
             row_font = Font(color=qcolor_to_hex(ptw.foregroundColor()))
             for col_idx, value in enumerate(row_data, start=1):
                 cell = ws.cell(row=row_idx, column=col_idx, value=value)
-                cell.alignment = cell_align
+                cell.alignment = cell_align_rtl if isRtlBase(str(value)) else cell_align
                 cell.border = border
                 cell.fill = row_fill
                 cell.font = row_font
@@ -950,6 +988,8 @@ class ReportGenerator:
         @ <timestamp>" watermark; the body is `mos` split on newlines and rendered
         as a bulleted list. No-op if `mos` is empty.
         """
+        ReportGenerator._registerArabicFonts()
+
         LOGO_IMG_WIDTH = 30*mm
         MARGIN = 0.8 * inch
 
@@ -986,7 +1026,7 @@ class ReportGenerator:
 
             logo1 = Image(resource_path("assets/rashpetco-logo.png"), LOGO_IMG_WIDTH, LOGO_IMG_WIDTH)
             logo2 = Image(resource_path("assets/burullus-logo.png"),  LOGO_IMG_WIDTH, LOGO_IMG_WIDTH)
-            label = Paragraph(f'MOS for PTW# {ptwId} <br/>' + ptwTitle, styles['Title'])
+            label = Paragraph(f'MOS for PTW# {ptwId} <br/>' + pdfMarkup(ptwTitle), styles['Title'])
 
             table = Table([[logo1, label, logo2]], colWidths=[1.1*LOGO_IMG_WIDTH, headerTableWidth - 2.2*LOGO_IMG_WIDTH, 1.1*LOGO_IMG_WIDTH])
             table.setStyle(TableStyle([
@@ -1009,20 +1049,20 @@ class ReportGenerator:
             canvas.restoreState()
         
         def listToBullets(data: list, style):
-            """Render a list of strings as a bulleted ListFlowable of HTML-escaped
-            paragraphs, or None if data is empty."""
+            """Render a list of strings as a bulleted ListFlowable of Arabic-aware
+            paragraphs (see ReportGenerator.arabicParagraph), or None if data is empty."""
             if not data:
                 return None
-            
-            bullets = [ListItem(Paragraph(_html.escape(element), style), bulletType='bullet', bulletFontSize=style.fontSize) for element in data]
+
+            bullets = [ListItem(ReportGenerator.arabicParagraph(element, style), bulletType='bullet', bulletFontSize=style.fontSize) for element in data]
             return ListFlowable(
-                bullets, 
-                bulletType='bullet', 
-                leftIndent=0.3*inch, 
-                bulletIndent=0.1*inch, 
-                spaceAfter=0.1*inch, 
+                bullets,
+                bulletType='bullet',
+                leftIndent=0.3*inch,
+                bulletIndent=0.1*inch,
+                spaceAfter=0.1*inch,
             )
-        
+
         elements = []
         mosSteps = mos.split('\n')
         elements.append(Paragraph('Method of Statement:', styles['Title']))
@@ -1049,6 +1089,8 @@ class ReportGenerator:
         assessment's title and a diagonal "Printed @ <timestamp>" watermark.
         No-op if riskAssessment is None or has no risks.
         """
+        ReportGenerator._registerArabicFonts()
+
         LOGO_IMG_WIDTH = 35*mm
         # Cols: No | Hazard | Effect | S | L | Risk(free) | Control | S | L | Risk(ctrl) | Evaluation
         TABLE_WIDTH_WEIGHTS = [7, 30, 33, 4, 4, 9, 52, 5, 5, 10, 20]
@@ -1097,9 +1139,10 @@ class ReportGenerator:
 
         def bulleted(text):
             """Split text on newlines, dropping blank lines, and render each
-            remaining line as a bulleted paragraph."""
+            remaining line as a bulleted, Arabic-aware paragraph (see
+            ReportGenerator.arabicParagraph)."""
             lines = [l for l in (text or '').split('\n') if l.strip()]
-            return [Paragraph('• ' + line, styles['BulletItem']) for line in lines] if lines else []
+            return [ReportGenerator.arabicParagraph('• ' + line, styles['BulletItem']) for line in lines] if lines else []
 
         data = [
             # Row 0 — group headers (non-split cols span both rows via SPAN)
@@ -1145,7 +1188,7 @@ class ReportGenerator:
                 Paragraph(sc,                           styles['NormalCenter']),
                 Paragraph(lc,                           styles['NormalCenter']),
                 Paragraph(rc,                           styles['NormalCenter']),
-                Paragraph(riskItem.eval,                styles['NormalCenter']),
+                ReportGenerator.arabicParagraph(riskItem.eval, styles['NormalCenter'], forceAlignment=False),
             ])
 
         table = Table(data, repeatRows=2, colWidths=[w * dataTableWidth / TABLE_WIDTH_WEIGHTS_SUM for w in TABLE_WIDTH_WEIGHTS])
@@ -1192,7 +1235,7 @@ class ReportGenerator:
             logo1 = Image(resource_path("assets/rashpetco-logo.png"), LOGO_IMG_WIDTH, LOGO_IMG_WIDTH)
             logo2 = Image(resource_path("assets/burullus-logo.png"),  LOGO_IMG_WIDTH, LOGO_IMG_WIDTH)
             label = Paragraph(
-                (f'PTW#{ptwId} - Specific Risk Assessment <br/>' if ptwId else '') + _html.escape(title), 
+                (f'PTW#{ptwId} - Specific Risk Assessment <br/>' if ptwId else '') + pdfMarkup(title),
                 styles['Title']
             )
             print(ptwId)

@@ -17,6 +17,7 @@ from network.clientRequests import ClientRequests
 from widgets.RiskPreview import RiskAssessmentPreview
 from models.PTW import RiskAssessment
 from models.User import User
+from helper.i18n import t
 
 class TableRisks(QWidget):
     """List widget over a dict of risk assessments, keyed by title.
@@ -51,8 +52,8 @@ class TableRisks(QWidget):
 
             self.riskTitle = riskTitle
             self.btnCheck = QCheckBox()
-            self.btnView = QPushButton(qta.icon('fa6s.eye'), 'View')
-            self.btnEdit = QPushButton(qta.icon('fa6s.pen'), 'Edit')
+            self.btnView = QPushButton(qta.icon('fa6s.eye'), t('View'))
+            self.btnEdit = QPushButton(qta.icon('fa6s.pen'), t('Edit'))
             # self.btnDelete = QPushButton(qta.icon('fa6s.trash'), 'Delete')
 
             self.btnCheck.setStyleSheet('QCheckBox::indicator { width: 20px; height: 20px }')
@@ -159,7 +160,7 @@ class TableRisks(QWidget):
         def on_done(err, _):
             self.window()._refreshOverlay.hideBusy()
             if err:
-                QMessageBox.warning(self, "Fail", err)
+                QMessageBox.warning(self, t("Fail"), err)
                 return
             self.risks[riskAssessment.title] = riskAssessment
             self.addRiskToGUI(riskAssessment.title)
@@ -205,7 +206,7 @@ class TableRisks(QWidget):
         def on_done(err, _):
             self.window()._refreshOverlay.hideBusy()
             if err:
-                QMessageBox.warning(self, "Fail", err)
+                QMessageBox.warning(self, t("Fail"), err)
                 return
             self.risks[riskTitle] = riskAssessment
         self.window()._refreshOverlay.showBusy()
@@ -213,14 +214,14 @@ class TableRisks(QWidget):
     
     def deleteRiskAssessment(self, riskTitle: str):
         """Confirm with the user, then delete the assessment titled `riskTitle` on the server and refresh the list."""
-        reply = QMessageBox.question(self, 'Delete Risk Assessment', f"Are you sure you want to delete Risk Assessment '{riskTitle}'?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        reply = QMessageBox.question(self, t('Delete Risk Assessment'), t("Are you sure you want to delete Risk Assessment '{0}'?").format(riskTitle), QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.No:
             return
 
         def on_done(err, _):
             self.window()._refreshOverlay.hideBusy()
             if err:
-                QMessageBox.warning(self, "Fail", err)
+                QMessageBox.warning(self, t("Fail"), err)
                 return
             self.risks.pop(riskTitle)
             self.refreshGUI()
@@ -232,10 +233,10 @@ class TableRisks(QWidget):
         """Prompt for a new, non-duplicate title, then open a blank risk assessment editor and save it if accepted."""
         from PyQt6.QtWidgets import QLineEdit, QDialogButtonBox
         dlgPromptTitle = QDialog(self)
-        dlgPromptTitle.setWindowTitle("New Risk Assessment")
+        dlgPromptTitle.setWindowTitle(t("New Risk Assessment"))
         dlgPromptTitle.setModal(True)
         lyt = QVBoxLayout(dlgPromptTitle)
-        lbl = QLabel("Enter title for new Risk Assessment:")
+        lbl = QLabel(t("Enter title for new Risk Assessment:"))
         err = QLabel("")
         err.setStyleSheet("QLabel { color: red; }")
         lyt.addWidget(lbl)
@@ -249,7 +250,7 @@ class TableRisks(QWidget):
             txtTitle.setProperty('error', str(notValid))
             txtTitle.style().unpolish(txtTitle)
             txtTitle.style().polish(txtTitle)
-            err.setText("A Risk Assessment with this title already exists." if notValid else "")
+            err.setText(t("A Risk Assessment with this title already exists.") if notValid else "")
             buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(not notValid)
         txtTitle.textChanged.connect(checkTitle)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
@@ -262,10 +263,10 @@ class TableRisks(QWidget):
         
         title = txtTitle.text().strip()
         if not title:
-            QMessageBox.warning(self, "Invalid Title", "Title cannot be empty.")
+            QMessageBox.warning(self, t("Invalid Title"), t("Title cannot be empty."))
             return
         if title in self.risks:
-            QMessageBox.warning(self, "Duplicate Title", f"A Risk Assessment with the title '{title}' already exists.")
+            QMessageBox.warning(self, t("Duplicate Title"), t("A Risk Assessment with the title '{0}' already exists.").format(title))
             return
         
         newRiskAssessment = RiskAssessment()

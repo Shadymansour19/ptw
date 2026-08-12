@@ -267,6 +267,34 @@ def updateUserTheme():
         return jsonify({"success": False, "error": str(e)}), 400
 
 
+@usersBp.route("/users/language", methods=["PATCH"])
+def updateUserLanguage():
+    """PATCH /users/language: authenticated non-guest user, updating only their
+    own language preference. Body: {"username", "language"}. Returns 401 if
+    unauthenticated, a guest, or username doesn't match the authenticated
+    user; 400 on exception; else 200."""
+    authUser = getVerifiedUser(request.authorization)
+    if authUser is None:
+        log.warning("PATCH /users/language unauthorized (ip=%s)", request.remote_addr)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    if authUser.getRole() == UserRoles.GUEST:
+        log.warning("PATCH /users/language: guest '%s' attempted to change language", authUser.getUsername())
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    username = data.get('username')
+    language = data.get('language')
+    if authUser.getUsername() != username:
+        log.warning("PATCH /users/language: '%s' attempted to change language for '%s'", authUser.getUsername(), username)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    try:
+        userDB.updateLanguage(username, language)
+        log.debug("Language updated: user='%s' language='%s'", username, language)
+        return jsonify({"success": True})
+    except Exception as e:
+        log.error("PATCH /users/language failed for '%s': %s", username, e, exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
 @usersBp.route("/users/active", methods=["PATCH"])
 def setUserActiveRequest():
     """PATCH /users/active: admin only. Body: {"username", "is_active"}.

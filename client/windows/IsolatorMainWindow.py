@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import QApplication, QMessageBox
 from GlobalData import globalData
 from models.User import User
 from windows.MainWindow import MainWindow
+from helper.i18n import t
 
 
 class IsolatorMainWindow(MainWindow):
@@ -15,7 +16,7 @@ class IsolatorMainWindow(MainWindow):
     def __init__(self, loggedUser: User):
         """Build the Isolator window: wire IC tab options, sidebar/topbar, and hide the FAB."""
         super().__init__(loggedUser)
-        self.setWindowTitle("PTW (Permit To Work) - Isolator Window")
+        self.setWindowTitle(t("PTW (Permit To Work) - Isolator Window"))
 
         self.tabPendingICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionExecuteIsolateIC])
         self.tabActiveICs.addOptions([self.optionViewIC, self.optionPrintIC])
@@ -54,11 +55,11 @@ class IsolatorMainWindow(MainWindow):
             """Hide the busy overlay, then rebuild the IC tabs or report the error."""
             self._refreshOverlay.hideBusy()
             if err:
-                QMessageBox.warning(self, "Error", f"Failed to refresh data: {err}")
+                QMessageBox.warning(self, t("Error"), t("Failed to refresh data:") + f" {err}")
                 return
             self.refreshICsGUI()
             QApplication.beep()
-            self.statusBar().showMessage("GUI refreshed successfully.", 2000)
+            self.statusBar().showMessage(t("GUI refreshed successfully."), 2000)
 
         self._refreshOverlay.showBusy()
         globalData.refresh(self.loggedUser, None, refreshUsers=True, refreshICs=True, callback=on_done)

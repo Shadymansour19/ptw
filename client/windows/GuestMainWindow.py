@@ -4,6 +4,7 @@ from PyQt6.QtGui import QKeySequence, QShortcut
 import qtawesome as qta
 
 from windows.MainWindow import MainWindow
+from helper.i18n import t
 
 
 class GuestMainWindow(MainWindow):
@@ -15,7 +16,7 @@ class GuestMainWindow(MainWindow):
         """Build the Guest window: wire PTW tab options, sidebar/topbar, and the
         new-PTW FAB with its Ctrl+N shortcut."""
         super().__init__(loggedUser)
-        self.setWindowTitle("PTW (Permit To Work) - Guest Window")
+        self.setWindowTitle(t("PTW (Permit To Work) - Guest Window"))
 
         self.tabRequestedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
         self.tabReturnedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
@@ -32,7 +33,7 @@ class GuestMainWindow(MainWindow):
             },
         )
 
-        self.btnFAB.setToolTip("Request New PTW [Ctrl+N]")
+        self.btnFAB.setToolTip(t("Request New PTW [Ctrl+N]"))
         self.btnFAB.setIcon(qta.icon('fa6s.plus', color='white'))
 
         shortcut = QShortcut(QKeySequence("Ctrl+N"), self)

@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QT
 import qtawesome as qta
 
 from network.clientRequests import ClientRequests
+from helper.i18n import t
 
 _WARN_AGE_HOURS = 36
 _CRIT_AGE_HOURS = 72
@@ -73,11 +74,11 @@ class TableBackups(QWidget):
         headerLabel = QLabel(title, font=QFont("Helvetica", 18, QFont.Weight.Bold))
         self._statusLabel = QLabel()
 
-        self._btnBackupNow = QPushButton(qta.icon('fa6s.floppy-disk'), " Backup Now")
+        self._btnBackupNow = QPushButton(qta.icon('fa6s.floppy-disk'), t(" Backup Now"))
         self._btnBackupNow.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btnBackupNow.clicked.connect(self._backupNow)
 
-        btnRefresh = QPushButton(qta.icon('fa6s.rotate-right'), " Refresh")
+        btnRefresh = QPushButton(qta.icon('fa6s.rotate-right'), t(" Refresh"))
         btnRefresh.setCursor(Qt.CursorShape.PointingHandCursor)
         btnRefresh.clicked.connect(self.refresh)
 
@@ -88,11 +89,11 @@ class TableBackups(QWidget):
         headerRow.addWidget(btnRefresh)
         lyt.addLayout(headerRow)
 
-        hintLabel = QLabel("Right-click a backup to download a local copy or delete it.")
+        hintLabel = QLabel(t("Right-click a backup to download a local copy or delete it."))
         hintLabel.setStyleSheet("color: palette(placeholder-text);")
         lyt.addWidget(hintLabel)
 
-        self.columns = ['Timestamp', 'Age', 'DB Size', 'Files Size', 'Total Size', 'Status', 'Auto-prune in']
+        self.columns = [t('Timestamp'), t('Age'), t('DB Size'), t('Files Size'), t('Total Size'), t('Status'), t('Auto-prune in')]
         self.tbl = QTableWidget()
         self.tbl.setColumnCount(len(self.columns))
         self.tbl.setHorizontalHeaderLabels(self.columns)
@@ -119,7 +120,7 @@ class TableBackups(QWidget):
             if err:
                 self._statusLabel.setText(err)
                 self._statusLabel.setStyleSheet(f"color: {_CRIT_COLOR}; font-weight: bold;")
-                QMessageBox.warning(self, "Backups", f"Failed to refresh backups: {err}")
+                QMessageBox.warning(self, t("Backups"), t("Failed to refresh backups:") + f" {err}")
                 return
             self._populate(summary)
 
@@ -147,7 +148,7 @@ class TableBackups(QWidget):
                 _formatBytes(data.get('dumpSizeBytes')),
                 _formatBytes(data.get('filesSizeBytes')),
                 _formatBytes(data.get('totalSizeBytes')),
-                'Complete' if complete else 'Incomplete',
+                t('Complete') if complete else t('Incomplete'),
                 f"{pruneInDays:.0f}d",
             ]
             for col, value in enumerate(values):
@@ -168,16 +169,16 @@ class TableBackups(QWidget):
         totalSize = sum(b.get('totalSizeBytes', 0) for b in self.backups)
 
         if not lastBackupAt:
-            self._statusLabel.setText("No backups yet")
+            self._statusLabel.setText(t("No backups yet"))
             self._statusLabel.setStyleSheet(f"color: {_CRIT_COLOR}; font-weight: bold;")
             return
 
         ageHours = (datetime.now() - datetime.fromisoformat(lastBackupAt)).total_seconds() / 3600
         color = _OK_COLOR if ageHours < _WARN_AGE_HOURS else (_WARN_COLOR if ageHours < _CRIT_AGE_HOURS else _CRIT_COLOR)
         self._statusLabel.setText(
-            f"Last backup: {_formatAge(datetime.fromisoformat(lastBackupAt))}  ·  "
-            f"{len(self.backups)} backup(s)  ·  {_formatBytes(totalSize)} used  ·  "
-            f"{_formatBytes(freeBytes)} free"
+            t("Last backup: {0}  ·  {1} backup(s)  ·  {2} used  ·  {3} free").format(
+                _formatAge(datetime.fromisoformat(lastBackupAt)), len(self.backups), _formatBytes(totalSize), _formatBytes(freeBytes)
+            )
         )
         self._statusLabel.setStyleSheet(f"color: {color}; font-weight: bold;")
 
@@ -190,9 +191,9 @@ class TableBackups(QWidget):
             self._btnBackupNow.setEnabled(True)
             self.window()._refreshOverlay.hideBusy()
             if err:
-                QMessageBox.warning(self, 'Backups', err)
+                QMessageBox.warning(self, t('Backups'), err)
                 return
-            QMessageBox.information(self, 'Backups', 'Backup created successfully.')
+            QMessageBox.information(self, t('Backups'), t('Backup created successfully.'))
             self.refresh()
 
         self.window()._refreshOverlay.showBusy()
@@ -206,8 +207,8 @@ class TableBackups(QWidget):
         name = self.tbl.item(index.row(), 0).data(Qt.ItemDataRole.UserRole)
 
         menu = QMenu(self.tbl)
-        actionDownload = QAction(qta.icon('fa6s.download'), 'Download…', self.tbl)
-        actionDelete = QAction(qta.icon('fa5s.trash'), 'Delete', self.tbl)
+        actionDownload = QAction(qta.icon('fa6s.download'), t('Download…'), self.tbl)
+        actionDelete = QAction(qta.icon('fa5s.trash'), t('Delete'), self.tbl)
         actionDownload.triggered.connect(lambda: self._downloadBackup(name))
         actionDelete.triggered.connect(lambda: self._deleteBackup(name))
         menu.addAction(actionDownload)
@@ -220,7 +221,7 @@ class TableBackups(QWidget):
         Fetches the dump first, then the files archive, writing each to
         `<destRoot>/<name>/` as its response arrives.
         """
-        destRoot = QFileDialog.getExistingDirectory(self, 'Select destination folder')
+        destRoot = QFileDialog.getExistingDirectory(self, t('Select destination folder'))
         if not destRoot:
             return
         destDir = os.path.join(destRoot, name)
@@ -230,17 +231,17 @@ class TableBackups(QWidget):
             """Handle the files-archive download response; write it to disk and report completion."""
             self.window()._refreshOverlay.hideBusy()
             if err:
-                QMessageBox.warning(self, 'Backups', err)
+                QMessageBox.warning(self, t('Backups'), err)
                 return
             with open(os.path.join(destDir, result['filename']), 'wb') as f:
                 f.write(result['content'])
-            QMessageBox.information(self, 'Backups', f"Backup '{name}' downloaded to:\n{destDir}")
+            QMessageBox.information(self, t('Backups'), t("Backup '{0}' downloaded to:\n{1}").format(name, destDir))
 
         def on_dump_done(err, result):
             """Handle the DB dump download response; write it to disk, then fetch the files archive."""
             if err:
                 self.window()._refreshOverlay.hideBusy()
-                QMessageBox.warning(self, 'Backups', err)
+                QMessageBox.warning(self, t('Backups'), err)
                 return
             with open(os.path.join(destDir, result['filename']), 'wb') as f:
                 f.write(result['content'])
@@ -252,7 +253,7 @@ class TableBackups(QWidget):
     def _deleteBackup(self, name: str):
         """Confirm with the user, then delete the named backup via the server and refresh the list."""
         reply = QMessageBox.question(
-            self, 'Delete Backup', f"Are you sure you want to delete backup '{name}'? This cannot be undone.",
+            self, t('Delete Backup'), t("Are you sure you want to delete backup '{0}'? This cannot be undone.").format(name),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -262,7 +263,7 @@ class TableBackups(QWidget):
             """Handle the deleteBackup response; refresh the list on success or show an error."""
             self.window()._refreshOverlay.hideBusy()
             if err:
-                QMessageBox.warning(self, 'Backups', err)
+                QMessageBox.warning(self, t('Backups'), err)
                 return
             self.refresh()
 

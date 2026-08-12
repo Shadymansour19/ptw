@@ -5,6 +5,7 @@ from PyQt6.QtGui import QKeySequence, QShortcut
 import qtawesome as qta
 
 from windows.MainWindow import MainWindow
+from helper.i18n import t
 
 
 class SafetyMainWindow(MainWindow):
@@ -16,7 +17,7 @@ class SafetyMainWindow(MainWindow):
         """Build the Safety window: wire PTW tab options, sidebar/topbar, and the
         new-risk-assessment FAB with its Ctrl+N shortcut."""
         super().__init__(loggedUser)
-        self.setWindowTitle("PTW (Permit To Work) - Safety Window")
+        self.setWindowTitle(t("PTW (Permit To Work) - Safety Window"))
 
         self.tabUnderReviewPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestEditsPTW, self.optionAcceptPTW])
         self.tabMeetingPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestEditsPTW, self.optionAcceptPTW])
@@ -36,7 +37,7 @@ class SafetyMainWindow(MainWindow):
         )
 
         self.btnFAB.setIcon(qta.icon('fa6s.plus', color='white'))
-        self.btnFAB.setToolTip("New Risk [Ctrl+N]")
+        self.btnFAB.setToolTip(t("New Risk [Ctrl+N]"))
 
         QShortcut(QKeySequence("Ctrl+N"), self).activated.connect(self.addNewRiskDialog)
     

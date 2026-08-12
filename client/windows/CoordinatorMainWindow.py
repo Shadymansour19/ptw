@@ -7,6 +7,7 @@ import qtawesome as qta
 from GlobalData import globalData
 from models.User import User
 from windows.MainWindow import MainWindow
+from helper.i18n import t
 
 
 class CoordinatorMainWindow(MainWindow):
@@ -20,7 +21,7 @@ class CoordinatorMainWindow(MainWindow):
         """Build the Coordinator window: wire PTW/IC tab options and the
         print-current-tab FAB with its Ctrl+P shortcut."""
         super().__init__(loggedUser)
-        self.setWindowTitle("PTW (Permit To Work) - Coordinator Window")
+        self.setWindowTitle(t("PTW (Permit To Work) - Coordinator Window"))
 
         self.tabUnderReviewPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestEditsPTW, self.optionAcceptPTW, self.optionPrintPTW, self.optionExportPTW])
         self.tabMeetingPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionPrintPTW, self.optionExportPTW])
@@ -76,7 +77,7 @@ class CoordinatorMainWindow(MainWindow):
 
         # Create Floating Option Button
         self.btnFAB.setIcon(qta.icon('fa6s.print', color='white'))
-        self.btnFAB.setToolTip("Print current widget PTWs [Ctrl+P]")
+        self.btnFAB.setToolTip(t("Print current widget PTWs [Ctrl+P]"))
 
         shortcut = QShortcut(QKeySequence("Ctrl+P"), self)
         shortcut.activated.connect(self.btnFABHandler)

@@ -12,6 +12,7 @@ from GlobalData import globalData
 from models.User import User
 from widgets.DonutChart import DonutChart, DonutSegment, DEPARTMENT_COLOR_CYCLE
 from windows.MainWindow import MainWindow
+from helper.i18n import t
 
 
 class AdminMainWindow(MainWindow):
@@ -24,7 +25,7 @@ class AdminMainWindow(MainWindow):
         """Build the Admin window: wire up Users/Server Logs/Backups tabs and the
         add-user FAB with its Ctrl+N shortcut."""
         super().__init__(loggedUser)
-        self.setWindowTitle("PTW (Permit To Work) - Admin Window")
+        self.setWindowTitle(t("PTW (Permit To Work) - Admin Window"))
 
         self.setAvailableTabs(
             [
@@ -38,7 +39,7 @@ class AdminMainWindow(MainWindow):
         )
 
         self.btnFAB.setIcon(qta.icon('fa6s.plus', color='white'))
-        self.btnFAB.setToolTip("Add New User [Ctrl+N]")
+        self.btnFAB.setToolTip(t("Add New User [Ctrl+N]"))
 
         shortcut = QShortcut(QKeySequence("Ctrl+N"), self)
         shortcut.activated.connect(self.addNewUserDialog)
@@ -58,10 +59,10 @@ class AdminMainWindow(MainWindow):
             return
 
         msgBox = QMessageBox(self)
-        msgBox.setWindowTitle("Add Users")
-        msgBox.setText("How would you like to add new user(s)?")
-        btnManual = msgBox.addButton("&Type Manually", QMessageBox.ButtonRole.AcceptRole)
-        btnImport = msgBox.addButton("Import from E&xcel", QMessageBox.ButtonRole.ActionRole)
+        msgBox.setWindowTitle(t("Add Users"))
+        msgBox.setText(t("How would you like to add new user(s)?"))
+        btnManual = msgBox.addButton(t("&Type Manually"), QMessageBox.ButtonRole.AcceptRole)
+        btnImport = msgBox.addButton(t("Import from E&xcel"), QMessageBox.ButtonRole.ActionRole)
         btnManual.setIcon(qta.icon('fa6s.keyboard'))
         btnImport.setIcon(qta.icon('fa6s.file-excel'))
         msgBox.addButton(QMessageBox.StandardButton.Cancel)
@@ -70,7 +71,7 @@ class AdminMainWindow(MainWindow):
 
         if clicked == btnManual:
             newUser = User()
-            dlg = DialogUser(self, False, True, self.loggedUser, newUser, 'New User')
+            dlg = DialogUser(self, False, True, self.loggedUser, newUser, t('New User'))
             if dlg.exec() == QDialog.DialogCode.Accepted:
                 self.tabAllUsers.addUser(newUser)
         elif clicked == btnImport:
@@ -84,7 +85,7 @@ class AdminMainWindow(MainWindow):
 
     def buildHomePage(self):
         """Override the base PTW dashboard with a single Users-by-Department donut chart."""
-        self._homeUsersChart = DonutChart("Users")
+        self._homeUsersChart = DonutChart(t("Users"))
         row = QHBoxLayout()
         row.addWidget(self._homeUsersChart, 1)
         self._homeContentLayout.addLayout(row, 1)
@@ -120,7 +121,7 @@ class AdminMainWindow(MainWindow):
             report the error."""
             self._refreshOverlay.hideBusy()
             if err:
-                QMessageBox.warning(self, "Error", f"Failed to refresh data: {err}")
+                QMessageBox.warning(self, t("Error"), t("Failed to refresh data:") + f" {err}")
                 return
 
             self.tabAllUsers.clear()
@@ -130,7 +131,7 @@ class AdminMainWindow(MainWindow):
             self.updateHomeDashboard()
 
             QApplication.beep()
-            self.statusBar().showMessage("GUI refreshed successfully.", 2000)
+            self.statusBar().showMessage(t("GUI refreshed successfully."), 2000)
 
         self._refreshOverlay.showBusy()
         globalData.refresh(self.loggedUser, None, refreshUsers=True, callback=on_done)

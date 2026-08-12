@@ -16,6 +16,8 @@ import qtawesome as qta
 
 from widgets.SearchableComboBox import SearchableComboBox
 from widgets.RefreshOverlay import RefreshOverlay
+import helper.i18n as i18n
+from helper.i18n import t
 
 
 SERVICE_NAME = "PTW-login-credentials"
@@ -36,7 +38,7 @@ class PasswordLineEdit(QLineEdit):
         self._btn = QToolButton(self)
         self._btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._btn.setToolTip("Show / hide password")
+        self._btn.setToolTip(t("Show / hide password"))
         self._btn.clicked.connect(self._toggle_visibility)
 
         btn_size = 28
@@ -93,7 +95,7 @@ class ResetPasswordDialog(QDialog):
         """Build the dialog for `username`, immediately request a verification code from the
         server, and keep the code/password fields disabled until the send is confirmed."""
         super().__init__(parent)
-        self.setWindowTitle("Reset Password")
+        self.setWindowTitle(t("Reset Password"))
 
         lyt = QFormLayout()
         lyt.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
@@ -107,18 +109,18 @@ class ResetPasswordDialog(QDialog):
 
         self.boxUsername.setText(username)
         self.boxUsername.setReadOnly(True)
-        self.boxCode.setPlaceholderText("Enter verification code")
-        self.boxNewPassword.setPlaceholderText("Enter a new password")
-        self.boxConfirmPassword.setPlaceholderText("Repeat your new password")
+        self.boxCode.setPlaceholderText(t("Enter verification code"))
+        self.boxNewPassword.setPlaceholderText(t("Enter a new password"))
+        self.boxConfirmPassword.setPlaceholderText(t("Repeat your new password"))
 
         self.btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         self.btns.accepted.connect(self.resetPassword)
         self.btns.rejected.connect(self.reject)
 
-        lyt.addRow("Username", self.boxUsername)
-        lyt.addRow("6-digit Code", self.boxCode)
-        lyt.addRow("New Password", self.boxNewPassword)
-        lyt.addRow("Confirm Password", self.boxConfirmPassword)
+        lyt.addRow(t("Username"), self.boxUsername)
+        lyt.addRow(t("6-digit Code"), self.boxCode)
+        lyt.addRow(t("New Password"), self.boxNewPassword)
+        lyt.addRow(t("Confirm Password"), self.boxConfirmPassword)
         lyt.addRow(self.lblStatus)
         lyt.addRow(self.btns)
 
@@ -128,12 +130,12 @@ class ResetPasswordDialog(QDialog):
         def on_done(err, _):
             self._refreshOverlay.hideBusy()
             if err:
-                self.lblStatus.setText("Error sending verification code. Please try again later.")
-                QMessageBox.warning(self, "Error", err)
+                self.lblStatus.setText(t("Error sending verification code. Please try again later."))
+                QMessageBox.warning(self, t("Error"), err)
                 self._setFormEnabled(False)
                 self.reject()
             else:
-                self.lblStatus.setText("Verification code sent. Check your email.")
+                self.lblStatus.setText(t("Verification code sent. Check your email."))
                 self._setFormEnabled(True)
                 self.boxCode.setFocus()
 
@@ -156,11 +158,11 @@ class ResetPasswordDialog(QDialog):
         confirmPassword = self.boxConfirmPassword.text()
 
         if not self.newPassword:
-            QMessageBox.warning(self, "Error", "Please enter a new password.")
+            QMessageBox.warning(self, t("Error"), t("Please enter a new password."))
             return
 
         if self.newPassword != confirmPassword:
-            QMessageBox.warning(self, "Error", "Passwords do not match.")
+            QMessageBox.warning(self, t("Error"), t("Passwords do not match."))
             return
 
         self.accept()
@@ -174,10 +176,10 @@ class GuestDetailsDialog(QDialog):
         """Build the guest-details form: a free-text name field and a department combo box
         populated from `departments`."""
         super().__init__(parent)
-        self.setWindowTitle("Continue as Guest")
+        self.setWindowTitle(t("Continue as Guest"))
 
         self.boxName = QLineEdit()
-        self.boxName.setPlaceholderText("Enter your full name")
+        self.boxName.setPlaceholderText(t("Enter your full name"))
 
         self.boxDepartment = SearchableComboBox()
         self.boxDepartment.setItems([str(dept) for dept in departments])
@@ -186,8 +188,8 @@ class GuestDetailsDialog(QDialog):
         lyt.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         self.setLayout(lyt)
 
-        lyt.addRow("Name", self.boxName)
-        lyt.addRow("Department", self.boxDepartment)
+        lyt.addRow(t("Name"), self.boxName)
+        lyt.addRow(t("Department"), self.boxDepartment)
 
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         btns.accepted.connect(self._onAccept)
@@ -198,7 +200,7 @@ class GuestDetailsDialog(QDialog):
         """Slot for the OK button (`btns.accepted`): reject with a warning if no name was
         entered, otherwise accept the dialog."""
         if not self.boxName.text().strip():
-            QMessageBox.warning(self, "Error", "Please enter your name.")
+            QMessageBox.warning(self, t("Error"), t("Please enter your name."))
             return
         self.accept()
 
@@ -223,7 +225,7 @@ class LoginWindow(QMainWindow):
         forgot-password link, Login/Guest/Cancel buttons) and load any remembered usernames
         into the username combo."""
         super().__init__(parent)
-        self.setWindowTitle("PTW Login")
+        self.setWindowTitle(t("PTW Login"))
         
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.CustomizeWindowHint)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowMaximizeButtonHint)
@@ -233,12 +235,12 @@ class LoginWindow(QMainWindow):
 
         self.boxUsername = SearchableComboBox()
         self.boxPassword = PasswordLineEdit()
-        self.btnRememberMe = QCheckBox('Remember me')
-        self.btnForgotPassword = QPushButton('Forgot Password?')
-        
+        self.btnRememberMe = QCheckBox(t('Remember me'))
+        self.btnForgotPassword = QPushButton(t('Forgot Password?'))
+
         self.btnRememberMe.setChecked(True)
-        self.boxUsername.setPlaceholderText("Enter username")
-        self.boxPassword.setPlaceholderText("Enter password")
+        self.boxUsername.setPlaceholderText(t("Enter username"))
+        self.boxPassword.setPlaceholderText(t("Enter password"))
         self.btnForgotPassword.setStyleSheet('''
             QPushButton { border: none; background: transparent; color: palette(link); }
             QPushButton:hover { text-decoration: underline;}
@@ -252,9 +254,9 @@ class LoginWindow(QMainWindow):
         self.boxPassword.returnPressed.connect(self.login)
         self.btnForgotPassword.clicked.connect(self.forgotPassword)
 
-        self.btnCancel = QPushButton(qta.icon('fa5s.times'), "&Cancel")
-        self.btnLogin = QPushButton(qta.icon('fa6s.arrow-right-to-bracket'), "&Login")
-        self.btnGuest = QPushButton(qta.icon('fa5s.user'), "Login as a &Guest")
+        self.btnCancel = QPushButton(qta.icon('fa5s.times'), t("&Cancel"))
+        self.btnLogin = QPushButton(qta.icon('fa6s.arrow-right-to-bracket'), t("&Login"))
+        self.btnGuest = QPushButton(qta.icon('fa5s.user'), t("Login as a &Guest"))
 
         self.btnCancel.clicked.connect(self.close)
         self.btnLogin.clicked.connect(self.login)
@@ -269,8 +271,8 @@ class LoginWindow(QMainWindow):
         mainLayout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         container.setLayout(mainLayout)
 
-        mainLayout.addRow("Username", self.boxUsername)
-        mainLayout.addRow("Password", self.boxPassword)
+        mainLayout.addRow(t("Username"), self.boxUsername)
+        mainLayout.addRow(t("Password"), self.boxPassword)
         mainLayout.addRow(self.btnForgotPassword)
         mainLayout.addRow(self.btnRememberMe)
 
@@ -364,7 +366,7 @@ class LoginWindow(QMainWindow):
 
         username = self.boxUsername.currentText()
         if not username:
-            QMessageBox.warning(self, "Error", "Please enter your username to reset your password.")
+            QMessageBox.warning(self, t("Error"), t("Please enter your username to reset your password."))
             return
 
         dlg = ResetPasswordDialog(username, self)
@@ -374,9 +376,9 @@ class LoginWindow(QMainWindow):
         def on_done(err, _):
             self._refreshOverlay.hideBusy()
             if err:
-                QMessageBox.warning(self, "Error", err)
+                QMessageBox.warning(self, t("Error"), err)
             else:
-                QMessageBox.information(self, "Success", "Your password has been reset successfully. You can now log in with your new password.")
+                QMessageBox.information(self, t("Success"), t("Your password has been reset successfully. You can now log in with your new password."))
 
         self._refreshOverlay.showBusy()
         ClientRequests.resetPassword(username, dlg.newPassword, dlg.verificationCode, callback=on_done)
@@ -405,20 +407,33 @@ class LoginWindow(QMainWindow):
         def on_done(err, user):
             self._refreshOverlay.hideBusy()
             if err is not None:
-                QMessageBox.warning(self, "Error", err)
+                QMessageBox.warning(self, t("Error"), err)
                 return
 
             if self.btnRememberMe.isChecked():
                 try:
                     self.storeLoginCredentials(username, password)
                 except KeyringError as e:
-                    QMessageBox.warning(self, "Error", str(e))
+                    QMessageBox.warning(self, t("Error"), str(e))
 
             theme = user.getTheme()
             if theme == 'dark':
                 QApplication.styleHints().setColorScheme(Qt.ColorScheme.Dark)
             elif theme == 'light':
                 QApplication.styleHints().setColorScheme(Qt.ColorScheme.Light)
+
+            # No saved preference (None) leaves main.py's OS-locale default in place. A
+            # saved preference re-inits i18n and flips app-wide layout direction *before*
+            # the role window is built, so every widget it constructs (all translated via
+            # helper.i18n.t()) comes up in the right language/direction on this very login -
+            # no restart needed the first time a preference takes effect, only when it's
+            # changed mid-session (see MainWindow._applyLanguageChange).
+            language = user.getLanguage()
+            if language:
+                i18n.init(language)
+                QApplication.instance().setLayoutDirection(
+                    Qt.LayoutDirection.RightToLeft if i18n.is_rtl() else Qt.LayoutDirection.LeftToRight
+                )
 
             self.on_login_success.emit(user)
 

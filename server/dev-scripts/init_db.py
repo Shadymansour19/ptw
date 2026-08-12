@@ -54,6 +54,7 @@ def init_tables():
                     email       VARCHAR(100),
                     ext         VARCHAR(50),
                     theme       VARCHAR(20),
+                    language    VARCHAR(10),
                     is_active   BOOLEAN NOT NULL DEFAULT TRUE
                 )
             """)

@@ -16,6 +16,7 @@ from models.Isolation import IC
 from dialogs.DialogIC import DialogIC
 from widgets.CheckableComboBox import CheckableComboBox
 from GlobalData import globalData
+from helper.i18n import t
 
 
 class _LongTermItem(QTableWidgetItem):
@@ -59,7 +60,7 @@ class TableICs(QWidget):
         lblLyt.addWidget(lbl)
 
         self._filterBtn = QPushButton(qta.icon('fa6s.filter'), "")
-        self._filterBtn.setToolTip("Filter")
+        self._filterBtn.setToolTip(t("Filter"))
         self._filterBtn.setIconSize(QSize(32, 32))
         self._filterBtn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._filterBtn.setStyleSheet("""
@@ -372,7 +373,7 @@ class TableICs(QWidget):
         server, add it to this table on success, and upload any pending
         P&ID/Wiring documents attached during the dialog."""
         ic = IC()
-        dlg = DialogIC(self, self.loggedUser, ic, True, False, "New IC")
+        dlg = DialogIC(self, self.loggedUser, ic, True, False, t("New IC"))
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         ic = dlg.getIC()
@@ -383,7 +384,7 @@ class TableICs(QWidget):
             P&ID/Wiring documents; on failure, show a warning."""
             self.window()._refreshOverlay.hideBusy()
             if err:
-                QMessageBox.warning(self, "Fail", err)
+                QMessageBox.warning(self, t("Fail"), err)
                 return
             ic.id = icId
             globalData.ics[ic.id] = ic
@@ -393,7 +394,7 @@ class TableICs(QWidget):
                     """Callback for the P&ID/Wiring upload request: warn if
                     the upload failed after the IC itself was already saved."""
                     if err:
-                        QMessageBox.warning(self, "Warning", f"IC saved but failed to upload P&ID/Wiring documents:\n{err}")
+                        QMessageBox.warning(self, t("Warning"), t("IC saved but failed to upload P&ID/Wiring documents:\n{0}").format(err))
                 ClientRequests.addIcAttachments(self.loggedUser, ic.id, dlg.pidDocsToBeUploaded, callback=on_pid_upload_done)
 
         self.window()._refreshOverlay.showBusy()

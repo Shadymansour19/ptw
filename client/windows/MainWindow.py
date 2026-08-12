@@ -46,6 +46,8 @@ from widgets.DonutChart import DonutChart, DonutSegment, APPROVAL_CYCLE_COLORS, 
 from functools import partial
 import qtawesome as qta
 from helper.utils import resource_path
+import helper.i18n as i18n
+from helper.i18n import t
 
 SETTINGS_CLOSE_BEHAVIOR_KEY = "app/closeBehavior"
 
@@ -80,7 +82,7 @@ class MainWindow(QMainWindow):
         the SSE listener, and the PTW alarm-check timer."""
         super().__init__()
         self.loggedUser = loggedUser
-        self.setWindowTitle("PTW (Permit To Work)")
+        self.setWindowTitle(t("PTW (Permit To Work)"))
         self.setWindowIcon(QIcon(resource_path('assets/sh-logo-trans.png')))
         self.setMinimumSize(1200, 900)
 
@@ -88,71 +90,71 @@ class MainWindow(QMainWindow):
         frame.moveCenter(self.screen().availableGeometry().center())
         self.move(frame.topLeft())
 
-        self.language = 'en'
+        self.language = self.loggedUser.getLanguage() or i18n.current_lang()
 
-        self.optionEditPTW = TablePTWs.MenuOption('Edit', self.editPTW, qta.icon('fa6s.pen'))
-        self.optionViewPTW = TablePTWs.MenuOption('View', self.viewPTW, qta.icon('fa6.eye'))
-        self.optionRequestPTW = TablePTWs.MenuOption('Re-Request PTW', self.addPTWDialog, qta.icon('fa6s.paper-plane'))
-        self.optionDltPTW  = TablePTWs.MenuOption('Delete', self.deletePTW, qta.icon('fa6s.trash-can'))
-        self.optionArchivePTW  = TablePTWs.MenuOption('Archive', self.archivePTWs, qta.icon('fa6s.box-archive'), allAtOnce=True)
-        self.optionRunRequestPTW  = TablePTWs.MenuOption('Run', self.requestToRunPTW, qta.icon('fa6s.play'))
-        self.optionRunAcceptPTW  = TablePTWs.MenuOption('Run', self.runAcceptTW, qta.icon('fa6s.play'))
-        self.optionRunRejectPTW  = TablePTWs.MenuOption('Reject', self.runRejectTW, qta.icon('fa5s.times'))
-        self.optionClsRequestPTW  = TablePTWs.MenuOption('Close', self.requestToClsPTW, qta.icon('fa6s.stop'))
-        self.optionClsAcceptPTW  = TablePTWs.MenuOption('Close', self.clsAcceptPTW, qta.icon('fa6s.stop'))
-        self.optionClsRejectPTW  = TablePTWs.MenuOption('Reject', self.clsRejectPTW, qta.icon('fa5s.times'))
-        self.optionHldRequestPTW  = TablePTWs.MenuOption('Hold', self.requestToHldPTW, qta.icon('fa6s.pause'))
-        self.optionHldTakeActionPTW = TablePTWs.MenuOption('Take Action', self.hldTakeAction, qta.icon('fa6s.pause'))
-        self.optionTstRequestPTW  = TablePTWs.MenuOption('Suction for Test', self.requestToSuctionTestPTW, qta.icon('fa6s.plug-circle-exclamation'))
-        self.optionTstAcceptPTW  = TablePTWs.MenuOption('Approve Suction for Test', self.suctionTestAcceptPTW, qta.icon('fa6s.plug-circle-exclamation'))
-        self.optionTstRejectPTW  = TablePTWs.MenuOption('Reject Suction for Test', self.suctionTestRejectPTW, qta.icon('fa5s.times'))
-        self.optionRequestEditsPTW = TablePTWs.MenuOption('Request Edits', self.requestEditsPTW, qta.icon('fa5s.undo'))
-        self.optionAcceptPTW = TablePTWs.MenuOption('Accept', self.acceptPTW, qta.icon('fa6s.check'))
-        self.optionExportPTW = TablePTWs.MenuOption('Export', self.exportPTWs, qta.icon('fa6s.file-excel'), allAtOnce=True)
-        self.optionPrintPTW = TablePTWs.MenuOption('Print', self.printPTW, qta.icon('fa6s.print'))
-        self.viewHeldICsOption = TablePTWs.MenuOption('View Held ICs', self.viewHeldICs, qta.icon('fa6s.unlock-keyhole'))
-        self.optionViewRequestorPTW = TablePTWs.MenuOption('View Requestor', self.viewRequestorPTW, qta.icon('fa6s.user'))
-        self.optionViewPerformingPTW = TablePTWs.MenuOption('View PA', self.viewPerformingPTW, qta.icon('mdi6.account-hard-hat'))
-        self.viewIssuingOption = TablePTWs.MenuOption('View IA', self.viewIssuing, qta.icon('fa6s.user-tie'))
-        self.optionViewIC = TablePTWs.MenuOption('View', self.viewIC, qta.icon('fa6.eye'))
-        self.optionPrintIC = TablePTWs.MenuOption('Print', self.printIC, qta.icon('fa6s.print'))
-        self.optionAcceptIC = TablePTWs.MenuOption('Accept', self.acceptIC, qta.icon('fa6s.check'))
-        self.optionRequestEditsIC = TablePTWs.MenuOption('Request Edits', self.requestEditsIC, qta.icon('fa5s.undo'))
-        self.optionRequestIsolateIC = TablePTWs.MenuOption('Request Isolate', self.requestIsolateIC, qta.icon('fa6s.unlock-keyhole'))
+        self.optionEditPTW = TablePTWs.MenuOption(t('Edit'), self.editPTW, qta.icon('fa6s.pen'))
+        self.optionViewPTW = TablePTWs.MenuOption(t('View'), self.viewPTW, qta.icon('fa6.eye'))
+        self.optionRequestPTW = TablePTWs.MenuOption(t('Re-Request PTW'), self.addPTWDialog, qta.icon('fa6s.paper-plane'))
+        self.optionDltPTW  = TablePTWs.MenuOption(t('Delete'), self.deletePTW, qta.icon('fa6s.trash-can'))
+        self.optionArchivePTW  = TablePTWs.MenuOption(t('Archive'), self.archivePTWs, qta.icon('fa6s.box-archive'), allAtOnce=True)
+        self.optionRunRequestPTW  = TablePTWs.MenuOption(t('Run'), self.requestToRunPTW, qta.icon('fa6s.play'))
+        self.optionRunAcceptPTW  = TablePTWs.MenuOption(t('Run'), self.runAcceptTW, qta.icon('fa6s.play'))
+        self.optionRunRejectPTW  = TablePTWs.MenuOption(t('Reject'), self.runRejectTW, qta.icon('fa5s.times'))
+        self.optionClsRequestPTW  = TablePTWs.MenuOption(t('Close'), self.requestToClsPTW, qta.icon('fa6s.stop'))
+        self.optionClsAcceptPTW  = TablePTWs.MenuOption(t('Close'), self.clsAcceptPTW, qta.icon('fa6s.stop'))
+        self.optionClsRejectPTW  = TablePTWs.MenuOption(t('Reject'), self.clsRejectPTW, qta.icon('fa5s.times'))
+        self.optionHldRequestPTW  = TablePTWs.MenuOption(t('Hold'), self.requestToHldPTW, qta.icon('fa6s.pause'))
+        self.optionHldTakeActionPTW = TablePTWs.MenuOption(t('Take Action'), self.hldTakeAction, qta.icon('fa6s.pause'))
+        self.optionTstRequestPTW  = TablePTWs.MenuOption(t('Suction for Test'), self.requestToSuctionTestPTW, qta.icon('fa6s.plug-circle-exclamation'))
+        self.optionTstAcceptPTW  = TablePTWs.MenuOption(t('Approve Suction for Test'), self.suctionTestAcceptPTW, qta.icon('fa6s.plug-circle-exclamation'))
+        self.optionTstRejectPTW  = TablePTWs.MenuOption(t('Reject Suction for Test'), self.suctionTestRejectPTW, qta.icon('fa5s.times'))
+        self.optionRequestEditsPTW = TablePTWs.MenuOption(t('Request Edits'), self.requestEditsPTW, qta.icon('fa5s.undo'))
+        self.optionAcceptPTW = TablePTWs.MenuOption(t('Accept'), self.acceptPTW, qta.icon('fa6s.check'))
+        self.optionExportPTW = TablePTWs.MenuOption(t('Export'), self.exportPTWs, qta.icon('fa6s.file-excel'), allAtOnce=True)
+        self.optionPrintPTW = TablePTWs.MenuOption(t('Print'), self.printPTW, qta.icon('fa6s.print'))
+        self.viewHeldICsOption = TablePTWs.MenuOption(t('View Held ICs'), self.viewHeldICs, qta.icon('fa6s.unlock-keyhole'))
+        self.optionViewRequestorPTW = TablePTWs.MenuOption(t('View Requestor'), self.viewRequestorPTW, qta.icon('fa6s.user'))
+        self.optionViewPerformingPTW = TablePTWs.MenuOption(t('View PA'), self.viewPerformingPTW, qta.icon('mdi6.account-hard-hat'))
+        self.viewIssuingOption = TablePTWs.MenuOption(t('View IA'), self.viewIssuing, qta.icon('fa6s.user-tie'))
+        self.optionViewIC = TablePTWs.MenuOption(t('View'), self.viewIC, qta.icon('fa6.eye'))
+        self.optionPrintIC = TablePTWs.MenuOption(t('Print'), self.printIC, qta.icon('fa6s.print'))
+        self.optionAcceptIC = TablePTWs.MenuOption(t('Accept'), self.acceptIC, qta.icon('fa6s.check'))
+        self.optionRequestEditsIC = TablePTWs.MenuOption(t('Request Edits'), self.requestEditsIC, qta.icon('fa5s.undo'))
+        self.optionRequestIsolateIC = TablePTWs.MenuOption(t('Request Isolate'), self.requestIsolateIC, qta.icon('fa6s.unlock-keyhole'))
         self.optionConfirmIsolateIC = TablePTWs.MenuOption(
-            'Confirm Isolate', self.confirmIsolateIC, qta.icon('fa6s.check'),
+            t('Confirm Isolate'), self.confirmIsolateIC, qta.icon('fa6s.check'),
             visibleFor=lambda ic: ic.getStatus() == IC.Status.ISOLATE_CONFIRMING,
         )
         self.optionReturnIsolateIC = TablePTWs.MenuOption(
-            'Return Isolate Request', self.returnIsolateIC, qta.icon('fa5s.undo'),
+            t('Return Isolate Request'), self.returnIsolateIC, qta.icon('fa5s.undo'),
             visibleFor=lambda ic: ic.getStatus() == IC.Status.ISOLATE_CONFIRMING,
         )
         self.optionExecuteIsolateIC = TablePTWs.MenuOption(
-            'Complete Isolation', self.executeIsolateIC, qta.icon('fa6s.lock'),
+            t('Complete Isolation'), self.executeIsolateIC, qta.icon('fa6s.lock'),
             visibleFor=lambda ic: ic.getStatus() == IC.Status.PENDING,
         )
         self.optionRequestDeisolateIC = TablePTWs.MenuOption(
-            'Request De-isolate', self.requestDeisolateIC, qta.icon('fa6s.unlock'),
+            t('Request De-isolate'), self.requestDeisolateIC, qta.icon('fa6s.unlock'),
             visibleFor=lambda ic: ic.getStatus() == IC.Status.ACTIVE,
         )
         self.optionConfirmDeisolateIC = TablePTWs.MenuOption(
-            'Confirm De-isolate', self.confirmDeisolateIC, qta.icon('fa6s.check'),
+            t('Confirm De-isolate'), self.confirmDeisolateIC, qta.icon('fa6s.check'),
             visibleFor=lambda ic: ic.getStatus() == IC.Status.DEISOLATE_CONFIRMING,
         )
         self.optionReturnDeisolateIC = TablePTWs.MenuOption(
-            'Return De-isolate Request', self.returnDeisolateIC, qta.icon('fa5s.undo'),
+            t('Return De-isolate Request'), self.returnDeisolateIC, qta.icon('fa5s.undo'),
             visibleFor=lambda ic: ic.getStatus() == IC.Status.DEISOLATE_CONFIRMING,
         )
         self.optionExecuteDeisolateIC = TablePTWs.MenuOption(
-            'Complete De-isolation', self.executeDeisolateIC, qta.icon('fa6s.lock-open'),
+            t('Complete De-isolation'), self.executeDeisolateIC, qta.icon('fa6s.lock-open'),
             visibleFor=lambda ic: ic.getStatus() == IC.Status.CLOSING,
         )
         self.optionLinkPTWToIC = TablePTWs.MenuOption(
-            'Link to PTW', self.linkPTWToIC, qta.icon('mdi.link-variant'),
+            t('Link to PTW'), self.linkPTWToIC, qta.icon('mdi.link-variant'),
             visibleFor=lambda ic: not ic.isWindingDown(),
         )
         self.optionLinkICToPTW = TablePTWs.MenuOption(
-            'Link to IC', self.linkICToPTW, qta.icon('mdi.link-variant'),
+            t('Link to IC'), self.linkICToPTW, qta.icon('mdi.link-variant'),
             visibleFor=lambda ptw: ptw.canLinkIC(),
         )
 
@@ -160,33 +162,33 @@ class MainWindow(QMainWindow):
         self.stack.setAutoFillBackground(False)
         self.tabWelcome = QWidget()
         self.tabWelcome.setAutoFillBackground(False)
-        self.tabRegisteredPTWs = TablePTWs(self.stack, self.loggedUser, "Template PTWs")
-        self.tabRequestedPTWs = TablePTWs(self.stack, self.loggedUser, "Requested PTWs")
-        self.tabUnderReviewPTWs = TablePTWs(self.stack, self.loggedUser, "Under Review PTWs")
-        self.tabMeetingPTWs = TablePTWs(self.stack, self.loggedUser, "PTW in Meeting")
-        self.tabReturnedPTWs = TablePTWs(self.stack, self.loggedUser, "Returned PTWs")
-        self.tabApprovedPTWs = TablePTWs(self.stack, self.loggedUser, "Approved PTWs")
-        self.tabWaitingRunConfirmationPTWs = TablePTWs(self.stack, self.loggedUser, "Waiting Run Confirmation PTWs")
-        self.tabRunningPTWs = TablePTWs(self.stack, self.loggedUser, "Running PTWs")
-        self.tabWaitingHldConfirmationPTWs = TablePTWs(self.stack, self.loggedUser, "Waiting Hold Confirmation PTWs")
-        self.tabHeldPTWs = TablePTWs(self.stack, self.loggedUser, "Held PTWs")
-        self.tabWaitingClsConfirmationPTWs = TablePTWs(self.stack, self.loggedUser, "Waiting Close Confirmation PTWs")
-        self.tabClosedPTWs = TablePTWs(self.stack, self.loggedUser, "Closed PTWs")
-        self.tabArchivedPTWs = TablePTWs(self.stack, self.loggedUser, "Archived PTWs")
-        self.tabAllUsers = TableUsers(self.stack, self.loggedUser, "All Users")
-        self.tabRisks = TableRisks(self.stack, self.loggedUser, "All Risks", readonly=False, selectable=False)
-        self.tabRequestedICs = TableICs(self.stack, self.loggedUser, "Requested ICs")
-        self.tabUnderReviewICs = TableICs(self.stack, self.loggedUser, "Under Review ICs")
-        self.tabApprovedICs = TableICs(self.stack, self.loggedUser, "Approved ICs")
-        self.tabIsolateConfirmingICs = TableICs(self.stack, self.loggedUser, "Isolate Confirming ICs")
-        self.tabPendingICs = TableICs(self.stack, self.loggedUser, "Pending ICs")
-        self.tabActiveICs = TableICs(self.stack, self.loggedUser, "Active ICs")
-        self.tabDeisolateConfirmingICs = TableICs(self.stack, self.loggedUser, "Deisolate Confirming ICs")
-        self.tabClosingICs = TableICs(self.stack, self.loggedUser, "Closing ICs")
-        self.tabSanctionedICs = TableICs(self.stack, self.loggedUser, "Sanctioned ICs")
-        self.tabClosedICs = TableICs(self.stack, self.loggedUser, "Closed ICs")
-        self.tabServerLogs = TabServerLogs(self.stack, self.loggedUser, "Server Logs")
-        self.tabBackups = TableBackups(self.stack, self.loggedUser, "Backups")
+        self.tabRegisteredPTWs = TablePTWs(self.stack, self.loggedUser, t("Template PTWs"))
+        self.tabRequestedPTWs = TablePTWs(self.stack, self.loggedUser, t("Requested PTWs"))
+        self.tabUnderReviewPTWs = TablePTWs(self.stack, self.loggedUser, t("Under Review PTWs"))
+        self.tabMeetingPTWs = TablePTWs(self.stack, self.loggedUser, t("PTW in Meeting"))
+        self.tabReturnedPTWs = TablePTWs(self.stack, self.loggedUser, t("Returned PTWs"))
+        self.tabApprovedPTWs = TablePTWs(self.stack, self.loggedUser, t("Approved PTWs"))
+        self.tabWaitingRunConfirmationPTWs = TablePTWs(self.stack, self.loggedUser, t("Waiting Run Confirmation PTWs"))
+        self.tabRunningPTWs = TablePTWs(self.stack, self.loggedUser, t("Running PTWs"))
+        self.tabWaitingHldConfirmationPTWs = TablePTWs(self.stack, self.loggedUser, t("Waiting Hold Confirmation PTWs"))
+        self.tabHeldPTWs = TablePTWs(self.stack, self.loggedUser, t("Held PTWs"))
+        self.tabWaitingClsConfirmationPTWs = TablePTWs(self.stack, self.loggedUser, t("Waiting Close Confirmation PTWs"))
+        self.tabClosedPTWs = TablePTWs(self.stack, self.loggedUser, t("Closed PTWs"))
+        self.tabArchivedPTWs = TablePTWs(self.stack, self.loggedUser, t("Archived PTWs"))
+        self.tabAllUsers = TableUsers(self.stack, self.loggedUser, t("All Users"))
+        self.tabRisks = TableRisks(self.stack, self.loggedUser, t("All Risks"), readonly=False, selectable=False)
+        self.tabRequestedICs = TableICs(self.stack, self.loggedUser, t("Requested ICs"))
+        self.tabUnderReviewICs = TableICs(self.stack, self.loggedUser, t("Under Review ICs"))
+        self.tabApprovedICs = TableICs(self.stack, self.loggedUser, t("Approved ICs"))
+        self.tabIsolateConfirmingICs = TableICs(self.stack, self.loggedUser, t("Isolate Confirming ICs"))
+        self.tabPendingICs = TableICs(self.stack, self.loggedUser, t("Pending ICs"))
+        self.tabActiveICs = TableICs(self.stack, self.loggedUser, t("Active ICs"))
+        self.tabDeisolateConfirmingICs = TableICs(self.stack, self.loggedUser, t("Deisolate Confirming ICs"))
+        self.tabClosingICs = TableICs(self.stack, self.loggedUser, t("Closing ICs"))
+        self.tabSanctionedICs = TableICs(self.stack, self.loggedUser, t("Sanctioned ICs"))
+        self.tabClosedICs = TableICs(self.stack, self.loggedUser, t("Closed ICs"))
+        self.tabServerLogs = TabServerLogs(self.stack, self.loggedUser, t("Server Logs"))
+        self.tabBackups = TableBackups(self.stack, self.loggedUser, t("Backups"))
 
         self._homeApprovalChart: DonutChart | None = None
         self._homeRunningChart: DonutChart | None = None
@@ -199,10 +201,10 @@ class MainWindow(QMainWindow):
 
         welcomeHeaderLyt = QHBoxLayout()
         welcomeHeaderLyt.addStretch()
-        lblWelcome = QLabel("Welcome,")
+        lblWelcome = QLabel(t("Welcome,"))
         lblWelcome.setFont(QFont("Helvetica", 30))
         welcomeHeaderLyt.addWidget(lblWelcome)
-        self.btnWelcomeName = QPushButton(self.loggedUser.getRole() + ' ' + self.loggedUser.getName().upper() + '!')
+        self.btnWelcomeName = QPushButton(t(self.loggedUser.getRole()) + ' ' + self.loggedUser.getName().upper() + '!')
         self.btnWelcomeName.setStyleSheet('''
             QPushButton { border: none; background: transparent; color: palette(link); }
             QPushButton:hover { text-decoration: underline;}
@@ -301,38 +303,42 @@ class MainWindow(QMainWindow):
         self.btnServerLogs = QPushButton(qta.icon('fa6s.file-lines'), "")
         self.btnBackups = QPushButton(qta.icon('fa6s.database'), "")
 
-        self.btnWelcome.setToolTip("Home [Ctrl+H]")
-        self.btnRequestedPTWs.setToolTip("Requested PTWs")
-        self.btnUnderReviewPTWs.setToolTip("Under Review PTWs")
-        self.btnMeetingPTWs.setToolTip("PTW in Meeting")
-        self.btnReturnedPTWs.setToolTip("Returned PTWs")
-        self.btnApprovedPTWs.setToolTip("Approved PTWs")
-        self.btnWaitingRunConfirmationPTWs.setToolTip("Waiting Run Confirmation PTWs")
-        self.btnRunningPTWs.setToolTip("Running PTWs")
-        self.btnWaitingHldConfirmationPTWs.setToolTip("Waiting Hold Confirmation PTWs")
-        self.btnHeldPTWs.setToolTip("Held PTWs")
-        self.btnWaitingClsConfirmationPTWs.setToolTip("Waiting Close Confirmation PTWs")
-        self.btnClosedPTWs.setToolTip("Closed PTWs")
-        self.btnArchivedPTWs.setToolTip("Archived PTWs")
-        self.btnSettings.setToolTip("Settings")
-        self.btnRefresh.setToolTip("Refresh [Ctrl+R]")
-        self.btnLogout.setToolTip("Logout [Ctrl+X]")
-        self.btnUsers.setToolTip("All Users")
-        self.btnRisks.setToolTip("Risks")
-        self.btnCertRequested.setToolTip("Requested ICs")
-        self.btnCertUnderReview.setToolTip("Under Review ICs")
-        self.btnCertApproved.setToolTip("Approved ICs")
-        self.btnCertIsolateConfirming.setToolTip("Isolate Confirming ICs")
-        self.btnCertPending.setToolTip("Pending ICs")
-        self.btnCertActive.setToolTip("Active ICs")
-        self.btnCertDeisolateConfirming.setToolTip("Deisolate Confirming ICs")
-        self.btnCertClosing.setToolTip("Closing ICs")
-        self.btnCertSanctioned.setToolTip("Sanctioned ICs")
-        self.btnCertClosed.setToolTip("Closed ICs")
-        self.btnLanguage.setToolTip("Switch Language")
-        self.btnTheme.setToolTip("Toggle Light/Dark Mode")
-        self.btnServerLogs.setToolTip("Server Logs")
-        self.btnBackups.setToolTip("Backups")
+        self.btnWelcome.setToolTip(t("Home [Ctrl+H]"))
+        self.btnRequestedPTWs.setToolTip(t("Requested PTWs"))
+        self.btnUnderReviewPTWs.setToolTip(t("Under Review PTWs"))
+        self.btnMeetingPTWs.setToolTip(t("PTW in Meeting"))
+        self.btnReturnedPTWs.setToolTip(t("Returned PTWs"))
+        self.btnApprovedPTWs.setToolTip(t("Approved PTWs"))
+        self.btnWaitingRunConfirmationPTWs.setToolTip(t("Waiting Run Confirmation PTWs"))
+        self.btnRunningPTWs.setToolTip(t("Running PTWs"))
+        self.btnWaitingHldConfirmationPTWs.setToolTip(t("Waiting Hold Confirmation PTWs"))
+        self.btnHeldPTWs.setToolTip(t("Held PTWs"))
+        self.btnWaitingClsConfirmationPTWs.setToolTip(t("Waiting Close Confirmation PTWs"))
+        self.btnClosedPTWs.setToolTip(t("Closed PTWs"))
+        self.btnArchivedPTWs.setToolTip(t("Archived PTWs"))
+        self.btnSettings.setToolTip(t("Settings"))
+        self.btnRefresh.setToolTip(t("Refresh [Ctrl+R]"))
+        self.btnLogout.setToolTip(t("Logout [Ctrl+X]"))
+        self.btnUsers.setToolTip(t("All Users"))
+        self.btnRisks.setToolTip(t("Risks"))
+        self.btnCertRequested.setToolTip(t("Requested ICs"))
+        self.btnCertUnderReview.setToolTip(t("Under Review ICs"))
+        self.btnCertApproved.setToolTip(t("Approved ICs"))
+        self.btnCertIsolateConfirming.setToolTip(t("Isolate Confirming ICs"))
+        self.btnCertPending.setToolTip(t("Pending ICs"))
+        self.btnCertActive.setToolTip(t("Active ICs"))
+        self.btnCertDeisolateConfirming.setToolTip(t("Deisolate Confirming ICs"))
+        self.btnCertClosing.setToolTip(t("Closing ICs"))
+        self.btnCertSanctioned.setToolTip(t("Sanctioned ICs"))
+        self.btnCertClosed.setToolTip(t("Closed ICs"))
+        # Intentionally NOT run through t(): this label always names the *target* language in
+        # that language's own script (Latin "English" / Arabic "حول إلى العربية"), regardless
+        # of which language is currently active - wrapping it would translate it into the
+        # active language instead of the switch target.
+        self.btnLanguage.setToolTip("Switch to English" if self.language == 'ar' else "حول إلى العربية")
+        self.btnTheme.setToolTip(t("Toggle Light/Dark Mode"))
+        self.btnServerLogs.setToolTip(t("Server Logs"))
+        self.btnBackups.setToolTip(t("Backups"))
 
         self._sideBarBtnMap = {
             self.btnWelcome:                    self.tabWelcome,
@@ -511,9 +517,9 @@ class MainWindow(QMainWindow):
 
         self._trayIcon = QSystemTrayIcon(QIcon(resource_path("assets/sh-logo-trans.png")), self)
         trayMenu = QMenu(self)
-        trayMenu.addAction("Open PTW").triggered.connect(self._restoreFromTray)
+        trayMenu.addAction(t("Open PTW")).triggered.connect(self._restoreFromTray)
         trayMenu.addSeparator()
-        trayMenu.addAction("Quit").triggered.connect(self._quitApp)
+        trayMenu.addAction(t("Quit")).triggered.connect(self._quitApp)
         self._trayIcon.setContextMenu(trayMenu)
         self._trayIcon.activated.connect(self._onTrayActivated)
         self._trayIcon.show()
@@ -536,7 +542,7 @@ class MainWindow(QMainWindow):
         """Default callback for PTW/IC action requests: warn on error, otherwise do
         nothing since the resulting SSE event drives the GUI refresh."""
         if err:
-            QMessageBox.warning(self, 'Fail', err)
+            QMessageBox.warning(self, t('Fail'), err)
             return
         # self.refreshGUI()  # SSE event handles refresh
 
@@ -554,13 +560,13 @@ class MainWindow(QMainWindow):
         theme preference to the server; and, if the user chose to restart now, log
         out immediately so the app can relaunch with the new theme."""
         import os, sys
-        label = new_theme.capitalize() if new_theme else "Default (System)"
+        label = t(new_theme.capitalize()) if new_theme else t("Default (System)")
         msg = QMessageBox(self)
-        msg.setWindowTitle("Switch Theme")
-        msg.setText(f"Switching to {label} mode requires a full-application restart.")
-        btn_restart = msg.addButton("Restart Now", QMessageBox.ButtonRole.AcceptRole)
-        btn_later   = msg.addButton("Later",        QMessageBox.ButtonRole.DestructiveRole)
-        btn_cancel  = msg.addButton("Cancel Change", QMessageBox.ButtonRole.RejectRole)
+        msg.setWindowTitle(t("Switch Theme"))
+        msg.setText(t("Switching to {0} mode requires a full-application restart.").format(label))
+        btn_restart = msg.addButton(t("Restart Now"), QMessageBox.ButtonRole.AcceptRole)
+        btn_later   = msg.addButton(t("Later"),        QMessageBox.ButtonRole.DestructiveRole)
+        btn_cancel  = msg.addButton(t("Cancel Change"), QMessageBox.ButtonRole.RejectRole)
         msg.setDefaultButton(btn_restart)
         msg.exec()
 
@@ -571,7 +577,7 @@ class MainWindow(QMainWindow):
 
         def on_done(err, _):
             if err:
-                QMessageBox.warning(self, "Error", f"Failed to save theme preference:\n{err}")
+                QMessageBox.warning(self, t("Error"), t("Failed to save theme preference:") + f"\n{err}")
                 return
 
         if msg.clickedButton() == btn_restart:
@@ -628,9 +634,9 @@ class MainWindow(QMainWindow):
         current = self.toolBarArea(self.sideBarLayout)
         menu = QMenu(self)
         for area, label in [
-            (Qt.ToolBarArea.LeftToolBarArea,   "Move to Left"),
-            (Qt.ToolBarArea.RightToolBarArea,  "Move to Right"),
-            (Qt.ToolBarArea.BottomToolBarArea, "Move to Bottom"),
+            (Qt.ToolBarArea.LeftToolBarArea,   t("Move to Left")),
+            (Qt.ToolBarArea.RightToolBarArea,  t("Move to Right")),
+            (Qt.ToolBarArea.BottomToolBarArea, t("Move to Bottom")),
         ]:
             act = menu.addAction(label)
             act.setEnabled(area != current)
@@ -796,15 +802,15 @@ class MainWindow(QMainWindow):
             return
 
         msgBox = QMessageBox(self)
-        msgBox.setWindowTitle("Close PTW")
+        msgBox.setWindowTitle(t("Close PTW"))
         msgBox.setText(
-            "Do you want to keep receiving notifications in the background?\n\n"
-            "Yes - PTW keeps running in the system tray and notifies you of updates.\n"
-            "No - PTW closes completely and you stop receiving notifications."
+            t("Do you want to keep receiving notifications in the background?\n\n"
+              "Yes - PTW keeps running in the system tray and notifies you of updates.\n"
+              "No - PTW closes completely and you stop receiving notifications.")
         )
         msgBox.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel)
         msgBox.setDefaultButton(QMessageBox.StandardButton.Yes)
-        chkRemember = QCheckBox("Remember my choice (change anytime in Settings)")
+        chkRemember = QCheckBox(t("Remember my choice (change anytime in Settings)"))
         msgBox.setCheckBox(chkRemember)
         reply = msgBox.exec()
 
@@ -830,7 +836,7 @@ class MainWindow(QMainWindow):
         running in the background."""
         self.hide()
         self._trayIcon.showMessage(
-            "PTW", "Still running in the background. Click the tray icon to reopen.",
+            t("PTW"), t("Still running in the background. Click the tray icon to reopen."),
             QSystemTrayIcon.MessageIcon.Information, 3000
         )
 
@@ -861,7 +867,7 @@ class MainWindow(QMainWindow):
     def viewPTW(self, row: int, ptw: PTW):
         """Open a read-only `DialogPTW` for `ptw`, e.g. from a table's View action."""
         self._refreshOverlay.showBusy()
-        viewPTWDialog = DialogPTW(self, self.loggedUser, ptw, None, False, True, f'View Mode - PTW# {ptw.id}')
+        viewPTWDialog = DialogPTW(self, self.loggedUser, ptw, None, False, True, t('View Mode - PTW# {0}').format(ptw.id))
         self._refreshOverlay.hideBusy()
         viewPTWDialog.exec()
 
@@ -880,7 +886,7 @@ class MainWindow(QMainWindow):
         toEditPtw = copy.deepcopy(ptw)
         wasReturned = toEditPtw.approval_status == PTW.ApprovalStatus.RETURNED
         self._refreshOverlay.showBusy()
-        editPTWDialog = DialogPTW(self, self.loggedUser, toEditPtw, None, False, False, f'Edit Mode - PTW# {ptw.id}')
+        editPTWDialog = DialogPTW(self, self.loggedUser, toEditPtw, None, False, False, t('Edit Mode - PTW# {0}').format(ptw.id))
         self._refreshOverlay.hideBusy()
         if editPTWDialog.exec() == QDialog.DialogCode.Accepted:
             if wasReturned:
@@ -889,7 +895,7 @@ class MainWindow(QMainWindow):
 
             def on_risk_saved(err, _):
                 if err:
-                    QMessageBox.warning(self, "Warning", f"PTW saved but failed to save risk assessment: {err}")
+                    QMessageBox.warning(self, t("Warning"), t("PTW saved but failed to save risk assessment:") + f" {err}")
             risk = RiskAssessment(title=ptw.description, date=datetime.now().strftime('%d %b %Y'), risks=editPTWDialog.riskAssessmentPreviewTable.getRiskItems(), ptw_id=ptw.id)
             self._savePTWRiskAssessment(ptw.id, risk, callback=on_risk_saved)
 
@@ -904,7 +910,7 @@ class MainWindow(QMainWindow):
         newPTW = copy.deepcopy(ptw) if ptw else PTW()
         if ptw:
             newPTW.setId(None).clearApprovals()
-        title = "Re-request PTW" if ptw else "New PTW"
+        title = t("Re-request PTW") if ptw else t("New PTW")
         self._refreshOverlay.showBusy()
         dlg = DialogPTW(self, self.loggedUser, newPTW, ptw, True, False, title)
         self._refreshOverlay.hideBusy()
@@ -914,25 +920,25 @@ class MainWindow(QMainWindow):
         def on_addPTW_done(err, ptwId=None):
             def on_copy_attachments_done(err, _):
                 if err:
-                    QMessageBox.warning(self, "Error", f"Failed to copy attachments: {err}")
+                    QMessageBox.warning(self, t("Error"), t("Failed to copy attachments:") + f" {err}")
                     return
 
             def on_attachments_uploaded(err, _):
                 if err:
-                    QMessageBox.warning(self, "Error", f"Failed to upload attachments: {err}")
+                    QMessageBox.warning(self, t("Error"), t("Failed to upload attachments:") + f" {err}")
                     return
                 if ptw:
                     ClientRequests.copyPtwAttachments(self.loggedUser, ptw.id, newPTW.id, callback=on_copy_attachments_done)
                 # self.refreshGUI()  # SSE event handles refresh
 
             if err:
-                QMessageBox.warning(self, "Fail", err)
+                QMessageBox.warning(self, t("Fail"), err)
                 return
             newPTW.setId(ptwId)
 
             def on_risk_saved(err, _):
                 if err:
-                    QMessageBox.warning(self, "Warning", f"PTW saved but failed to save risk assessment: {err}")
+                    QMessageBox.warning(self, t("Warning"), t("PTW saved but failed to save risk assessment:") + f" {err}")
             risk = RiskAssessment(title=newPTW.description, date=datetime.now().strftime('%d %b %Y'), risks=dlg.riskAssessmentPreviewTable.getRiskItems(), ptw_id=ptwId)
             self._savePTWRiskAssessment(ptwId, risk, callback=on_risk_saved)
             # On re-request, the server also copies the original PTW's own risk rows onto
@@ -959,7 +965,7 @@ class MainWindow(QMainWindow):
         Authority, refusing if the user is already the PA on another PTW."""
         for p in globalData.allPTWs.values():
             if p.getPerforming() == self.loggedUser.getUsername():
-                QMessageBox.warning(self, 'Not Allowed', f"You are already the PA for PTW# {p.id}.")
+                QMessageBox.warning(self, t('Not Allowed'), t("You are already the PA for PTW# {0}.").format(p.id))
                 return
 
         pa = self.loggedUser.getUsername()
@@ -969,7 +975,7 @@ class MainWindow(QMainWindow):
     def runAcceptTW(self, row: int, ptw: PTW):
         """Prompt for confirmation and an optional comment, then accept `ptw`'s
         pending run request as the Issuing Authority."""
-        proceed, comment = self.getOptionalComment(f'Accept PTW#{ptw.id} Run', f"Are you sure you want to accept run request for PTW#{ptw.id}?")
+        proceed, comment = self.getOptionalComment(t('Accept PTW#{0} Run').format(ptw.id), t("Are you sure you want to accept run request for PTW#{0}?").format(ptw.id))
         if not proceed:
             return
 
@@ -980,7 +986,7 @@ class MainWindow(QMainWindow):
     def runRejectTW(self, row: int, ptw: PTW):
         """Prompt for confirmation and an optional comment, then reject `ptw`'s
         pending run request as the Issuing Authority."""
-        proceed, comment = self.getOptionalComment(f'Reject PTW#{ptw.id} Run', f"Are you sure you want to reject run request for PTW#{ptw.id}?")
+        proceed, comment = self.getOptionalComment(t('Reject PTW#{0} Run').format(ptw.id), t("Are you sure you want to reject run request for PTW#{0}?").format(ptw.id))
         if not proceed:
             return
 
@@ -991,7 +997,7 @@ class MainWindow(QMainWindow):
     def requestToClsPTW(self, row: int, ptw: PTW, callback=None):
         """Prompt for confirmation and an optional comment, then send a close request
         for `ptw` as the Performing Authority."""
-        proceed, comment = self.getOptionalComment('Close PTW', f"Are you sure you want to close PTW#{ptw.id}?")
+        proceed, comment = self.getOptionalComment(t('Close PTW'), t("Are you sure you want to close PTW#{0}?").format(ptw.id))
         if not proceed:
             return
 
@@ -1002,7 +1008,7 @@ class MainWindow(QMainWindow):
     def clsAcceptPTW(self, row: int, ptw: PTW):
         """Prompt for confirmation and an optional comment, then accept `ptw`'s
         pending close request as the Issuing Authority (irreversible)."""
-        proceed, comment = self.getOptionalComment(f'Accept PTW#{ptw.id} Close', f"Are you sure you want to accept close request for PTW#{ptw.id}? This is irreversible")
+        proceed, comment = self.getOptionalComment(t('Accept PTW#{0} Close').format(ptw.id), t("Are you sure you want to accept close request for PTW#{0}? This is irreversible").format(ptw.id))
         if not proceed:
             return
 
@@ -1013,7 +1019,7 @@ class MainWindow(QMainWindow):
     def clsRejectPTW(self, row: int, ptw: PTW):
         """Prompt for confirmation and an optional comment, then reject `ptw`'s
         pending close request as the Issuing Authority."""
-        proceed, comment = self.getOptionalComment(f'Reject PTW#{ptw.id} Close', f"Are you sure you want to reject close request for PTW#{ptw.id}?")
+        proceed, comment = self.getOptionalComment(t('Reject PTW#{0} Close').format(ptw.id), t("Are you sure you want to reject close request for PTW#{0}?").format(ptw.id))
         if not proceed:
             return
 
@@ -1034,12 +1040,12 @@ class MainWindow(QMainWindow):
         heldICs = []
         linkedICs = self._linkedICsFor(ptw)
         if linkedICs:
-            dlg = DialogSelectHeldICs(self, linkedICs, selectable=True, title=f"Hold PTW# {ptw.id} - Select ICs to Keep Held")
+            dlg = DialogSelectHeldICs(self, linkedICs, selectable=True, title=t("Hold PTW# {0} - Select ICs to Keep Held").format(ptw.id))
             if dlg.exec() != QDialog.DialogCode.Accepted:
                 return
             heldICs = dlg.getHeldICIds()
 
-        proceed, comment = self.getOptionalComment(f'Hold PTW# {ptw.id}', f"Are you sure you want to request hold for PTW#{ptw.id}?")
+        proceed, comment = self.getOptionalComment(t('Hold PTW# {0}').format(ptw.id), t("Are you sure you want to request hold for PTW#{0}?").format(ptw.id))
         if not proceed:
             return
         pa = self.loggedUser.getUsername()
@@ -1064,14 +1070,14 @@ class MainWindow(QMainWindow):
         review dialog to pick accept/reject, then confirm with an optional comment
         and dispatch to `hldAcceptPTW`/`hldRejectPTW`."""
         if ptw.running_status != PTW.RunningStatus.WAITING_HLD_CONFIRM:
-            QMessageBox.warning(self, 'Not Allowed', f"PTW# {ptw.id} is not waiting for hold confirmation.")
+            QMessageBox.warning(self, t('Not Allowed'), t("PTW# {0} is not waiting for hold confirmation.").format(ptw.id))
             return
-        dlg = DialogSelectHeldICs(self, self._linkedICsFor(ptw), held=ptw.getHeldICs(), selectable=False, review_mode=True, title=f"Hold Action - PTW# {ptw.id}")
+        dlg = DialogSelectHeldICs(self, self._linkedICsFor(ptw), held=ptw.getHeldICs(), selectable=False, review_mode=True, title=t("Hold Action - PTW# {0}").format(ptw.id))
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         if dlg.action not in ('accept', 'reject'):
             return
-        proceed, comment = self.getOptionalComment(f'Hold Action - PTW# {ptw.id}', f"Confirm {dlg.action} for the hold request on PTW#{ptw.id}?")
+        proceed, comment = self.getOptionalComment(t('Hold Action - PTW# {0}').format(ptw.id), t("Confirm {0} for the hold request on PTW#{1}?").format(dlg.action, ptw.id))
         if not proceed:
             return
         if dlg.action == 'accept':
@@ -1085,13 +1091,13 @@ class MainWindow(QMainWindow):
         dlg = DialogSelectHeldICs(
             self, self._linkedICsFor(ptw), held=ptw.getHeldICs(),
             selectable=False, view_only=True,
-            title=f"Held ICs - PTW# {ptw.id}"
+            title=t("Held ICs - PTW# {0}").format(ptw.id)
         )
         dlg.exec()
 
     def viewIC(self, row: int, ic: IC):
         """Open a read-only `DialogIC` for `ic`."""
-        dlg = DialogIC(self, self.loggedUser, ic, False, True, f"IC — {ic.type}")
+        dlg = DialogIC(self, self.loggedUser, ic, False, True, t("IC — {0}").format(ic.type))
         dlg.exec()
 
     def printIC(self, row: int, ic: IC):
@@ -1107,7 +1113,7 @@ class MainWindow(QMainWindow):
         """Confirm and, if confirmed, record an irreversible approval for `ic` on its
         approval chain."""
         reply = QMessageBox.question(
-            self, f'Accept IC #{ic.id}', f"Are you sure you want to approve IC #{ic.id}? This is irreversible",
+            self, t('Accept IC #{0}').format(ic.id), t("Are you sure you want to approve IC #{0}? This is irreversible").format(ic.id),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -1118,7 +1124,7 @@ class MainWindow(QMainWindow):
     def requestEditsIC(self, row: int, ic: IC):
         """Prompt for a mandatory comment and return `ic` to its requestor for edits,
         recording a RETURNED approval action."""
-        comment = self.getComment(f'Return IC #{ic.id} to be Edited')
+        comment = self.getComment(t('Return IC #{0} to be Edited').format(ic.id))
         if not comment:
             return
         approval = IC.Approval(IC.ApprovalActions.RETURNED, self.loggedUser.getUsername(), datetime.now().strftime('%d/%m/%Y %H:%M:%S'), comment)
@@ -1128,7 +1134,7 @@ class MainWindow(QMainWindow):
         """Confirm and, if confirmed, request isolation for `ic`, notifying the
         Issuing Authority to confirm."""
         reply = QMessageBox.question(
-            self, f'Request Isolate #{ic.id}', f"Request isolation for IC #{ic.id}? This will notify Issuing to confirm.",
+            self, t('Request Isolate #{0}').format(ic.id), t("Request isolation for IC #{0}? This will notify Issuing to confirm.").format(ic.id),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -1139,7 +1145,7 @@ class MainWindow(QMainWindow):
         """Confirm and, if confirmed, confirm `ic`'s isolate request as Issuing
         Authority, notifying the isolator to carry it out."""
         reply = QMessageBox.question(
-            self, f'Confirm Isolate #{ic.id}', f"Confirm isolation for IC #{ic.id}? The isolator will then be notified to carry it out.",
+            self, t('Confirm Isolate #{0}').format(ic.id), t("Confirm isolation for IC #{0}? The isolator will then be notified to carry it out.").format(ic.id),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -1150,7 +1156,7 @@ class MainWindow(QMainWindow):
         """Confirm and, if confirmed, return `ic`'s isolate request, requiring the
         requestor to request isolation again."""
         reply = QMessageBox.question(
-            self, f'Return Isolate Request #{ic.id}', f"Return the isolate request for IC #{ic.id}? The requestor will need to request isolation again.",
+            self, t('Return Isolate Request #{0}').format(ic.id), t("Return the isolate request for IC #{0}? The requestor will need to request isolation again.").format(ic.id),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -1168,7 +1174,7 @@ class MainWindow(QMainWindow):
             items = dlg.getItems()
         else:
             reply = QMessageBox.question(
-                self, f'Complete Isolation #{ic.id}', f"Confirm that isolation for IC #{ic.id} has been physically carried out?",
+                self, t('Complete Isolation #{0}').format(ic.id), t("Confirm that isolation for IC #{0} has been physically carried out?").format(ic.id),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
             )
             if reply != QMessageBox.StandardButton.Yes:
@@ -1180,7 +1186,7 @@ class MainWindow(QMainWindow):
         """Confirm and, if confirmed, request de-isolation for `ic`, notifying the
         Issuing Authority to confirm."""
         reply = QMessageBox.question(
-            self, f'Request De-isolate #{ic.id}', f"Request de-isolation for IC #{ic.id}? This will notify Issuing to confirm.",
+            self, t('Request De-isolate #{0}').format(ic.id), t("Request de-isolation for IC #{0}? This will notify Issuing to confirm.").format(ic.id),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -1191,7 +1197,7 @@ class MainWindow(QMainWindow):
         """Confirm and, if confirmed, confirm `ic`'s de-isolate request as Issuing
         Authority, notifying the isolator to carry it out."""
         reply = QMessageBox.question(
-            self, f'Confirm De-isolate #{ic.id}', f"Confirm de-isolation for IC #{ic.id}? The isolator will then be notified to carry it out.",
+            self, t('Confirm De-isolate #{0}').format(ic.id), t("Confirm de-isolation for IC #{0}? The isolator will then be notified to carry it out.").format(ic.id),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -1202,7 +1208,7 @@ class MainWindow(QMainWindow):
         """Confirm and, if confirmed, return `ic`'s de-isolate request, requiring the
         requestor to request de-isolation again."""
         reply = QMessageBox.question(
-            self, f'Return De-isolate Request #{ic.id}', f"Return the de-isolate request for IC #{ic.id}? The requestor will need to request de-isolation again.",
+            self, t('Return De-isolate Request #{0}').format(ic.id), t("Return the de-isolate request for IC #{0}? The requestor will need to request de-isolation again.").format(ic.id),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -1213,7 +1219,7 @@ class MainWindow(QMainWindow):
         """Confirm and, if confirmed, carry out `ic`'s de-isolation as the
         isolator."""
         reply = QMessageBox.question(
-            self, f'Complete De-isolation #{ic.id}', f"Confirm that de-isolation for IC #{ic.id} has been physically carried out?",
+            self, t('Complete De-isolation #{0}').format(ic.id), t("Confirm that de-isolation for IC #{0} has been physically carried out?").format(ic.id),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -1223,28 +1229,28 @@ class MainWindow(QMainWindow):
     def linkPTWToIC(self, row: int, ic: IC):
         """Prompt for a PTW number and link it to `ic`, refusing if that PTW is
         already linked."""
-        ptwId, ok = QInputDialog.getText(self, f'Link IC #{ic.id} to PTW', 'PTW #:')
+        ptwId, ok = QInputDialog.getText(self, t('Link IC #{0} to PTW').format(ic.id), t('PTW #:'))
         if not ok or not ptwId.strip():
             return
         ptwId = ptwId.strip()
         if ptwId in ic.linked_ptws:
-            QMessageBox.warning(self, "Already Linked", f"PTW #{ptwId} is already linked to this IC.")
+            QMessageBox.warning(self, t("Already Linked"), t("PTW #{0} is already linked to this IC.").format(ptwId))
             return
         ClientRequests.linkPTWToIC(self.loggedUser, ic.id, ptwId, callback=self._on_request_done_generic)
 
     def linkICToPTW(self, row: int, ptw: PTW):
         """Prompt for an IC number and link `ptw` to it, validating the input is
         numeric and refusing if it's already linked."""
-        certIdText, ok = QInputDialog.getText(self, f'Link PTW #{ptw.id} to IC', 'IC #:')
+        certIdText, ok = QInputDialog.getText(self, t('Link PTW #{0} to IC').format(ptw.id), t('IC #:'))
         if not ok or not certIdText.strip():
             return
         try:
             icId = int(certIdText.strip())
         except ValueError:
-            QMessageBox.warning(self, "Invalid IC #", "IC # must be a number.")
+            QMessageBox.warning(self, t("Invalid IC #"), t("IC # must be a number."))
             return
         if str(icId) in ptw.linked_ics:
-            QMessageBox.warning(self, "Already Linked", f"IC #{icId} is already linked to this PTW.")
+            QMessageBox.warning(self, t("Already Linked"), t("IC #{0} is already linked to this PTW.").format(icId))
             return
         ClientRequests.linkPTWToIC(self.loggedUser, icId, ptw.id, callback=self._on_request_done_generic)
 
@@ -1269,12 +1275,12 @@ class MainWindow(QMainWindow):
         'PA'/'IA'/'Requestor'), warning instead if no username is assigned or the
         user can't be found."""
         if username is None or username.strip() == '':
-            QMessageBox.warning(self, f'No {role} Assigned', f"No {role} assigned yet.")
+            QMessageBox.warning(self, t('No {0} Assigned').format(t(role)), t("No {0} assigned yet.").format(t(role)))
             return
         elif username not in globalData.allUsers:
-            QMessageBox.warning(self, 'User Not Found', f"username {username} was not found.")
+            QMessageBox.warning(self, t('User Not Found'), t("username {0} was not found.").format(username))
             return
-        DialogUser(self, True, False, self.loggedUser, globalData.allUsers[username], f"{role} - View Mode - User {username}").exec()
+        DialogUser(self, True, False, self.loggedUser, globalData.allUsers[username], t("{0} - View Mode - User {1}").format(t(role), username)).exec()
     
     def viewRequestorPTW(self, row: int, ptw: PTW):
         """View `ptw`'s requestor via `viewUser`."""
@@ -1289,33 +1295,69 @@ class MainWindow(QMainWindow):
         self.viewUser(ptw.getIssuing(), 'IA')
     
     def chgLanguage(self):
-        """Toggle the stored language flag between English and Arabic when the
-        language button is clicked, and update its tooltip accordingly."""
-        if self.language == 'en':
-            self.language = 'ar'
-            self.btnLanguage.setToolTip("Switch to English")
+        """Handle a click of the language button: flip between English and Arabic via
+        `_applyLanguageChange`."""
+        new_language = 'en' if self.language == 'ar' else 'ar'
+        self._applyLanguageChange(new_language)
+
+    def _applyLanguageChange(self, new_language: str | None):
+        """Apply a pending switch to `new_language` ('en'/'ar', or None for the OS-locale
+        default): ask the user via a modal to restart now, defer, or cancel the change;
+        save the new language preference to the server; and, if the user chose to restart
+        now, log out immediately so the app can relaunch with the new language and text
+        direction (translated strings are baked into widgets at construction time, so -
+        exactly like a theme change - this can't be applied live to an already-built
+        window)."""
+        effective = new_language or i18n.current_lang()
+        label = {"en": t("English"), "ar": t("Arabic"), None: t("Default (System)")}.get(new_language, new_language)
+        msg = QMessageBox(self)
+        msg.setWindowTitle(t("Switch Language"))
+        msg.setText(t("Switching to {0} requires a full-application restart.").format(label))
+        btn_restart = msg.addButton(t("Restart Now"), QMessageBox.ButtonRole.AcceptRole)
+        btn_later   = msg.addButton(t("Later"),        QMessageBox.ButtonRole.DestructiveRole)
+        btn_cancel  = msg.addButton(t("Cancel Change"), QMessageBox.ButtonRole.RejectRole)
+        msg.setDefaultButton(btn_restart)
+        msg.exec()
+
+        if msg.clickedButton() == btn_cancel:
+            return
+
+        self.loggedUser.setLanguage(new_language)
+        self.language = effective
+        # Intentionally NOT run through t(): see the identical construct in __init__ above -
+        # this always names the *target* language in that language's own script.
+        self.btnLanguage.setToolTip("Switch to English" if effective == 'ar' else "حول إلى العربية")
+
+        def on_done(err, _):
+            if err:
+                QMessageBox.warning(self, t("Error"), t("Failed to save language preference:") + f"\n{err}")
+                return
+
+        if msg.clickedButton() == btn_restart:
+            err = ClientRequests.updateLanguage(self.loggedUser, new_language)
+            on_done(err, None)
+            self.logout()
         else:
-            self.language = 'en'
-            self.btnLanguage.setToolTip("حول إلى العربية")
-        # self.refreshGUI()
+            ClientRequests.updateLanguage(self.loggedUser, new_language, callback=on_done)
 
     def dlgSettings(self):
         """Open the Settings dialog, invoked from the settings button or the welcome
         banner's name link; blocks Guest users. On acceptance, save the updated user
         profile to the server, refresh the welcome banner's name/role text, and
-        prompt to apply a theme change if the theme was changed."""
+        prompt to apply a theme and/or language change if either was changed."""
         if self.loggedUser.getRole() == UserRoles.GUEST:
-            QMessageBox.warning(self, "Access Denied", "Guest users cannot access settings.")
+            QMessageBox.warning(self, t("Access Denied"), t("Guest users cannot access settings."))
             return
         user = copy.deepcopy(self.loggedUser)
         old_theme = self.loggedUser.getTheme()
+        old_language = self.loggedUser.getLanguage()
         dlg = DialogSettings(self, user)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
-        
+
         def on_update_done(err, _):
             if err:
-                QMessageBox.warning(self, "Fail", err)
+                QMessageBox.warning(self, t("Fail"), err)
                 return
             if not user.getPassword():
                 user.setPassword(self.loggedUser.getPassword())
@@ -1323,6 +1365,8 @@ class MainWindow(QMainWindow):
             MainWindow.refreshWelcomePage(self)
             if dlg.new_theme != old_theme:
                 self._applyThemeChange(dlg.new_theme)
+            if dlg.new_language != old_language:
+                self._applyLanguageChange(dlg.new_language)
 
         ClientRequests.updateUser(self.loggedUser, user, callback=on_update_done)
         
@@ -1335,11 +1379,11 @@ class MainWindow(QMainWindow):
         self.btnFAB.move(x, y)
     
     def _footerButtons(self) -> list[QPushButton]:
-        """Return the sidebar's footer button group (theme/settings, refresh,
-        logout), omitting theme/settings for Guest users."""
+        """Return the sidebar's footer button group (theme/language/settings, refresh,
+        logout), omitting theme/language/settings for Guest users."""
         footer: list[QPushButton] = []
         if self.loggedUser.getRole() != UserRoles.GUEST:
-            footer.extend([self.btnTheme, self.btnSettings])
+            footer.extend([self.btnTheme, self.btnLanguage, self.btnSettings])
         footer.extend([self.btnRefresh, self.btnLogout])
         return footer
 
@@ -1445,7 +1489,7 @@ class MainWindow(QMainWindow):
 
         group_widgets: dict[str, list] = {name: list(btns) for name, btns in groups.items()}
 
-        sidebarToggle = QAction("Navigation Sidebar", self)
+        sidebarToggle = QAction(t("Navigation Sidebar"), self)
         sidebarToggle.setCheckable(True)
         sidebarToggle.setChecked(True)
         sidebarToggle.toggled.connect(self.sideBarLayout.setVisible)
@@ -1456,9 +1500,9 @@ class MainWindow(QMainWindow):
         self._sidebarDockActions.clear()
         sidebarDockActions = []
         for area, label in [
-            (Qt.ToolBarArea.LeftToolBarArea,   "Navigation Sidebar: Left"),
-            (Qt.ToolBarArea.RightToolBarArea,  "Navigation Sidebar: Right"),
-            (Qt.ToolBarArea.BottomToolBarArea, "Navigation Sidebar: Bottom"),
+            (Qt.ToolBarArea.LeftToolBarArea,   t("Navigation Sidebar: Left")),
+            (Qt.ToolBarArea.RightToolBarArea,  t("Navigation Sidebar: Right")),
+            (Qt.ToolBarArea.BottomToolBarArea, t("Navigation Sidebar: Bottom")),
         ]:
             act = QAction(label, self)
             act.setCheckable(True)
@@ -1471,10 +1515,10 @@ class MainWindow(QMainWindow):
         viewItems = group_widgets.pop("&View", [])
         group_widgets["&View"] = [sidebarToggle, *sidebarDockActions] + ([None] + viewItems if viewItems else [])
 
-        aboutAction = QAction(qta.icon('fa6s.circle-info'), "About PTW", self)
+        aboutAction = QAction(qta.icon('fa6s.circle-info'), t("About PTW"), self)
         aboutAction.triggered.connect(self._showAboutPTW)
-        aboutQtAction = QAction(qta.icon('fa6s.circle-question'), "About Qt", self)
-        aboutQtAction.triggered.connect(lambda: QMessageBox.aboutQt(self, "About Qt"))
+        aboutQtAction = QAction(qta.icon('fa6s.circle-question'), t("About Qt"), self)
+        aboutQtAction.triggered.connect(lambda: QMessageBox.aboutQt(self, t("About Qt")))
 
         helpItems = group_widgets.pop("&Help", [])
         group_widgets["&Help"] = (helpItems + [None] if helpItems else []) + [aboutAction, aboutQtAction]
@@ -1488,10 +1532,10 @@ class MainWindow(QMainWindow):
         """Return the (label, sidebar button, tab, color) tuples for the four
         approval-cycle stages shown on the home-page dashboard."""
         return [
-            ('Requested',    self.btnRequestedPTWs,   self.tabRequestedPTWs,   APPROVAL_CYCLE_COLORS['Requested']),
-            ('Under Review', self.btnUnderReviewPTWs, self.tabUnderReviewPTWs, APPROVAL_CYCLE_COLORS['Under Review']),
-            ('Returned',     self.btnReturnedPTWs,    self.tabReturnedPTWs,    APPROVAL_CYCLE_COLORS['Returned']),
-            ('Approved',     self.btnApprovedPTWs,    self.tabApprovedPTWs,    APPROVAL_CYCLE_COLORS['Approved']),
+            (t('Requested'),    self.btnRequestedPTWs,   self.tabRequestedPTWs,   APPROVAL_CYCLE_COLORS['Requested']),
+            (t('Under Review'), self.btnUnderReviewPTWs, self.tabUnderReviewPTWs, APPROVAL_CYCLE_COLORS['Under Review']),
+            (t('Returned'),     self.btnReturnedPTWs,    self.tabReturnedPTWs,    APPROVAL_CYCLE_COLORS['Returned']),
+            (t('Approved'),     self.btnApprovedPTWs,    self.tabApprovedPTWs,    APPROVAL_CYCLE_COLORS['Approved']),
         ]
 
     def buildHomePage(self):
@@ -1499,10 +1543,10 @@ class MainWindow(QMainWindow):
         Subclasses without PTW tabs (e.g. AdminMainWindow) override this instead."""
         charts = []
         if any(btn in self._availableNavButtons for _, btn, _, _ in self._approvalCycleTabs()):
-            self._homeApprovalChart = DonutChart("PTWs in Approval Cycle")
+            self._homeApprovalChart = DonutChart(t("PTWs in Approval Cycle"))
             charts.append(self._homeApprovalChart)
         if self.btnRunningPTWs in self._availableNavButtons:
-            self._homeRunningChart = DonutChart("Running PTWs")
+            self._homeRunningChart = DonutChart(t("Running PTWs"))
             charts.append(self._homeRunningChart)
 
         if charts:
@@ -1527,7 +1571,7 @@ class MainWindow(QMainWindow):
             counts = Counter(ptw.location for ptw in self.tabRunningPTWs.ptwsData)
             self._homeRunningChart.setSegments([
                 DonutSegment(
-                    loc.value, counts.get(loc.value, 0), LOCATION_COLORS[i % len(LOCATION_COLORS)],
+                    t(loc.value), counts.get(loc.value, 0), LOCATION_COLORS[i % len(LOCATION_COLORS)],
                     partial(self._openRunningFilteredByLocation, loc.value)
                 )
                 for i, loc in enumerate(PTW.Locations)
@@ -1544,19 +1588,19 @@ class MainWindow(QMainWindow):
         user's role."""
         role = self.loggedUser.getRole()
         role_descriptions = {
-            UserRoles.USER: (
+            UserRoles.USER: t(
                 "As a <b>Requestor</b>, you initiate and submit work permit requests from the <b>Under Review</b> tab. "
                 "You can track your PTWs through each stage of the approval workflow — "
                 "from submission and review, through approval and active work, to formal closure. "
                 "Use the PTWs menu to monitor the current status of your permits."
             ),
-            UserRoles.COORDINATOR: (
+            UserRoles.COORDINATOR: t(
                 "As a <b>Coordinator</b>, you manage the PTW approval pipeline. "
                 "You review submitted permits, either accepting or requesting changes to them, "
                 "and review the overall workflow to ensure timely processing. "
                 "Use the PTWs menu to act on permits awaiting your coordination in the <b>Under Review</b> Tab."
             ),
-            UserRoles.ISSUING: (
+            UserRoles.ISSUING: t(
                 "As an <b>Issuing Authority</b>, you are responsible for formally approving "
                 "and issuing work permits. You can oversee active isolations. "
                 "Authorizing work to run, and you can request edits permits that "
@@ -1564,13 +1608,13 @@ class MainWindow(QMainWindow):
                 "Use the <b>Under Review</b> tab to review permits waiting for your review."
                 "Use the <b>Waiting Run/Hold/Close Confirmation</b> tabs to review permits waiting your coordination."
             ),
-            UserRoles.SAFETY: (
+            UserRoles.SAFETY: t(
                 "As a <b>Safety Officer</b>, you review permits for safety compliance, "
                 "manage associated risk assessments, and ensure that all necessary precautions are in place."
                 "Use the <b>Risks</b> tab to manage risk assessment records."
                 "Use the <b>Under Review</b> tab to review permits waiting for your review."
             ),
-            UserRoles.ADMIN: (
+            UserRoles.ADMIN: t(
                 "As an <b>Administrator</b>, you manage system users and their access roles. "
                 "Use the <b>Users</b> tab to create and edit user accounts. "
                 "Use the <b>Server Logs</b> tab to monitor server activity and audit system events. "
@@ -1587,23 +1631,23 @@ class MainWindow(QMainWindow):
         }
         role_text = role_descriptions.get(
             role,
-            f"As a <b>{role}</b>, you participate in the PTW approval and oversight process. "
-            "Use the PTWs menu to review and act on permits relevant to your role."
+            t("As a <b>{0}</b>, you participate in the PTW approval and oversight process. "
+              "Use the PTWs menu to review and act on permits relevant to your role.").format(t(role))
         )
         QMessageBox.about(
-            self, "About PTW",
-            "<b>PTW — Permit To Work</b><br><br>"
-            "A digital system for managing work permits in industrial and hazardous environments. "
-            "It provides end-to-end control over the permit lifecycle — from creation and multi-level "
-            "approval to active monitoring, hold management, and formal closure.<br><br>"
-            f"{role_text}<br><br>"
-            "Key features:<br>"
-            "&nbsp;&nbsp;• Structured permit workflows with role-based approvals<br>"
-            "&nbsp;&nbsp;• Isolation and de-isolation tracking<br>"
-            "&nbsp;&nbsp;• Risk assessment integration<br>"
-            "&nbsp;&nbsp;• Real-time status updates and notifications<br>"
-            "&nbsp;&nbsp;• Audit-ready reporting and PDF export<br><br>"
-            f"<small>Logged in as: <b>{self.loggedUser.getName()}</b> &mdash; {role}</small>"
+            self, t("About PTW"),
+            t("<b>PTW — Permit To Work</b><br><br>"
+              "A digital system for managing work permits in industrial and hazardous environments. "
+              "It provides end-to-end control over the permit lifecycle — from creation and multi-level "
+              "approval to active monitoring, hold management, and formal closure.<br><br>"
+              "{0}<br><br>"
+              "Key features:<br>"
+              "&nbsp;&nbsp;• Structured permit workflows with role-based approvals<br>"
+              "&nbsp;&nbsp;• Isolation and de-isolation tracking<br>"
+              "&nbsp;&nbsp;• Risk assessment integration<br>"
+              "&nbsp;&nbsp;• Real-time status updates and notifications<br>"
+              "&nbsp;&nbsp;• Audit-ready reporting and PDF export<br><br>"
+              "<small>Logged in as: <b>{1}</b> &mdash; {2}</small>").format(role_text, self.loggedUser.getName(), t(role))
         )
 
     def refreshGUI(self, refreshArchivedPTWs: bool = False):
@@ -1621,10 +1665,10 @@ class MainWindow(QMainWindow):
         objectId = data.get("object_id")
         action = data.get("action")
         by = data.get("by", "?")
-        msg = f"{obj} #{objectId} {action} by {by}" if obj and objectId is not None and action else f"Update: {event_type}"
+        msg = t("{0} #{1} {2} by {3}").format(obj, objectId, action, by) if obj and objectId is not None and action else t("Update: {0}").format(event_type)
 
         QApplication.beep()
-        self._trayIcon.showMessage("PTW Update", msg, QSystemTrayIcon.MessageIcon.Information, 5000)
+        self._trayIcon.showMessage(t("PTW Update"), msg, QSystemTrayIcon.MessageIcon.Information, 5000)
         self.statusBar().showMessage(msg, 6000)
 
         if obj == SSEObject.PTW:
@@ -1660,7 +1704,7 @@ class MainWindow(QMainWindow):
         total = len(validityExpired) + len(shiftExpired)
         QApplication.beep()
         self._trayIcon.showMessage(
-            "PTW Attention Required", f"{total} PTW(s) need your attention.",
+            t("PTW Attention Required"), t("{0} PTW(s) need your attention.").format(total),
             QSystemTrayIcon.MessageIcon.Warning, 10000
         )
 
@@ -1818,9 +1862,9 @@ class MainWindow(QMainWindow):
         def on_done(err, _):
             self._refreshOverlay.hideBusy()
             if err:
-                QMessageBox.warning(self, "Error", f"Failed to refresh data: {err}")
+                QMessageBox.warning(self, t("Error"), t("Failed to refresh data:") + f" {err}")
                 return
-            self.btnWelcomeName.setText(self.loggedUser.getRole() + ' ' + self.loggedUser.getName().upper() + '!')
+            self.btnWelcomeName.setText(t(self.loggedUser.getRole()) + ' ' + self.loggedUser.getName().upper() + '!')
         self._refreshOverlay.showBusy()
         globalData.refresh(self.loggedUser, self.loggedUser.getDepartment() if self.loggedUser.getRole() in (UserRoles.USER, UserRoles.GUEST, UserRoles.ISOLATOR) else None, refreshUsers=True, callback=on_done)
 
@@ -1850,7 +1894,7 @@ class MainWindow(QMainWindow):
             self.updateHomeDashboard()
 
             QApplication.beep()
-            self.statusBar().showMessage("GUI refreshed successfully.", 2000)
+            self.statusBar().showMessage(t("GUI refreshed successfully."), 2000)
             self._refreshOverlay.hideBusy()
 
         self._refreshOverlay.showBusy()
@@ -1884,7 +1928,7 @@ class MainWindow(QMainWindow):
         def on_done(err, _):
             self._refreshOverlay.hideBusy()
             if err:
-                QMessageBox.warning(self, "Error", f"Failed to refresh archived PTWs: {err}")
+                QMessageBox.warning(self, t("Error"), t("Failed to refresh archived PTWs:") + f" {err}")
                 return
             for ptw in globalData.archivedPTWs.values():
                 self.tabArchivedPTWs.addPTWToGUI(ptw)
@@ -1902,7 +1946,7 @@ class MainWindow(QMainWindow):
         """Confirm and, if confirmed, record an irreversible approval for `ptw` on
         its approval chain."""
         reply = QMessageBox.question(
-            self, f'Accept PTW#{ptw.id}', f"Are you sure you want to approve request for PTW#{ptw.id}? This is irreversible", 
+            self, t('Accept PTW#{0}').format(ptw.id), t("Are you sure you want to approve request for PTW#{0}? This is irreversible").format(ptw.id),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -1911,16 +1955,18 @@ class MainWindow(QMainWindow):
         approval = PTW.Approval(PTW.ApprovalActions.APPROVED, self.loggedUser.getUsername(), datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
         ClientRequests.updateApprovalPTW(self.loggedUser, ptw.id, approval, callback=self._on_request_done_generic)
         
-    def getComment(self, title: str, emptyCommentErr: str = 'Empty comment not allowed'):
+    def getComment(self, title: str, emptyCommentErr: str = None):
         """Prompt for a mandatory multi-line comment, re-prompting with a warning
         until non-empty text is entered; returns None if the dialog is cancelled."""
+        if emptyCommentErr is None:
+            emptyCommentErr = t('Empty comment not allowed')
         while True:
-            comment, ok = QInputDialog.getMultiLineText(self, title, "Comment:")
+            comment, ok = QInputDialog.getMultiLineText(self, title, t("Comment:"))
             if not ok:
                 return None
             if comment:
                 return comment
-            QMessageBox.warning(self, 'Not Allowed', emptyCommentErr)
+            QMessageBox.warning(self, t('Not Allowed'), emptyCommentErr)
 
     def getOptionalComment(self, title: str, prompt: str) -> tuple[bool, str]:
         """Confirm an action with an optional comment. Returns (proceed, comment) — comment may be empty/None."""
@@ -1930,7 +1976,7 @@ class MainWindow(QMainWindow):
     def requestEditsPTW(self, row: int, ptw: PTW):
         """Prompt for a mandatory comment and return `ptw` to its requestor for
         edits, recording a RETURNED approval action."""
-        comment = self.getComment(f'Return PTW# {ptw.id} to be Edited')
+        comment = self.getComment(t('Return PTW# {0} to be Edited').format(ptw.id))
         if not comment:
             return
         approval = PTW.Approval(PTW.ApprovalActions.RETURNED, self.loggedUser.getUsername(), datetime.now().strftime('%d/%m/%Y %H:%M:%S'), comment)
@@ -1940,11 +1986,11 @@ class MainWindow(QMainWindow):
         """Export the selected PTWs to an Excel report, warning if none are selected
         or if the export itself fails."""
         if not ptws:
-            QMessageBox.information(self, "No PTWs Selected", "Please select at least one PTW to export.")
+            QMessageBox.information(self, t("No PTWs Selected"), t("Please select at least one PTW to export."))
             return
         err = ReportGenerator.exportPTWs(ptws)
         if err:
-            QMessageBox.warning(self, "Export Failed", err)
+            QMessageBox.warning(self, t("Export Failed"), err)
 
     def printPTW(self, row: int, ptw: PTW):
         """Generate and open a printable report for `ptw`, showing the busy overlay

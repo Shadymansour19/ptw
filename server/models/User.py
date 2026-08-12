@@ -151,10 +151,11 @@ class User(SecuredUser):
     """
 
     def __init__(self, username = '', password = '', name = '', role = None, department = '', email = ''):
-        """Initialize the base profile fields plus password and a null theme."""
+        """Initialize the base profile fields plus password and a null theme/language."""
         super().__init__(username, name, role, department, email)
         self.password = password
         self.theme: str | None = None
+        self.language: str | None = None
 
     def setPassword(self, password: str):
         """Set the password (hash) and return self for chaining."""
@@ -173,3 +174,12 @@ class User(SecuredUser):
     def getTheme(self) -> str | None:
         """Return the client UI theme preference, or None if unset."""
         return self.theme
+
+    def setLanguage(self, language: str | None):
+        """Set the client UI language preference (e.g. 'en'/'ar') and return self for chaining."""
+        self.language = language
+        return self
+
+    def getLanguage(self) -> str | None:
+        """Return the client UI language preference, or None if unset (falls back to the OS locale)."""
+        return self.language

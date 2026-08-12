@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QTableWi
 from PyQt6.QtGui import QFont
 
 from models.Isolation import IC
+from helper.i18n import t
 
 
 class DialogSelectHeldICs(QDialog):
@@ -53,26 +54,26 @@ class DialogSelectHeldICs(QDialog):
                 selectable/review_mode's checkbox editability.
         """
         super().__init__(parent)
-        self.setWindowTitle(title)
+        self.setWindowTitle(t(title))
         self.action = None
 
         lyt = QVBoxLayout(self)
 
         if view_only:
-            lbl = QLabel("Held ICs (checked) will remain isolated. Unchecked will be released for de-isolation:")
+            lbl = QLabel(t("Held ICs (checked) will remain isolated. Unchecked will be released for de-isolation:"))
         elif review_mode:
-            lbl = QLabel("Checked ICs will remain isolated. Unchecked will be released for de-isolation:")
+            lbl = QLabel(t("Checked ICs will remain isolated. Unchecked will be released for de-isolation:"))
         elif selectable:
-            lbl = QLabel("Check the linked ICs that must stay HELD (isolated) — unchecked will be released for de-isolation:")
+            lbl = QLabel(t("Check the linked ICs that must stay HELD (isolated) — unchecked will be released for de-isolation:"))
         else:
-            lbl = QLabel("The following linked ICs will remain isolated:")
+            lbl = QLabel(t("The following linked ICs will remain isolated:"))
         lbl.setFont(QFont("Helvetica", 12))
         lbl.setWordWrap(True)
         lyt.addWidget(lbl)
 
         self.tbl = QTableWidget()
         self.tbl.setColumnCount(4)
-        self.tbl.setHorizontalHeaderLabels(['Hold', 'IC#', 'Type', 'Status'])
+        self.tbl.setHorizontalHeaderLabels([t('Hold'), t('IC#'), t('Type'), t('Status')])
         self.tbl.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         self.tbl.setColumnWidth(0, 40)
         self.tbl.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
@@ -116,8 +117,8 @@ class DialogSelectHeldICs(QDialog):
 
         if selectable and not review_mode:
             btnRowLyt = QHBoxLayout()
-            btnHoldAll = QPushButton("Hold All")
-            btnReleaseAll = QPushButton("Release All")
+            btnHoldAll = QPushButton(t("Hold All"))
+            btnReleaseAll = QPushButton(t("Release All"))
             btnHoldAll.clicked.connect(self._holdAll)
             btnReleaseAll.clicked.connect(self._releaseAll)
             btnRowLyt.addWidget(btnHoldAll)
@@ -135,8 +136,8 @@ class DialogSelectHeldICs(QDialog):
                 QDialogButtonBox.StandardButton.No |
                 QDialogButtonBox.StandardButton.Cancel
             )
-            btns.button(QDialogButtonBox.StandardButton.Yes).setText("Accept")
-            btns.button(QDialogButtonBox.StandardButton.No).setText("Reject")
+            btns.button(QDialogButtonBox.StandardButton.Yes).setText(t("Accept"))
+            btns.button(QDialogButtonBox.StandardButton.No).setText(t("Reject"))
             btns.button(QDialogButtonBox.StandardButton.Yes).clicked.connect(lambda: self._setAction('accept'))
             btns.button(QDialogButtonBox.StandardButton.No).clicked.connect(lambda: self._setAction('reject'))
             btns.button(QDialogButtonBox.StandardButton.Cancel).clicked.connect(self.reject)

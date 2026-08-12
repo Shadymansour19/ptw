@@ -12,6 +12,7 @@ from PyQt6.QtGui import QFont
 from network.clientRequests import ClientRequests
 from models.User import User
 from models.PTW import Attachment
+from helper.i18n import t
 
 
 class TableAttachments(QWidget):
@@ -38,8 +39,8 @@ class TableAttachments(QWidget):
             self.setLayout(lyt)
 
             self.attachment = attachment
-            self.btnView = QPushButton('View')
-            self.btnDelete = QPushButton('Delete')
+            self.btnView = QPushButton(t('View'))
+            self.btnDelete = QPushButton(t('Delete'))
 
             self.btnView.clicked.connect(lambda: self.viewRecordClicked.emit(attachment))
             self.btnDelete.clicked.connect(lambda: self.deleteRecordClicked.emit(attachment))
@@ -67,7 +68,7 @@ class TableAttachments(QWidget):
             self.setLayout(lyt)
 
             self.title = title
-            self.btnUpload = QPushButton('Upload')
+            self.btnUpload = QPushButton(t('Upload'))
 
             self.btnUpload.clicked.connect(lambda: self.uploadRecordClicked.emit(self.title))
     
@@ -102,7 +103,7 @@ class TableAttachments(QWidget):
         self.missingDocsExpandBtn = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ArrowUp), '')
         self.missingDocsExpandBtn.setStyleSheet('QPushButton { border: none; }')
         self.missingDocsExpandBtn.clicked.connect(self.toggleMissingDocs)
-        missingDocsLblLyt.addWidget(QLabel('Missing Required Docs'))
+        missingDocsLblLyt.addWidget(QLabel(t('Missing Required Docs')))
         missingDocsLblLyt.addStretch()
         missingDocsLblLyt.addWidget(self.missingDocsExpandBtn)
         lyt.addLayout(missingDocsLblLyt)
@@ -117,7 +118,7 @@ class TableAttachments(QWidget):
         self.optionalDocsExpandBtn = QPushButton(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ArrowUp), '')
         self.optionalDocsExpandBtn.setStyleSheet('QPushButton { border: none; }')
         self.optionalDocsExpandBtn.clicked.connect(self.toggleOptionalDocs)
-        optionalDocsLblLyt.addWidget(QLabel('Attached Docs'))
+        optionalDocsLblLyt.addWidget(QLabel(t('Attached Docs')))
         optionalDocsLblLyt.addStretch()
         optionalDocsLblLyt.addWidget(self.optionalDocsExpandBtn)
         lyt.addLayout(optionalDocsLblLyt)
@@ -212,7 +213,7 @@ class TableAttachments(QWidget):
             success, or show a warning if it also failed there."""
             self.window()._refreshOverlay.hideBusy()
             if err:
-                QMessageBox.warning(self, 'Error', err)
+                QMessageBox.warning(self, t('Error'), err)
             else:
                 ReportGenerator.openPDF(filepath)
 
@@ -246,7 +247,7 @@ class TableAttachments(QWidget):
         """Slot for a required-attachment row's Upload button: prompt for a
         local file and, if one is chosen, add it as a not-yet-uploaded
         attachment named after `title`."""
-        fileDialog = QFileDialog(self, f'Select {title} file to upload', QDir.homePath(), "PDFs (*.pdf);;Photos (*.jpg *.jpeg *.png);;All Files (*)")
+        fileDialog = QFileDialog(self, t('Select {0} file to upload').format(title), QDir.homePath(), "PDFs (*.pdf);;Photos (*.jpg *.jpeg *.png);;All Files (*)")
         fileDialog.setFileMode(QFileDialog.FileMode.ExistingFile)
         if fileDialog.exec():
             selectedFiles = fileDialog.selectedFiles()

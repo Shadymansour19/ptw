@@ -330,7 +330,7 @@ MAIL_PASSWORD=your_app_password
 
 ```bash
 cd client
-pip install PyQt6 qtawesome requests keyring reportlab pillow qrcode pypdf openpyxl bcrypt pytesseract
+pip install PyQt6 qtawesome requests keyring reportlab pillow qrcode pypdf openpyxl bcrypt pytesseract arabic-reshaper python-bidi
 python main.py
 ```
 

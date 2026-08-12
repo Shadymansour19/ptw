@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdi
 from models.PTW import PTW
 from network.clientRequests import ClientRequests
 from widgets.RefreshOverlay import RefreshOverlay
+from helper.i18n import t
 
 
 class DialogPtwAlarms(QDialog):
@@ -50,11 +51,11 @@ class DialogPtwAlarms(QDialog):
         """
         super().__init__(mainWindow)
         self._mainWindow = mainWindow
-        self.setWindowTitle("PTW Attention Required")
+        self.setWindowTitle(t("PTW Attention Required"))
 
         outer = QVBoxLayout(self)
         repeatMinutes = getattr(mainWindow, '_PTW_ALARM_REPEAT_MINUTES', 5)
-        intro = QLabel(f"This reminder repeats every {repeatMinutes} minutes for anything still unresolved below.")
+        intro = QLabel(t("This reminder repeats every {0} minutes for anything still unresolved below.").format(repeatMinutes))
         intro.setWordWrap(True)
         outer.addWidget(intro)
 
@@ -69,14 +70,14 @@ class DialogPtwAlarms(QDialog):
         validityLyt.setContentsMargins(0, 0, 0, 0)
         self.btnCloseAll = None
         if validityExpired:
-            self.btnCloseAll = QPushButton(qta.icon('fa6s.stop'), "Close All")
+            self.btnCloseAll = QPushButton(qta.icon('fa6s.stop'), t("Close All"))
             self.btnCloseAll.clicked.connect(self._closeAll)
             for ptw in validityExpired:
                 validityLyt.addWidget(self._validityRow(ptw))
         else:
-            validityLyt.addWidget(QLabel("None."))
+            validityLyt.addWidget(QLabel(t("None.")))
         contentLyt.addWidget(self._collapsibleSection(
-            f"Exceeded 14-shift validity — needs closing ({len(validityExpired)})", validitySection,
+            t("Exceeded 14-shift validity — needs closing ({0})").format(len(validityExpired)), validitySection,
             headerExtra=self.btnCloseAll,
         ))
 
@@ -89,8 +90,8 @@ class DialogPtwAlarms(QDialog):
             for ptw in shiftExpired:
                 shiftLyt.addWidget(self._shiftRow(ptw))
         else:
-            shiftLyt.addWidget(QLabel("None."))
-        contentLyt.addWidget(self._collapsibleSection(f"Run cycle shift ended — needs hold/close ({len(shiftExpired)})", shiftSection))
+            shiftLyt.addWidget(QLabel(t("None.")))
+        contentLyt.addWidget(self._collapsibleSection(t("Run cycle shift ended — needs hold/close ({0})").format(len(shiftExpired)), shiftSection))
 
         contentLyt.addStretch(1)
         scroll.setWidget(content)
@@ -171,11 +172,11 @@ class DialogPtwAlarms(QDialog):
         lyt.setContentsMargins(0, 0, 0, 0)
         lyt.addWidget(self._rowLabel(ptw), stretch=1)
 
-        btnView = QPushButton(qta.icon('fa6.eye'), "View")
+        btnView = QPushButton(qta.icon('fa6.eye'), t("View"))
         btnView.clicked.connect(partial(self._view, ptw))
         lyt.addWidget(btnView)
 
-        btnClose = QPushButton(qta.icon('fa6s.stop'), "Close")
+        btnClose = QPushButton(qta.icon('fa6s.stop'), t("Close"))
         btnClose.clicked.connect(partial(self._close, ptw, btnClose, None))
         lyt.addWidget(btnClose)
         self._validityCloseButtons[ptw.id] = btnClose
@@ -188,12 +189,12 @@ class DialogPtwAlarms(QDialog):
         lyt.setContentsMargins(0, 0, 0, 0)
         lyt.addWidget(self._rowLabel(ptw), stretch=1)
 
-        btnView = QPushButton(qta.icon('fa6.eye'), "View")
+        btnView = QPushButton(qta.icon('fa6.eye'), t("View"))
         btnView.clicked.connect(partial(self._view, ptw))
         lyt.addWidget(btnView)
 
-        btnHold = QPushButton(qta.icon('fa6s.pause'), "Hold")
-        btnClose = QPushButton(qta.icon('fa6s.stop'), "Close")
+        btnHold = QPushButton(qta.icon('fa6s.pause'), t("Hold"))
+        btnClose = QPushButton(qta.icon('fa6s.stop'), t("Close"))
         btnHold.clicked.connect(partial(self._hold, ptw, btnHold, btnClose))
         btnClose.clicked.connect(partial(self._close, ptw, btnClose, btnHold))
         lyt.addWidget(btnHold)
@@ -210,7 +211,7 @@ class DialogPtwAlarms(QDialog):
         def onDone(err, _):
             """Handle the hold-request result: warn on failure, else disable the row's buttons."""
             if err:
-                QMessageBox.warning(self, 'Fail', err)
+                QMessageBox.warning(self, t('Fail'), err)
                 return
             btnHold.setEnabled(False)
             btnClose.setEnabled(False)  # a stop request is now pending — no second one until IA responds
@@ -226,7 +227,7 @@ class DialogPtwAlarms(QDialog):
         def onDone(err, _):
             """Handle the close-request result: warn on failure, else disable the row's buttons."""
             if err:
-                QMessageBox.warning(self, 'Fail', err)
+                QMessageBox.warning(self, t('Fail'), err)
                 return
             btnClose.setEnabled(False)
             if btnHold:
@@ -247,7 +248,7 @@ class DialogPtwAlarms(QDialog):
         if not pending:
             return
         reply = QMessageBox.question(
-            self, 'Close All', f"Request closing all {len(pending)} PTW(s) listed above?",
+            self, t('Close All'), t("Request closing all {0} PTW(s) listed above?").format(len(pending)),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -260,7 +261,7 @@ class DialogPtwAlarms(QDialog):
             def onDone(err, _, ptwId=ptwId, btnClose=btnClose):
                 """Handle one PTW's close-request result: warn on failure, else disable its button."""
                 if err:
-                    QMessageBox.warning(self, 'Fail', f"PTW #{ptwId}: {err}")
+                    QMessageBox.warning(self, t('Fail'), t("PTW #{0}: {1}").format(ptwId, err))
                     return
                 btnClose.setEnabled(False)
                 self._refreshCloseAllState()

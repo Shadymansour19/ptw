@@ -270,6 +270,20 @@ class UsersDb:
         except Exception:
             raise Exception(f"Error updating theme for user {username}")
 
+    def updateLanguage(self, username: str, language: str | None):
+        """Set (or clear, with None) the stored UI language preference for a user.
+
+        Raises:
+            Exception: wrapping any underlying database error.
+        """
+        try:
+            with CommonDB.get_conn() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("UPDATE users SET language = %s WHERE username = %s", (language, username))
+                conn.commit()
+        except Exception:
+            raise Exception(f"Error updating language for user {username}")
+
     def setUserActive(self, username: str, is_active: bool):
         """Set the is_active flag for a user, controlling whether they can
         authenticate.

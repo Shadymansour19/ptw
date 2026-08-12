@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import QDialog, QFormLayout, QComboBox, QLineEdit, QTextEdi
 from models.PTW import PTW
 from models.Isolation import IC
 from widgets.SearchableComboBox import SearchableComboBox
+from helper.i18n import t
 
 
 class DialogIsolationItem(QDialog):
@@ -28,7 +29,7 @@ class DialogIsolationItem(QDialog):
         super().__init__(parent)
         self.readonly = readonly
         self._originalItem = item  # only consulted for lock_num/lock_box_num, which the user never edits here
-        self.setWindowTitle("View Isolation Item" if readonly else ("Edit Isolation Item" if item else "New Isolation Item"))
+        self.setWindowTitle(t("View Isolation Item") if readonly else (t("Edit Isolation Item") if item else t("New Isolation Item")))
         self.setModal(True)
         self.item = None
 
@@ -45,10 +46,10 @@ class DialogIsolationItem(QDialog):
         self.stateCombo.addItems([s.value for s in IC.IsolationItem.States])
         self.boxLockNum = QLineEdit()
         self.boxLockNum.setReadOnly(True)
-        self.boxLockNum.setPlaceholderText("Set by isolator on confirmation")
+        self.boxLockNum.setPlaceholderText(t("Set by isolator on confirmation"))
         self.boxLockBoxNum = QLineEdit()
         self.boxLockBoxNum.setReadOnly(True)
-        self.boxLockBoxNum.setPlaceholderText("Set by isolator on confirmation")
+        self.boxLockBoxNum.setPlaceholderText(t("Set by isolator on confirmation"))
 
         if item:
             self.boxTag.setCurrentText(item.tag)
@@ -63,11 +64,11 @@ class DialogIsolationItem(QDialog):
         btns.accepted.connect(self.accept)
         btns.rejected.connect(self.reject)
 
-        lyt.addRow("Tag:", self.boxTag)
-        lyt.addRow("Description:", self.boxDescription)
-        lyt.addRow("State:", self.stateCombo)
-        lyt.addRow("Lock #:", self.boxLockNum)
-        lyt.addRow("Lock Box #:", self.boxLockBoxNum)
+        lyt.addRow(t("Tag:"), self.boxTag)
+        lyt.addRow(t("Description:"), self.boxDescription)
+        lyt.addRow(t("State:"), self.stateCombo)
+        lyt.addRow(t("Lock #:"), self.boxLockNum)
+        lyt.addRow(t("Lock Box #:"), self.boxLockBoxNum)
         lyt.addWidget(btns)
 
         if readonly:
@@ -111,10 +112,10 @@ class DialogIsolationItem(QDialog):
         description = self.boxDescription.toPlainText()
 
         if not tag:
-            QMessageBox.warning(self, "Invalid Input", "Please select a tag or enter a new one.")
+            QMessageBox.warning(self, t("Invalid Input"), t("Please select a tag or enter a new one."))
             return
         if not description:
-            QMessageBox.warning(self, "Invalid Input", "Please enter a description.")
+            QMessageBox.warning(self, t("Invalid Input"), t("Please enter a description."))
             return
 
         self.item = IC.IsolationItem(tag=tag, description=description, state=self.stateCombo.currentText())

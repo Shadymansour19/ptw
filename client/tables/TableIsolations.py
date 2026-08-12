@@ -11,6 +11,7 @@ import qtawesome as qta
 
 from models.Isolation import Isolation
 from dialogs.DialogIsolation import DialogIsolation
+from helper.i18n import t
 
 
 class TablePTWIsolations(QWidget):
@@ -26,7 +27,7 @@ class TablePTWIsolations(QWidget):
         self.readonly = readonly
         self.isolations: list[Isolation] = isolations
 
-        self.summeryLabels = ['Type', 'Tag', 'Description']
+        self.summeryLabels = [t('Type'), t('Tag'), t('Description')]
         self.summeryFields = ['type', 'tag', 'description']
 
         self.setLayout(lyt)
@@ -64,7 +65,7 @@ class TablePTWIsolations(QWidget):
                 background-color: #0D47A1;
             }
         """)
-        self.btnNewIsolation.setToolTip("New Isolation [Ctrl+N]")
+        self.btnNewIsolation.setToolTip(t("New Isolation [Ctrl+N]"))
         self.btnNewIsolation.clicked.connect(self.newIsolationDialog)
         self.btnNewIsolation.setVisible(not readonly)
         self.btnFABUpdatePosition()
@@ -116,7 +117,7 @@ class TablePTWIsolations(QWidget):
         if resp == QDialog.DialogCode.Accepted:
             isolation = dialog.getIsolation()
             if isolation.tag in [i.tag for i in self.isolations]:
-                QMessageBox.warning(self, "Error", "An isolation with the same tag already exists.")
+                QMessageBox.warning(self, t("Error"), t("An isolation with the same tag already exists."))
                 return
             self.addIsolation(isolation)
 
@@ -151,7 +152,7 @@ class TablePTWIsolations(QWidget):
             return
         row = row.row()
         menu = QMenu(self.tbl)
-        actionDelete = QAction('Delete', self.tbl)
+        actionDelete = QAction(t('Delete'), self.tbl)
         actionDelete.triggered.connect(self.deleteSelectedRows)
         menu.addAction(actionDelete)
         menu.exec(self.tbl.mapToGlobal(pos))

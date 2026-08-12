@@ -95,6 +95,23 @@ class UserRequests:
             return data.get("error", "Failed to update theme")
 
     @async_request
+    def updateLanguage(loggedUser: User, language: str | None):
+        """Persist the logged-in user's language preference via PATCH /users/language.
+
+        Returns an error string, or None on success.
+        """
+        response = None
+        try:
+            response = requests.patch(f'{SERVER_URL}/users/language', json={'username': loggedUser.getUsername(), 'language': language}, auth=(loggedUser.getUsername(), loggedUser.getPassword()), timeout=TIMEOUT)
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            err = response.json().get("error", response.text) if response is not None else str(e)
+            return f"Failed to update language\n{err}"
+        if not data.get("success"):
+            return data.get("error", "Failed to update language")
+
+    @async_request
     def setUserActive(loggedUser: User, username: str, is_active: bool):
         """Activate or deactivate a user via PATCH /users/active.
 

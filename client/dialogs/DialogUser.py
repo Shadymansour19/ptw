@@ -6,6 +6,7 @@ import secrets
 
 from models.User import User, SecuredUser, UserRoles, UserDepartments
 from GlobalData import globalData
+from helper.i18n import t
 
 
 class DialogUser(QDialog):
@@ -28,7 +29,7 @@ class DialogUser(QDialog):
             label: Window title.
         """
         super().__init__(parent)
-        self.setWindowTitle(label)
+        self.setWindowTitle(t(label))
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowMaximizeButtonHint & ~Qt.WindowType.WindowMinimizeButtonHint)
 
         self.loggedUser = loggedUser
@@ -73,17 +74,17 @@ class DialogUser(QDialog):
             self.txtEmail.setReadOnly(True)
             self.txtExt.setReadOnly(True)
 
-        lyt.addRow("Username:", self.txtUsername)
+        lyt.addRow(t("Username:"), self.txtUsername)
         if isNew:
             lyt.addRow(self.lblUserExists)
             password = secrets.token_urlsafe(12)
-            lyt.addRow("Password:", self.txtPassword)
+            lyt.addRow(t("Password:"), self.txtPassword)
             self.txtPassword.setText(password)
-        lyt.addRow("Name:", self.txtName)
-        lyt.addRow("Role:", self.txtRole)
-        lyt.addRow("Department:", self.txtDepartment)
-        lyt.addRow("Email:", self.txtEmail)
-        lyt.addRow("EXT:", self.txtExt)
+        lyt.addRow(t("Name:"), self.txtName)
+        lyt.addRow(t("Role:"), self.txtRole)
+        lyt.addRow(t("Department:"), self.txtDepartment)
+        lyt.addRow(t("Email:"), self.txtEmail)
+        lyt.addRow(t("EXT:"), self.txtExt)
 
         self.btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         self.btns.accepted.connect(self.collectData)
@@ -102,7 +103,7 @@ class DialogUser(QDialog):
         username = self.txtUsername.text()
         err = username != self.toEditUser.getUsername() and username in globalData.allUsers
         self.btns.button(QDialogButtonBox.StandardButton.Ok).setEnabled(not err)
-        self.lblUserExists.setText("Username already exists" if err else "")
+        self.lblUserExists.setText(t("Username already exists") if err else "")
         self.txtUsername.setProperty('error', str(err))
         self.txtUsername.style().unpolish(self.txtUsername)
         self.txtUsername.style().polish(self.txtUsername)
@@ -129,12 +130,12 @@ class DialogUser(QDialog):
         self.toEditUser.setExt(self.txtExt.text().strip())
 
         if not self.toEditUser.getUsername():
-            QMessageBox.critical(self, "Error", "Username can't by empty!")
+            QMessageBox.critical(self, t("Error"), t("Username can't by empty!"))
         elif self.isNew and self.toEditUser.getUsername() in globalData.allUsers:
-            QMessageBox.critical(self, "Error", "Username already exists!")
+            QMessageBox.critical(self, t("Error"), t("Username already exists!"))
         elif self.isNew and len(self.toEditUser.getPassword()) < 6:
-            QMessageBox.critical(self, "Error", "Password must be at least 6 characters!")
+            QMessageBox.critical(self, t("Error"), t("Password must be at least 6 characters!"))
         elif not self.toEditUser.getName():
-            QMessageBox.critical(self, "Error", "Name can't be empty!")
+            QMessageBox.critical(self, t("Error"), t("Name can't be empty!"))
         else:
             self.accept()
