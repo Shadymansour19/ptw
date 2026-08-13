@@ -445,7 +445,11 @@ class MainWindow(QMainWindow):
         self.sideBarLayout.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.sideBarLayout.customContextMenuRequested.connect(self._sideBarMoveMenu)
         self._sidebarDockActions: dict[Qt.ToolBarArea, QAction] = {}
-        self.addToolBar(Qt.ToolBarArea.LeftToolBarArea, self.sideBarLayout)
+        # Default dock side follows reading direction: left for English, right for Arabic -
+        # still just a starting point, the sidebar's context menu (_sideBarMoveMenu) can move
+        # it to either side or the bottom regardless of language.
+        defaultSidebarArea = Qt.ToolBarArea.RightToolBarArea if i18n.is_rtl() else Qt.ToolBarArea.LeftToolBarArea
+        self.addToolBar(defaultSidebarArea, self.sideBarLayout)
         self._initSidebarHover()
 
         self.toolbar = QToolBar("ToolBar")
@@ -1371,10 +1375,12 @@ class MainWindow(QMainWindow):
         ClientRequests.updateUser(self.loggedUser, user, callback=on_update_done)
         
     def btnFABUpdatePosition(self):
-        """Reposition the floating action button to the bottom-right corner of the
-        window, above the status bar."""
+        """Reposition the floating action button to the bottom corner of the window,
+        above the status bar - the right corner for English, the left corner for
+        Arabic (mirrors the sidebar's own language-based default side, though unlike
+        the sidebar there's no menu to move the FAB back afterward)."""
         margin = 40
-        x = self.width() - self.btnFAB.width() - margin
+        x = margin if i18n.is_rtl() else self.width() - self.btnFAB.width() - margin
         y = self.height() - self.btnFAB.height() - margin - self.statusBar().height()
         self.btnFAB.move(x, y)
     

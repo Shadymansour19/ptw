@@ -11,7 +11,7 @@ import tempfile
 import traceback
 import qtawesome as qta
 from PyQt6.QtWidgets import QApplication, QMessageBox
-from PyQt6.QtCore import QLocale, Qt
+from PyQt6.QtCore import QLocale
 from PyQt6.QtGui import QIcon
 from Login import LoginWindow
 from windows.MainWindow import MainWindow
@@ -105,8 +105,7 @@ configureTesseract()
 
 _lang = QLocale.system().name()[:2]   # e.g. 'ar', 'en', 'fr'
 i18n.init(_lang)
-if i18n.is_rtl():
-    app.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+i18n.apply_layout(app)
 
 # app.setPalette(load_palette('dark'))
 # app.setStyleSheet(load_stylesheet('dark'))

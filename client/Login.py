@@ -5,7 +5,7 @@ keyring, the forgot-password/reset flow, and guest login entry.
 or background-notification concept before a user is logged in.
 """
 
-from PyQt6.QtCore import Qt, pyqtSignal, QSize, QSettings
+from PyQt6.QtCore import Qt, pyqtSignal, QSize, QSettings, QLocale
 from PyQt6.QtWidgets import (QLineEdit, QToolButton, QDialog, QFormLayout, QLabel,
                               QPushButton, QCheckBox, QDialogButtonBox,
                               QMessageBox, QMainWindow, QWidget, QSizePolicy, QApplication,
@@ -422,18 +422,19 @@ class LoginWindow(QMainWindow):
             elif theme == 'light':
                 QApplication.styleHints().setColorScheme(Qt.ColorScheme.Light)
 
-            # No saved preference (None) leaves main.py's OS-locale default in place. A
-            # saved preference re-inits i18n and flips app-wide layout direction *before*
-            # the role window is built, so every widget it constructs (all translated via
-            # helper.i18n.t()) comes up in the right language/direction on this very login -
-            # no restart needed the first time a preference takes effect, only when it's
-            # changed mid-session (see MainWindow._applyLanguageChange).
-            language = user.getLanguage()
-            if language:
-                i18n.init(language)
-                QApplication.instance().setLayoutDirection(
-                    Qt.LayoutDirection.RightToLeft if i18n.is_rtl() else Qt.LayoutDirection.LeftToRight
-                )
+            # Always resolve and re-apply *some* language, even with no saved preference
+            # (falls back to the OS locale, same default main.py starts with) - the
+            # process/QApplication stays alive across a logout, so without this a second
+            # user logging in right after an Arabic session would silently inherit that
+            # Arabic layout/font rather than reverting to their own default. This re-inits
+            # i18n and flips app-wide layout direction/font *before* the role window is
+            # built, so every widget it constructs (all translated via helper.i18n.t())
+            # comes up in the right language/direction on this very login - no restart
+            # needed the first time a preference takes effect, only when it's changed
+            # mid-session (see MainWindow._applyLanguageChange).
+            language = user.getLanguage() or QLocale.system().name()[:2]
+            i18n.init(language)
+            i18n.apply_layout(QApplication.instance())
 
             self.on_login_success.emit(user)
 

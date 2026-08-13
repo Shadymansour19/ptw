@@ -39,15 +39,15 @@ class ReportGenerator:
     export."""
 
     def _registerArabicFonts():
-        """Register the bundled Noto Sans Arabic fonts with ReportLab, once - every
+        """Register the bundled Noto Naskh Arabic fonts with ReportLab, once - every
         report-building method calls this before building any Paragraph, since none
         of ReportLab's built-in fonts (Helvetica et al.) carry Arabic glyphs at all
         (see reports/ArabicText.py, which tags Arabic runs with these font names)."""
         try:
             pdfmetrics.getFont(REGULAR_FONT_NAME)
         except KeyError:
-            pdfmetrics.registerFont(TTFont(REGULAR_FONT_NAME, resource_path('fonts/NotoSansArabic/NotoSansArabic-Regular.ttf')))
-            pdfmetrics.registerFont(TTFont(BOLD_FONT_NAME, resource_path('fonts/NotoSansArabic/NotoSansArabic-Bold.ttf')))
+            pdfmetrics.registerFont(TTFont(REGULAR_FONT_NAME, resource_path('fonts/NotoNaskhArabic/NotoNaskhArabic-Regular.ttf')))
+            pdfmetrics.registerFont(TTFont(BOLD_FONT_NAME, resource_path('fonts/NotoNaskhArabic/NotoNaskhArabic-Bold.ttf')))
 
     def arabicParagraph(text, style, forceAlignment=True):
         """Build a `Paragraph` from `text`, the Arabic-aware way: bidi-reorder/reshape

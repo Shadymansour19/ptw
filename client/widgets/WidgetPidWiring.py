@@ -22,7 +22,7 @@ import qtawesome as qta
 from models.Isolation import IC
 from models.PTW import Attachment
 from network.clientRequests import ClientRequests
-from helper.i18n import t
+from helper.i18n import t, is_rtl
 import widgets.PidWiringHighlighter as highlighter
 
 
@@ -391,11 +391,15 @@ class WidgetPidWiring(QWidget):
         lyt.addWidget(self.view, stretch=1)
 
         navRow = QHBoxLayout()
-        self.btnPrevPage = QPushButton(qta.icon('fa6s.chevron-left'), '')
+        # qtawesome icons are plain pixmaps - Qt only auto-mirrors its own QStyle-drawn
+        # standard icons for RTL, so a directional icon like a chevron has to be picked
+        # by hand here to still point the way "previous"/"next" actually lie on screen.
+        prevIcon, nextIcon = ('fa6s.chevron-right', 'fa6s.chevron-left') if is_rtl() else ('fa6s.chevron-left', 'fa6s.chevron-right')
+        self.btnPrevPage = QPushButton(qta.icon(prevIcon), '')
         self.btnPrevPage.clicked.connect(partial(self._changePage, -1))
         self.lblPage = QLabel('')
         self.lblPage.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.btnNextPage = QPushButton(qta.icon('fa6s.chevron-right'), '')
+        self.btnNextPage = QPushButton(qta.icon(nextIcon), '')
         self.btnNextPage.clicked.connect(partial(self._changePage, 1))
         navRow.addStretch()
         navRow.addWidget(self.btnPrevPage)

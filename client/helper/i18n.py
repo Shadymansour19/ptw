@@ -56,3 +56,51 @@ def is_rtl() -> bool:
 def current_lang() -> str:
     """Return the language code set by the most recent init() call."""
     return _lang
+
+
+# Cached across calls: the app's real default font (captured once, before we ever touch
+# it) so switching back out of an RTL language restores it exactly, and the bundled
+# Arabic UI font's registered family name (registered with Qt's font database once,
+# not re-added on every call).
+_ORIGINAL_FONT = None
+_ARABIC_FONT_FAMILY = None
+
+
+def apply_layout(app):
+    """Apply the current language's layout direction to `app`, plus (only for an RTL
+    language) the bundled Noto Naskh Arabic font as the app-wide UI font - none of
+    Qt's own fallback fonts are guaranteed to render Arabic well on every end-user
+    machine, so this is registered from the file we ship rather than relying on
+    whatever's installed. Switching back to a non-RTL language restores the app's
+    original default font exactly.
+
+    Call this any time the active language may have changed: main.py at startup
+    (OS-locale default, pre-login) and Login.py right after a successful login (the
+    user's saved preference, which can differ from that startup default in either
+    direction - so this must always run, not just when a preference happens to be set).
+    """
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtGui import QFontDatabase, QFont
+    from helper.utils import resource_path
+
+    global _ORIGINAL_FONT, _ARABIC_FONT_FAMILY
+
+    app.setLayoutDirection(Qt.LayoutDirection.RightToLeft if is_rtl() else Qt.LayoutDirection.LeftToRight)
+
+    if _ORIGINAL_FONT is None:
+        _ORIGINAL_FONT = QFont(app.font())
+
+    if not is_rtl():
+        app.setFont(_ORIGINAL_FONT)
+        return
+
+    if _ARABIC_FONT_FAMILY is None:
+        fontId = QFontDatabase.addApplicationFont(resource_path('fonts/NotoNaskhArabic/NotoNaskhArabic-Regular.ttf'))
+        QFontDatabase.addApplicationFont(resource_path('fonts/NotoNaskhArabic/NotoNaskhArabic-Bold.ttf'))
+        families = QFontDatabase.applicationFontFamilies(fontId)
+        _ARABIC_FONT_FAMILY = families[0] if families else None
+        if not _ARABIC_FONT_FAMILY:
+            log.warning("i18n: failed to register the bundled Noto Naskh Arabic font - falling back to the default UI font for Arabic too.")
+
+    if _ARABIC_FONT_FAMILY:
+        app.setFont(QFont(_ARABIC_FONT_FAMILY, _ORIGINAL_FONT.pointSize()))

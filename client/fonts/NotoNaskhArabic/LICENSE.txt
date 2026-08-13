@@ -1,4 +1,4 @@
-Noto Sans Arabic
+Noto Naskh Arabic
 Copyright 2010-2020, Google LLC.
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.

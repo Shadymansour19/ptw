@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import QDialog, QWidget, QHBoxLayout, QStackedWidget, QPush
 import qtawesome as qta
 
 from widgets.UiUtils import TabButton, lightenColor, bestForegroundColor
-from helper.i18n import t
+from helper.i18n import t, is_rtl
 
 
 class TabbedDialog(QDialog):
@@ -54,8 +54,12 @@ class TabbedDialog(QDialog):
         self.stack = QStackedWidget()
         self.tabsBtnsMap: dict[TabButton, QWidget] = {}
 
-        self.btnBack = QPushButton(qta.icon('fa6s.chevron-left'), t('Back'))
-        self.btnNext = QPushButton(qta.icon('fa6s.chevron-right'), t('Next'))
+        # qtawesome icons are plain pixmaps - Qt only auto-mirrors its own QStyle-drawn
+        # standard icons for RTL, so a directional icon like a chevron has to be picked
+        # by hand here to still point the way "back"/"next" actually lie on screen.
+        backIcon, nextIcon = ('fa6s.chevron-right', 'fa6s.chevron-left') if is_rtl() else ('fa6s.chevron-left', 'fa6s.chevron-right')
+        self.btnBack = QPushButton(qta.icon(backIcon), t('Back'))
+        self.btnNext = QPushButton(qta.icon(nextIcon), t('Next'))
         self.btnFinish = QPushButton(qta.icon('fa6s.check'), t('Finish'))
         self.btnCancel = QPushButton(qta.icon('fa6s.xmark'), t('Cancel'))
         self.btnNext.clicked.connect(lambda: self.stack.setCurrentIndex(self.stack.currentIndex() + 1))

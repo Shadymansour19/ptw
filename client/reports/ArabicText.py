@@ -11,10 +11,18 @@ free text, regardless of the app's own UI language):
   - `python-bidi`'s `get_display()` then reorders the string into left-to-right
     *visual* order per the Unicode Bidi Algorithm, so drawing it left-to-right (as
     ReportLab always does) produces the correct right-to-left reading order.
-  - Since a single ReportLab font can't cover both scripts (see `_ARABIC_FONT_NAME`'s
-    registration in ReportGenerator.py - Noto Sans Arabic has no Latin letters, and
-    Helvetica has no Arabic ones), `pdfMarkup()` splits the bidi-reordered string into
+  - Since a single ReportLab font can't cover both scripts (see `ReportGenerator.
+    _registerArabicFonts()` - Noto Naskh Arabic has no Latin letters, and Helvetica
+    has no Arabic ones), `pdfMarkup()` splits the bidi-reordered string into
     contiguous script runs and wraps each in its own ReportLab Paragraph `<font>` tag.
+
+Font choice: Noto Naskh Arabic (client/fonts/NotoNaskhArabic/, OFL-1.1), not the more
+generic-looking Noto Sans Arabic used here originally - real Naskh book/print
+proportions read as an actual document rather than UI chrome, and (checked directly
+against this exact reshape+bidi+draw pipeline, which does no real OpenType ligature
+substitution) it renders cleanly without the join artifacts that a more calligraphic
+font like Amiri can show, or the outright broken/disconnected glyphs that Noto Kufi
+Arabic and Scheherazade produce here.
 """
 
 import re
@@ -23,8 +31,8 @@ import html
 import arabic_reshaper
 from bidi import get_display
 
-REGULAR_FONT_NAME = 'NotoSansArabic'
-BOLD_FONT_NAME = 'NotoSansArabic-Bold'
+REGULAR_FONT_NAME = 'NotoNaskhArabic'
+BOLD_FONT_NAME = 'NotoNaskhArabic-Bold'
 
 # Arabic, Arabic Supplement, Arabic Extended-A, and the Arabic Presentation Forms
 # blocks - covers both plain letters and (after reshaping) their joined forms.
