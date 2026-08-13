@@ -1210,7 +1210,11 @@ class PTW:
     def isRunCycleShiftExpired(self, now: datetime = None) -> bool:
         """True once the current run cycle's shift has ended while still RUNNING. Nothing
         reacts to this by itself — it's only read by whoever alarms the department that the
-        PTW needs a hold/close decision (see MainWindow._checkPtwAlarms)."""
+        PTW needs a hold/close decision (see MainWindow._checkPtwAlarms). The RUNNING-only
+        check also means a PTW with a hold/close request already pending IA response
+        (WAITING_HLD_CONFIRM/WAITING_CLS_CONFIRM) stops matching the moment that request is
+        made, with no separate check needed — see needsCloseAlarm() for the equivalent
+        exclusion there, where it does need to be explicit."""
         if self.running_status != PTW.RunningStatus.RUNNING:
             return False
         cycle = self.currentRunCycle()
@@ -1246,10 +1250,18 @@ class PTW:
         """Past its 14-shift validity and still open (not CLOSED) — a human has to close it
         manually, this only flags that they should be alarmed to do so (see
         MainWindow._checkPtwAlarms, which alarms this independently of isRunCycleShiftExpired
-        above — a PTW can be flagged by either, both, or neither)."""
+        above — a PTW can be flagged by either, both, or neither). Also excludes a PTW
+        currently WAITING_HLD_CONFIRM/WAITING_CLS_CONFIRM — a hold or close request is
+        already in with the IA, so there's nothing left for the department to do until that's
+        resolved (contrast isRunCycleShiftExpired, which the same pending request already
+        excludes for free by no longer being RUNNING)."""
         return (
             self.approval_status == PTW.ApprovalStatus.APPROVED
-            and self.running_status != PTW.RunningStatus.CLOSED
+            and self.running_status not in (
+                PTW.RunningStatus.CLOSED,
+                PTW.RunningStatus.WAITING_HLD_CONFIRM,
+                PTW.RunningStatus.WAITING_CLS_CONFIRM,
+            )
             and self.isValidityExpired(now)
         )
 
