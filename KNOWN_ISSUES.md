@@ -38,6 +38,13 @@ The server binds to plain HTTP on port 5000. Every request sends the username an
 
 ## Fixed
 
+### ~~M16 — Arabic UI translation was silently a no-op (only the layout direction flipped)~~ ✓
+**File:** `client/helper/i18n.py`
+
+`i18n.init(lang)` resolved its translation file's directory relative to its own module location (`os.path.dirname(__file__) + '/translations/'`), which was correct only while the module lived at `client/i18n.py`. The 2026-08-01 "Improve project files structure" reorganization moved it to `client/helper/i18n.py` (a pure rename, no logic change) without updating that relative path, and `client/translations/` was never moved alongside it — so it resolved to the non-existent `client/helper/translations/ar.json`. `init()`'s existing "file not found" fallback (`_translations = {}`, so `t()` returns every key untranslated) swallowed this completely silently: `is_rtl()` is a plain lang-code check with no file dependency, so switching to Arabic still correctly flipped the app to right-to-left layout, making the language switch *look* like it partially worked while translating nothing. This was live for ~12 days and reported by the user directly ("I see only text direction changed but no arabic text there") rather than caught by any test. Fixed by resolving the path as an explicit sibling of `helper/` (`.../helper/../translations/`) instead of a subdirectory of it, and by logging a warning whenever a non-English `init()` falls back to the empty dict, so this class of bug can't go silent again.
+
+---
+
 ### ~~M15 — Leaving the password field blank in Settings could corrupt the session's stored credentials~~ ✓
 **File:** `client/windows/MainWindow.py` — `dlgSettings`
 
