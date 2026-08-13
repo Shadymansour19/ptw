@@ -43,7 +43,8 @@ class DialogIsolationItem(QDialog):
         self.boxDescription.setFixedHeight(self.boxDescription.fontMetrics().lineSpacing() * 3 + 10)
         self.boxDescription.setTabChangesFocus(True)
         self.stateCombo = QComboBox()
-        self.stateCombo.addItems([s.value for s in IC.IsolationItem.States])
+        for s in IC.IsolationItem.States:
+            self.stateCombo.addItem(t(s), s.value)
         self.boxLockNum = QLineEdit()
         self.boxLockNum.setReadOnly(True)
         self.boxLockNum.setPlaceholderText(t("Set by isolator on confirmation"))
@@ -54,7 +55,7 @@ class DialogIsolationItem(QDialog):
         if item:
             self.boxTag.setCurrentText(item.tag)
             self.boxDescription.setText(item.description)
-            self.stateCombo.setCurrentText(item.state)
+            self.stateCombo.setCurrentIndex(max(0, self.stateCombo.findData(item.state)))
             self.boxLockNum.setText(item.lock_num)
             self.boxLockBoxNum.setText(item.lock_box_num)
 
@@ -118,7 +119,7 @@ class DialogIsolationItem(QDialog):
             QMessageBox.warning(self, t("Invalid Input"), t("Please enter a description."))
             return
 
-        self.item = IC.IsolationItem(tag=tag, description=description, state=self.stateCombo.currentText())
+        self.item = IC.IsolationItem(tag=tag, description=description, state=self.stateCombo.currentData())
         lockNum = self._originalItem.lock_num if self._originalItem else self.boxLockNum.text()
         lockBoxNum = self._originalItem.lock_box_num if self._originalItem else self.boxLockBoxNum.text()
         self.item.setLockNum(lockNum).setLockBoxNum(lockBoxNum)

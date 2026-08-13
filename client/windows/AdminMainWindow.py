@@ -33,8 +33,8 @@ class AdminMainWindow(MainWindow):
                 [self.btnUsers, self.btnServerLogs, self.btnBackups],
             ],
             {
-                '&Users': [self.btnUsers, self.btnServerLogs, self.btnBackups],
-                '&View': [self.btnWelcome, *self._footerButtons()],
+                'Users': [self.btnUsers, self.btnServerLogs, self.btnBackups],
+                'View': [self.btnWelcome, *self._footerButtons()],
             },
         )
 
@@ -96,7 +96,7 @@ class AdminMainWindow(MainWindow):
         each clickable to jump to the filtered Users tab."""
         counts = Counter(u.getDepartment() for u in globalData.allUsers.values() if u.getDepartment())
         self._homeUsersChart.setSegments([
-            DonutSegment(dept, counts[dept], DEPARTMENT_COLOR_CYCLE[i % len(DEPARTMENT_COLOR_CYCLE)],
+            DonutSegment(t(dept), counts[dept], DEPARTMENT_COLOR_CYCLE[i % len(DEPARTMENT_COLOR_CYCLE)],
                          partial(self._openUsersFilteredByDept, dept))
             for i, dept in enumerate(sorted(counts))
         ])
@@ -104,10 +104,12 @@ class AdminMainWindow(MainWindow):
     def _openUsersFilteredByDept(self, dept: str):
         """Navigate to the Users tab and filter it down to the given department.
 
-        Used as the click handler for a home-dashboard donut segment.
-        """
+        Used as the click handler for a home-dashboard donut segment. `dept` stays
+        the raw English value (from `getDepartment()`), matching `TableUsers`'s
+        UserRole-backed filter values - only the segment's own displayed label is
+        translated, above."""
         self.btnUsers.click()
-        self.tabAllUsers.filterColumn('Department', {dept})
+        self.tabAllUsers.filterColumn('department', {dept})
 
     def refreshGUI(self, refreshArchivedPTWs: bool = False):
         """Reload users from the server and rebuild the Users table, dashboard, server

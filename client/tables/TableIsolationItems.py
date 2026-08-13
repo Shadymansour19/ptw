@@ -100,13 +100,14 @@ class TableIsolationItems(QWidget):
         self.tbl.setRowCount(0)
 
     def __addItemToGUI(self, item: 'IC.IsolationItem'):
-        """Append one new row displaying `item`'s fields, stashing the item
-        object itself in the tag cell's UserRole so double-click can resolve
-        it after re-sorting."""
+        """Append one new row displaying `item`'s fields (translating the
+        state column's display text, a fixed vocabulary word), stashing the
+        item object itself in the tag cell's UserRole so double-click can
+        resolve it after re-sorting."""
         self.tbl.insertRow(self.tbl.rowCount())
         data = [str(getattr(item, f)) for f in self.summeryFields]
         for i, d in enumerate(data):
-            cell = QTableWidgetItem(d)
+            cell = QTableWidgetItem(t(d) if self.summeryFields[i] == 'state' else d)
             if i == 0:
                 # stashed so double-click can resolve the right item even after the
                 # table has been re-sorted by a column header click

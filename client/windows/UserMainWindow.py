@@ -56,7 +56,7 @@ class UserMainWindow(MainWindow):
                  self.btnCertActive, self.btnCertDeisolateConfirming, self.btnCertClosing, self.btnCertSanctioned, self.btnCertClosed],
             ],
             {   # topbar: full set
-                '&PTWs': [
+                'PTWs': [
                     self.btnRequestedPTWs, self.btnUnderReviewPTWs, self.btnMeetingPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs,
                     None,
                     self.btnWaitingRunConfirmationPTWs, self.btnRunningPTWs, self.btnWaitingHldConfirmationPTWs,
@@ -64,9 +64,9 @@ class UserMainWindow(MainWindow):
                     None, 
                     self.btnArchivedPTWs,
                 ],
-                '&ICs': [self.btnCertRequested, self.btnCertApproved, self.btnCertIsolateConfirming, self.btnCertPending,
+                'ICs': [self.btnCertRequested, self.btnCertApproved, self.btnCertIsolateConfirming, self.btnCertPending,
                          self.btnCertActive, self.btnCertDeisolateConfirming, self.btnCertClosing, self.btnCertSanctioned, self.btnCertClosed],
-                '&View': [self.btnWelcome, *self._footerButtons()],
+                'View': [self.btnWelcome, *self._footerButtons()],
             },
         )
 

@@ -65,13 +65,13 @@ class CoordinatorMainWindow(MainWindow):
                 self._icTabs,
             ],
             {
-                '&PTWs': [
+                'PTWs': [
                     self.btnUnderReviewPTWs, self.btnMeetingPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs,
                     None,
                     self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs, self.btnArchivedPTWs,
                 ],
-                '&ICs': self._icTabs,
-                '&View': [self.btnWelcome, *self._footerButtons()],
+                'ICs': self._icTabs,
+                'View': [self.btnWelcome, *self._footerButtons()],
             },
         )
 

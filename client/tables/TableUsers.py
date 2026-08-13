@@ -36,8 +36,8 @@ class TableUsers(QWidget):
         self.loggedUser = loggedUser
         self.users = []
 
-        self.summeryLabels = ['Username', 'Name', 'Role', 'Department', 'Email', 'EXT', 'Status']
-        self.summeryFields = ['username', 'name', 'role', 'department', 'email', 'ext', 'is_active']
+        self.summeryLabels = [t('Username'), t('Name'), t('Role'), t('Department'), t('Email'), t('EXT'), t('Status')]
+        self.summeryFields = ['username',    'name',    'role',    'department',    'email',    'ext',    'is_active']
 
         lblLyt = QHBoxLayout()
         lblLyt.setContentsMargins(10, 0, 10, 0)
@@ -105,7 +105,7 @@ class TableUsers(QWidget):
             data = self.userToRecord(u)
             self.tbl.insertRow(self.tbl.rowCount())
             for i,d in enumerate(data):
-                cell = QTableWidgetItem(d)
+                cell = self._makeCell(i, d)
                 self.tbl.setItem(self.tbl.rowCount()-1, i, cell)
 
     def _toggleFilters(self, checked):
@@ -123,15 +123,18 @@ class TableUsers(QWidget):
             self._showAllRows()
 
     def _populateFilters(self):
-        """Refresh each filter combo's choices from the values currently in its column."""
+        """Refresh each filter combo's choices from the values currently in its column.
+        Fixed-vocabulary columns (`_TRANSLATABLE_FIELDS`) get a translated dropdown
+        label per value, same real value underneath - see `_makeCell`/`CheckableComboBox.setItems()`."""
         col_values = [set() for _ in self.summeryLabels]
         for row in range(self.tbl.rowCount()):
             for col in range(len(self.summeryLabels)):
                 item = self.tbl.item(row, col)
                 if item:
-                    col_values[col].add(item.text())
+                    col_values[col].add(self._cellFilterText(item))
         for col, combo in enumerate(self._filterCombos):
-            combo.setItems(col_values[col], preserve_selection=True)
+            display = t if self.summeryFields[col] in self._TRANSLATABLE_FIELDS else None
+            combo.setItems(col_values[col], preserve_selection=True, display=display)
 
     def _syncFilterWidths(self):
         """Slot for the header's sectionResized signal; keep filter combo widths aligned with their columns."""
@@ -151,7 +154,7 @@ class TableUsers(QWidget):
         ]
         for row in range(self.tbl.rowCount()):
             hide = any(
-                (item := self.tbl.item(row, col)) is not None and item.text() not in allowed
+                (item := self.tbl.item(row, col)) is not None and self._cellFilterText(item) not in allowed
                 for col, allowed in active
             )
             self.tbl.setRowHidden(row, hide)
@@ -161,16 +164,21 @@ class TableUsers(QWidget):
         for row in range(self.tbl.rowCount()):
             self.tbl.setRowHidden(row, False)
 
-    def filterColumn(self, label: str, values: set):
+    def filterColumn(self, field: str, values: set):
         """Programmatically restrict a column's filter to the given values.
 
         Used by the Admin dashboard's department donut segments: clicking a
         segment (or its legend row) calls this to jump to and pre-filter this
         table by that department.
+
+        Args:
+            field: column identifier as it appears in `summeryFields` (e.g.
+                'department') - NOT the (translated, so language-dependent)
+                display label in `summeryLabels`.
         """
-        if label not in self.summeryLabels:
+        if field not in self.summeryFields:
             return
-        col = self.summeryLabels.index(label)
+        col = self.summeryFields.index(field)
         if not self._filterBtn.isChecked():
             self._filterBtn.setChecked(True)   # -> _toggleFilters(True): populates + applies
         else:
@@ -199,15 +207,41 @@ class TableUsers(QWidget):
             combo._addSelectAllItem()
             combo._updateText()
 
+    # Fields whose value is a fixed, translatable vocabulary word (role, department,
+    # the is_active flag rendered as Active/Inactive) rather than free text a user
+    # typed - translated for display in _makeCell(), which stashes the real value in
+    # UserRole so filtering (_populateFilters/_applyFilters) and a donut-chart
+    # drill-down passing a raw English value (filterColumn) both still work once
+    # cells show Arabic.
+    _TRANSLATABLE_FIELDS = {'role', 'department', 'is_active'}
+
     def userToRecord(self, user):
-        """Convert a user object into the list of display strings for one table row."""
+        """Convert a user object into the list of *raw* values for one table row -
+        translation happens in `_makeCell`, not here, so the raw value survives
+        for filtering (see `_TRANSLATABLE_FIELDS`)."""
         record = []
         for field in self.summeryFields:
             value = getattr(user, field)
             if field == 'is_active':
-                value = t('Active') if value else t('Inactive')
+                value = 'Active' if value else 'Inactive'
             record.append(str(value))
         return record
+
+    def _makeCell(self, col: int, value: str) -> QTableWidgetItem:
+        """Build one row's cell: translated display text (real value in UserRole)
+        for a `_TRANSLATABLE_FIELDS` column, plain text otherwise."""
+        if self.summeryFields[col] in self._TRANSLATABLE_FIELDS:
+            cell = QTableWidgetItem(t(value))
+            cell.setData(Qt.ItemDataRole.UserRole, value)
+            return cell
+        return QTableWidgetItem(value)
+
+    @staticmethod
+    def _cellFilterText(item: QTableWidgetItem) -> str:
+        """Return the value to filter/compare on for a cell: its stashed UserRole
+        data if present, otherwise its display text (mirrors `TablePTWs`'s helper)."""
+        userData = item.data(Qt.ItemDataRole.UserRole)
+        return userData if userData is not None else item.text()
     
     def addUserToGUI(self, newUser):
         """Append a user to the local list and table, without a server round trip.
@@ -220,7 +254,7 @@ class TableUsers(QWidget):
         row = self.tbl.rowCount()
         self.tbl.insertRow(row)
         for i,d in enumerate(data):
-            cell = QTableWidgetItem(d)
+            cell = self._makeCell(i, d)
             self.tbl.setItem(row, i, cell)
         self.tbl.setSortingEnabled(True)
         self._syncUsersData()
@@ -306,7 +340,7 @@ class TableUsers(QWidget):
             data = self.userToRecord(user)
             self.tbl.setSortingEnabled(False)
             for i,d in enumerate(data):
-                cell = QTableWidgetItem(d)
+                cell = self._makeCell(i, d)
                 self.tbl.setItem(row, i, cell)
             self.tbl.setSortingEnabled(True)
             self._syncUsersData()
@@ -360,7 +394,7 @@ class TableUsers(QWidget):
             data = self.userToRecord(user)
             self.tbl.setSortingEnabled(False)
             for i,d in enumerate(data):
-                cell = QTableWidgetItem(d)
+                cell = self._makeCell(i, d)
                 self.tbl.setItem(row, i, cell)
             self.tbl.setSortingEnabled(True)
             self._syncUsersData()

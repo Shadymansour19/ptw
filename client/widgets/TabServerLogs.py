@@ -13,6 +13,7 @@ import qtawesome as qta
 
 from network.clientRequests import ClientRequests
 from widgets.CheckableComboBox import CheckableComboBox
+from helper.i18n import t
 
 LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
@@ -107,7 +108,7 @@ class TabServerLogs(QWidget):
 
         filterLabel = QLabel("Level:")
         self._levelFilter = CheckableComboBox()
-        self._levelFilter.setItems(LOG_LEVELS, sort=False)
+        self._levelFilter.setItems(LOG_LEVELS, sort=False, display=t)
         self._levelFilter.setFixedWidth(200)
         self._levelFilter.filterChanged.connect(self._applyFilter)
 

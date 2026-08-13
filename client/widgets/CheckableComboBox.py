@@ -6,6 +6,8 @@ from PyQt6.QtCore import Qt, pyqtSignal, QSortFilterProxyModel
 from PyQt6.QtWidgets import QComboBox, QStyle, QStylePainter, QStyleOptionComboBox, QLineEdit
 from PyQt6.QtGui import QStandardItemModel, QStandardItem
 
+from helper.i18n import t
+
 _SELECT_ALL = "(Select All)"
 
 
@@ -25,7 +27,16 @@ class CheckableComboBox(QComboBox):
     "(Select All)" row that checks/unchecks every currently visible row, and a search
     box to filter rows by text. The closed box shows a summary ("(All)", "(None)", the
     single checked item's text, or "(n/total)") instead of a normal current-item text.
-    Emits `filterChanged` whenever the checked set changes."""
+    Emits `filterChanged` whenever the checked set changes.
+
+    Every row's *filter value* (what `checkedItems()`/`setCheckedOnly()` operate on,
+    and what `setItems()` is keyed by) is stashed in `Qt.ItemDataRole.UserRole`,
+    separately from its *displayed text* - so a column can show a translated label
+    (e.g. a department name in Arabic) while filtering/comparison still happens on
+    the real underlying value, exactly like `TablePTWs._cellFilterText()`'s existing
+    "prefer UserRole over the label" pattern for table cells. Passing `display=None`
+    (every pre-existing caller) makes value and displayed text the same string, so
+    this is fully backward compatible."""
 
     filterChanged = pyqtSignal()
 
@@ -38,14 +49,14 @@ class CheckableComboBox(QComboBox):
         self._proxy.setSourceModel(self._model)
         self._proxy.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self.setModel(self._proxy)
-        self._summary_text = "(All)"
+        self._summary_text = t("(All)")
         self.view().pressed.connect(self._handleItemPressed)
         self._skip_hide = False
         self._addSelectAllItem()
 
         container = self.view().parentWidget()
         self._searchEdit = QLineEdit(container)
-        self._searchEdit.setPlaceholderText("Search...")
+        self._searchEdit.setPlaceholderText(t("Search..."))
         self._searchEdit.setClearButtonEnabled(True)
         self._searchEdit.textEdited.connect(self._onSearchTextChanged)
         layout = container.layout()
@@ -75,7 +86,7 @@ class CheckableComboBox(QComboBox):
 
     def _addSelectAllItem(self):
         """Insert the always-checked, always-visible "(Select All)" row at position 0."""
-        item = QStandardItem(_SELECT_ALL)
+        item = QStandardItem(t(_SELECT_ALL))
         item.setCheckState(Qt.CheckState.Checked)
         item.setFlags(Qt.ItemFlag.ItemIsEnabled)
         self._model.appendRow(item)
@@ -132,29 +143,39 @@ class CheckableComboBox(QComboBox):
             return
         super().hidePopup()
 
-    def setItems(self, texts, preserve_selection=True, sort=True):
-        """Replace the popup's rows with `texts`, all checked by default.
+    def setItems(self, values, preserve_selection=True, sort=True, display=None):
+        """Replace the popup's rows with one per entry in `values`, all checked by default.
 
         Args:
-            preserve_selection: If True, texts that match a previously unchecked
-                item's text stay unchecked; everything else (including new texts)
-                is checked.
-            sort: If True, sort `texts` before inserting.
+            values: the real filter values (e.g. raw English department names),
+                even when `display` translates them for what's actually shown.
+            preserve_selection: If True, values that match a previously unchecked
+                item's value stay unchecked; everything else (including new values)
+                is checked. Matches on the value (UserRole), not the displayed
+                text, so this still works correctly across a language change.
+            sort: If True, sort by the *displayed* text (so e.g. an Arabic list
+                sorts the way an Arabic reader expects), not the raw value.
+            display: optional value -> display text function. Defaults to
+                identity (`str`), so value and displayed text are the same -
+                the original behavior, for every caller that doesn't pass this.
         """
+        display = display or str
         prev_unchecked = set()
         if preserve_selection:
             for i in range(1, self._model.rowCount()):
                 item = self._model.item(i)
                 if item.checkState() == Qt.CheckState.Unchecked:
-                    prev_unchecked.add(item.text())
+                    prev_unchecked.add(item.data(Qt.ItemDataRole.UserRole))
         self._searchEdit.clear()
         self._proxy.setFilterFixedString("")
         self._model.clear()
         self._addSelectAllItem()
-        for text in sorted(texts) if sort else texts:
-            item = QStandardItem(text)
+        ordered = sorted(values, key=display) if sort else values
+        for value in ordered:
+            item = QStandardItem(display(value))
+            item.setData(value, Qt.ItemDataRole.UserRole)
             item.setCheckState(
-                Qt.CheckState.Unchecked if (preserve_selection and text in prev_unchecked)
+                Qt.CheckState.Unchecked if (preserve_selection and value in prev_unchecked)
                 else Qt.CheckState.Checked
             )
             item.setFlags(Qt.ItemFlag.ItemIsEnabled)
@@ -163,20 +184,23 @@ class CheckableComboBox(QComboBox):
         self._updateText()
 
     def checkedItems(self):
-        """Return the set of item texts currently checked (excluding "(Select All)")."""
+        """Return the set of *values* (not displayed text - see `setItems()`)
+        currently checked, excluding "(Select All)"."""
         result = set()
         for i in range(1, self._model.rowCount()):
             item = self._model.item(i)
             if item.checkState() == Qt.CheckState.Checked:
-                result.add(item.text())
+                result.add(item.data(Qt.ItemDataRole.UserRole))
         return result
 
     def setCheckedOnly(self, values: set):
-        """Check exactly the items whose text is in `values`, uncheck every other item,
-        then refresh the summary text and emit `filterChanged`."""
+        """Check exactly the items whose *value* (not displayed text) is in `values`,
+        uncheck every other item, then refresh the summary text and emit `filterChanged`."""
         for i in range(1, self._model.rowCount()):
             item = self._model.item(i)
-            item.setCheckState(Qt.CheckState.Checked if item.text() in values else Qt.CheckState.Unchecked)
+            item.setCheckState(
+                Qt.CheckState.Checked if item.data(Qt.ItemDataRole.UserRole) in values else Qt.CheckState.Unchecked
+            )
         self._syncSelectAll()
         self._updateText()
         self.filterChanged.emit()
@@ -187,15 +211,19 @@ class CheckableComboBox(QComboBox):
         return len(self.checkedItems()) < total
 
     def _updateText(self):
-        """Recompute the closed-box summary text from the current checked count."""
+        """Recompute the closed-box summary text from the current checked count -
+        the single-checked-item case shows that item's *displayed* text, not its
+        (possibly untranslated) underlying value."""
         total = self._model.rowCount() - 1
-        checked = len(self.checkedItems())
+        checkedRows = [i for i in range(1, self._model.rowCount())
+                       if self._model.item(i).checkState() == Qt.CheckState.Checked]
+        checked = len(checkedRows)
         if total == 0 or checked == total:
-            self._summary_text = "(All)"
+            self._summary_text = t("(All)")
         elif checked == 0:
-            self._summary_text = "(None)"
+            self._summary_text = t("(None)")
         elif checked == 1:
-            self._summary_text = next(iter(self.checkedItems()))
+            self._summary_text = self._model.item(checkedRows[0]).text()
         else:
             self._summary_text = f"({checked}/{total})"
         self.update()

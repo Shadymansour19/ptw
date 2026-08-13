@@ -128,7 +128,8 @@ class DialogIC(TabbedDialog):
         self.boxId = QLineEdit()
         self.boxId.setReadOnly(True)
         self.typeCombo = QComboBox()
-        self.typeCombo.addItems([ty.value for ty in IC.Types])
+        for ty in IC.Types:
+            self.typeCombo.addItem(t(ty), ty.value)
         self.boxRequestorDepartment = QLineEdit()
         self.boxRequestorDepartment.setReadOnly(True)
         self.boxExecutionDepartment = QComboBox()
@@ -466,10 +467,10 @@ class DialogIC(TabbedDialog):
         for a Self-type IC, force the execution department to match the requestor's own
         department and lock it (any other type leaves it editable, unless readonly)."""
         isPsic = self.boxIsPsic.isChecked()
-        color = IC.backgroundColorForType(self.typeCombo.currentText(), isPsic)
+        color = IC.backgroundColorForType(self.typeCombo.currentData(), isPsic)
         self.setTabBarColor(color)
 
-        if self.typeCombo.currentText() == IC.Types.SELF:
+        if self.typeCombo.currentData() == IC.Types.SELF:
             idx = self.boxExecutionDepartment.findData(self.boxRequestorDepartment.text())
             if idx >= 0:
                 self.boxExecutionDepartment.setCurrentIndex(idx)
@@ -482,7 +483,7 @@ class DialogIC(TabbedDialog):
         and execution departments to the logged-in user's own department when new)."""
         self.boxId.setText(str(self.ic.id) if self.ic.id else '')
         if self.ic.type:
-            self.typeCombo.setCurrentText(self.ic.type)
+            self.typeCombo.setCurrentIndex(max(0, self.typeCombo.findData(self.ic.type)))
         self.boxRequestorDepartment.setText(self.ic.requestor_department or (self.loggedUser.getDepartment() if self.new else ''))
         executionDept = self.ic.execution_department or (self.loggedUser.getDepartment() if self.new else '')
         if executionDept:
@@ -619,11 +620,11 @@ class DialogIC(TabbedDialog):
         if not executionDept:
             QMessageBox.warning(self, "Invalid Input", "Please select an execution department.")
             return
-        if self.typeCombo.currentText() == IC.Types.SELF and executionDept != self.loggedUser.getDepartment():
+        if self.typeCombo.currentData() == IC.Types.SELF and executionDept != self.loggedUser.getDepartment():
             QMessageBox.warning(self, "Invalid Input", "Self-isolation must be executed by your own department.")
             return
 
-        self.ic.type = self.typeCombo.currentText()
+        self.ic.type = self.typeCombo.currentData()
         self.ic.location = self.boxLocation.currentData()
         self.ic.equipment = equipment
         self.ic.reason = reason

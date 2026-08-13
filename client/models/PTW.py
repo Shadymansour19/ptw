@@ -1475,8 +1475,8 @@ class PTW:
 
     class AreaClasses(enum.StrEnum):
         """Whether the work area is classified Hazardous or Non-Hazardous."""
-        HAZ = 'Hazard'
-        NHZ = 'Non-Hazard'
+        HAZ = 'Hazardous'
+        NHZ = 'Non-Hazardous'
 
     class Locations(enum.StrEnum):
         """Plant locations a PTW can be raised for."""

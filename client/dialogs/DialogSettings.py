@@ -55,22 +55,26 @@ class DialogSettings(QDialog):
         self.cmbLanguage = QComboBox()
         self.cmbCloseBehavior = QComboBox()
 
-        self.txtRole.addItems([role for role in UserRoles])
-        self.txtDepartment.addItems([dept for dept in UserDepartments])
-        self.cmbTheme.addItems(_THEME_OPTIONS)
-        self.cmbLanguage.addItems(_LANGUAGE_OPTIONS)
+        for role in UserRoles:
+            self.txtRole.addItem(t(role), role.value)
+        for dept in UserDepartments:
+            self.txtDepartment.addItem(t(dept), dept.value)
+        for option in _THEME_OPTIONS:
+            self.cmbTheme.addItem(t(option), option)
+        for option in _LANGUAGE_OPTIONS:
+            self.cmbLanguage.addItem(t(option), option)
         self.cmbCloseBehavior.addItems(_CLOSE_BEHAVIOR_OPTIONS)
         self.txtPassword.setEchoMode(QLineEdit.EchoMode.Password)
 
         self.txtUsername.setText(loggedUser.getUsername())
         self.txtPassword.setPlaceholderText(t("Leave blank to keep current password"))
         self.txtName.setText(loggedUser.getName())
-        self.txtRole.setCurrentText(loggedUser.getRole())
-        self.txtDepartment.setCurrentText(loggedUser.getDepartment())
+        self.txtRole.setCurrentIndex(max(0, self.txtRole.findData(loggedUser.getRole())))
+        self.txtDepartment.setCurrentIndex(max(0, self.txtDepartment.findData(loggedUser.getDepartment())))
         self.txtEmail.setText(loggedUser.getEmail())
         self.txtExt.setText(loggedUser.getExt())
-        self.cmbTheme.setCurrentText(_THEME_MAP.get(loggedUser.getTheme(), "Default (System)"))
-        self.cmbLanguage.setCurrentText(_LANGUAGE_MAP.get(loggedUser.getLanguage(), "Default (System)"))
+        self.cmbTheme.setCurrentIndex(max(0, self.cmbTheme.findData(_THEME_MAP.get(loggedUser.getTheme(), "Default (System)"))))
+        self.cmbLanguage.setCurrentIndex(max(0, self.cmbLanguage.findData(_LANGUAGE_MAP.get(loggedUser.getLanguage(), "Default (System)"))))
         savedCloseBehavior = QSettings("PTW", "PTW").value(SETTINGS_CLOSE_BEHAVIOR_KEY, "", type=str)
         self.cmbCloseBehavior.setCurrentText(_CLOSE_BEHAVIOR_MAP.get(savedCloseBehavior, "Always ask"))
 
@@ -108,11 +112,11 @@ class DialogSettings(QDialog):
             return
         self.loggedUser.setPassword(new_pass or None)
         self.loggedUser.setName(self.txtName.text())
-        self.loggedUser.setDepartment(self.txtDepartment.currentText())
+        self.loggedUser.setDepartment(self.txtDepartment.currentData())
         self.loggedUser.setEmail(self.txtEmail.text())
         self.loggedUser.setExt(self.txtExt.text())
-        self.new_theme = _THEME_REVERSE[self.cmbTheme.currentText()]
-        self.new_language = _LANGUAGE_REVERSE[self.cmbLanguage.currentText()]
+        self.new_theme = _THEME_REVERSE[self.cmbTheme.currentData()]
+        self.new_language = _LANGUAGE_REVERSE[self.cmbLanguage.currentData()]
         if not self.loggedUser.getName():
             QMessageBox.critical(self, t("Error"), t("Name can't be empty!"))
         else:

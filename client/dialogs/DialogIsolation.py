@@ -30,9 +30,10 @@ class DialogIsolation(QDialog):
         self.boxDescription = QTextEdit()
         self.boxDescription.setFixedHeight(self.boxDescription.fontMetrics().lineSpacing() * 4 + 10)
 
-        self.typeCombo.addItems([t.value for t in Isolation.Types])
+        for typ in Isolation.Types:
+            self.typeCombo.addItem(t(typ), typ.value)
 
-        self._tagsForType = {t.value: [] for t in Isolation.Types}
+        self._tagsForType = {typ.value: [] for typ in Isolation.Types}
         for iso in PTW.ALL_ISOLATIONS.values():
             self._tagsForType[iso.type.value].append(iso.tag)
 
@@ -55,7 +56,7 @@ class DialogIsolation(QDialog):
         Triggered by the type combo's currentTextChanged signal (and once directly
         from __init__ to seed the initial tag list).
         """
-        self.boxTag.setItems(self._tagsForType[self.typeCombo.currentText()])
+        self.boxTag.setItems(self._tagsForType[self.typeCombo.currentData()])
 
     def _on_tag_selected(self, tag):
         """Autofill (or clear) the description to match the selected tag's library entry.
@@ -74,7 +75,7 @@ class DialogIsolation(QDialog):
 
         Triggered by the OK button. Requires a tag and description to be set.
         """
-        type = self.typeCombo.currentText()
+        type = self.typeCombo.currentData()
         tag = self.boxTag.currentText()
         description = self.boxDescription.toPlainText()
 

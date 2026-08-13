@@ -95,11 +95,12 @@ class TablePTWIsolations(QWidget):
         self.tbl.setRowCount(0)
 
     def __addIsolationToGUI(self, isolation: Isolation):
-        """Append one new row displaying `isolation`'s type/tag/description."""
+        """Append one new row displaying `isolation`'s type/tag/description,
+        translating the type column's display text (a fixed vocabulary word)."""
         self.tbl.insertRow(self.tbl.rowCount())
         data = [str(getattr(isolation, f)) for f in self.summeryFields]
         for i, d in enumerate(data):
-            cell = QTableWidgetItem(d)
+            cell = QTableWidgetItem(t(d) if self.summeryFields[i] == 'type' else d)
             self.tbl.setItem(self.tbl.rowCount()-1, i, cell)
 
     def addIsolation(self, isolation: Isolation):

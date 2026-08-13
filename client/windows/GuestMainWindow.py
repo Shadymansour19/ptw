@@ -28,8 +28,8 @@ class GuestMainWindow(MainWindow):
                 [self.btnRequestedPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
             ],
             {
-                '&PTWs': [self.btnRequestedPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
-                '&View': [self.btnWelcome, *self._footerButtons()],
+                'PTWs': [self.btnRequestedPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
+                'View': [self.btnWelcome, *self._footerButtons()],
             },
         )
 

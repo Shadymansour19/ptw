@@ -30,9 +30,9 @@ class SafetyMainWindow(MainWindow):
                 [self.btnRisks],
             ],
             {
-                '&PTWs': [self.btnUnderReviewPTWs, self.btnMeetingPTWs, self.btnRunningPTWs],
-                '&Risks': [self.btnRisks],
-                '&View': [self.btnWelcome, *self._footerButtons()],
+                'PTWs': [self.btnUnderReviewPTWs, self.btnMeetingPTWs, self.btnRunningPTWs],
+                'Risks': [self.btnRisks],
+                'View': [self.btnWelcome, *self._footerButtons()],
             },
         )
 

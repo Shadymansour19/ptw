@@ -18,6 +18,14 @@ from GlobalData import globalData
 from helper.i18n import t
 
 
+# Fields whose stored value is a fixed, translatable vocabulary word (PTW type,
+# department, location, the fast-track Yes/No) rather than free text a user typed
+# (name, description, date, id) - these get a t()-translated display/filter-dropdown
+# label while every comparison/filter/sort still happens on the real underlying
+# value via UserRole, exactly like the existing _FastTrackItem/_cellFilterText split.
+_TRANSLATABLE_FIELDS = {'fast_track', 'type', 'department', 'location'}
+
+
 class _FastTrackItem(QTableWidgetItem):
     """F.T. column cell: display text is left empty (so no colored/highlighted
     text can ever leak through, selected or not - the bolt icon is drawn by a
@@ -62,8 +70,8 @@ class TablePTWs(QWidget):
         self.loggedUser = loggedUser
         self.options = []
 
-        self.summeryLabels = ['PTW#', 'F.T.',       'Type', 'Request Time', 'Department', 'Requestor', 'Location', 'Equipment', 'Description']
-        self.summeryFields = ['id',   'fast_track', 'type', 'request_date', 'department', 'requestor', 'location', 'equipment', 'description']
+        self.summeryLabels = [t('PTW#'), t('F.T.'), t('Type'), t('Request Time'), t('Department'), t('Requestor'), t('Location'), t('Equipment'), t('Description')]
+        self.summeryFields = ['id',       'fast_track', 'type', 'request_date',  'department',    'requestor',    'location',    'equipment',    'description']
         self._ftCol = self.summeryFields.index('fast_track')
 
         lblLyt = QHBoxLayout()
@@ -147,7 +155,9 @@ class TablePTWs(QWidget):
 
     def _populateFilters(self):
         """Rebuild each column's filter combo options from the table's current
-        cell values, preserving any existing checked selections."""
+        cell values, preserving any existing checked selections. Fixed-vocabulary
+        columns (`_TRANSLATABLE_FIELDS`) get a translated dropdown label per value,
+        same real value underneath - see `CheckableComboBox.setItems()`."""
         col_values = [set() for _ in self.summeryLabels]
         for row in range(self.tbl.rowCount()):
             for col in range(len(self.summeryLabels)):
@@ -155,7 +165,8 @@ class TablePTWs(QWidget):
                 if item:
                     col_values[col].add(self._cellFilterText(item))
         for col, combo in enumerate(self._filterCombos):
-            combo.setItems(col_values[col], preserve_selection=True)
+            display = t if self.summeryFields[col] in _TRANSLATABLE_FIELDS else None
+            combo.setItems(col_values[col], preserve_selection=True, display=display)
 
     def _syncFilterWidths(self):
         """Resize each filter combo to match its column's current header
@@ -187,7 +198,7 @@ class TablePTWs(QWidget):
         for row in range(self.tbl.rowCount()):
             self.tbl.setRowHidden(row, False)
 
-    def filterColumn(self, label: str, values: set):
+    def filterColumn(self, field: str, values: set):
         """Programmatically filter one column down to a specific set of values.
 
         Used by the home dashboard's clickable donut segments to drill down
@@ -196,12 +207,14 @@ class TablePTWs(QWidget):
         column's combo, e.g. narrowing the PTW list to a single location.
 
         Args:
-            label: column label as it appears in `summeryLabels`.
+            field: column identifier as it appears in `summeryFields` (e.g.
+                'location') - NOT the (translated, so language-dependent)
+                display label in `summeryLabels`.
             values: the set of cell values to keep checked in that column.
         """
-        if label not in self.summeryLabels:
+        if field not in self.summeryFields:
             return
-        col = self.summeryLabels.index(label)
+        col = self.summeryFields.index(field)
         if not self._filterBtn.isChecked():
             self._filterBtn.setChecked(True)   # -> _toggleFilters(True): populates + applies
         else:
@@ -234,9 +247,15 @@ class TablePTWs(QWidget):
 
     def _makeCell(self, col: int, value: str) -> QTableWidgetItem:
         """Build the QTableWidgetItem for one cell, using `_FastTrackItem`
-        (empty text, real value in UserRole) for the F.T. column."""
+        (empty text, real value in UserRole) for the F.T. column, and translated
+        display text (real value still in UserRole) for the other fixed-vocabulary
+        columns in `_TRANSLATABLE_FIELDS` (type/department/location)."""
         if col == self._ftCol:
             cell = _FastTrackItem("")
+            cell.setData(Qt.ItemDataRole.UserRole, value)
+            return cell
+        if self.summeryFields[col] in _TRANSLATABLE_FIELDS:
+            cell = QTableWidgetItem(t(value))
             cell.setData(Qt.ItemDataRole.UserRole, value)
             return cell
         return QTableWidgetItem(value)

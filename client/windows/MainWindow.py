@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QStackedWidget, QVBoxLayout, 
                               QLabel, QPushButton, QToolButton,
                               QToolBar, QDialog, QMenu, QSizePolicy, QSystemTrayIcon, QCheckBox,
                               QMessageBox, QApplication, QGraphicsOpacityEffect, QInputDialog)
-from PyQt6.QtGui import QFont, QIcon, QKeySequence, QAction, QActionGroup, QShortcut
+from PyQt6.QtGui import QFont, QIcon, QKeySequence, QAction, QActionGroup, QShortcut, QCursor
 
 from models.PTW import PTW, RiskAssessment
 from tables.TablePTWs import TablePTWs
@@ -74,6 +74,14 @@ class MainWindow(QMainWindow):
     # re-shown after _PTW_ALARM_REPEAT_MINUTES — the two are independent.
     _PTW_ALARM_CHECK_INTERVAL_MS = 60 * 1000
     _PTW_ALARM_REPEAT_MINUTES = 5
+
+    # See _updateFabProximity(): the FAB fades to _FAB_MIN_OPACITY once the cursor is
+    # _FAB_FADE_RADIUS px or further from it, and eases back to fully solid as the
+    # cursor comes within _FAB_SOLID_RADIUS.
+    _FAB_PROXIMITY_CHECK_INTERVAL_MS = 60
+    _FAB_SOLID_RADIUS = 40
+    _FAB_FADE_RADIUS = 80
+    _FAB_MIN_OPACITY = 0.3
 
     def __init__(self, loggedUser: User):
         """Build the base window for `loggedUser`: PTW/IC action menu options, the
@@ -500,6 +508,14 @@ class MainWindow(QMainWindow):
         self.btnFAB.clicked.connect(self.btnFABHandler)
         self.btnFABUpdatePosition()
 
+        self._fabOpacityEffect = QGraphicsOpacityEffect(self.btnFAB)
+        self.btnFAB.setGraphicsEffect(self._fabOpacityEffect)
+        self._fabOpacityEffect.setOpacity(self._FAB_MIN_OPACITY)
+        self._fabProximityTimer = QTimer(self)
+        self._fabProximityTimer.setInterval(self._FAB_PROXIMITY_CHECK_INTERVAL_MS)
+        self._fabProximityTimer.timeout.connect(self._updateFabProximity)
+        self._fabProximityTimer.start()
+
         self._refreshOverlay = RefreshOverlay(self)
 
         self.stackTabChanged()
@@ -789,6 +805,7 @@ class MainWindow(QMainWindow):
         running in the tray or exit completely, and act on the answer — Cancel just
         re-ignores the event."""
         self._ptwAlarmTimer.stop()
+        self._fabProximityTimer.stop()
         if self._forceClose:
             event.accept()
             return
@@ -1383,7 +1400,30 @@ class MainWindow(QMainWindow):
         x = margin if i18n.is_rtl() else self.width() - self.btnFAB.width() - margin
         y = self.height() - self.btnFAB.height() - margin - self.statusBar().height()
         self.btnFAB.move(x, y)
-    
+
+    def _updateFabProximity(self):
+        """Polled by `_fabProximityTimer`: fade the floating action button toward
+        `_FAB_MIN_OPACITY` as the cursor moves away from it, and back to fully solid
+        as the cursor comes within `_FAB_SOLID_RADIUS` - proximity rather than just
+        direct hover, since QSS `:hover` alone only reacts once the cursor is already
+        over the button."""
+        if not self.isVisible():
+            return
+        cursor = self.mapFromGlobal(QCursor.pos())
+        rect = self.btnFAB.geometry()
+        dx = max(rect.left() - cursor.x(), 0, cursor.x() - rect.right())
+        dy = max(rect.top() - cursor.y(), 0, cursor.y() - rect.bottom())
+        distance = (dx ** 2 + dy ** 2) ** 0.5
+        if distance <= self._FAB_SOLID_RADIUS:
+            opacity = 1.0
+        elif distance >= self._FAB_FADE_RADIUS:
+            opacity = self._FAB_MIN_OPACITY
+        else:
+            span = self._FAB_FADE_RADIUS - self._FAB_SOLID_RADIUS
+            frac = (distance - self._FAB_SOLID_RADIUS) / span
+            opacity = 1.0 - frac * (1.0 - self._FAB_MIN_OPACITY)
+        self._fabOpacityEffect.setOpacity(opacity)
+
     def _footerButtons(self) -> list[QPushButton]:
         """Return the sidebar's footer button group (theme/language/settings, refresh,
         logout), omitting theme/language/settings for Guest users."""
@@ -1445,10 +1485,17 @@ class MainWindow(QMainWindow):
                 break
 
     def setTopbarButtons(self, groups: dict[str, list[QPushButton | None]]):
-        """groups maps a topbar menu label (e.g. '&PTWs') to the buttons/actions shown in
-        that menu, in order; a None entry inserts a separator within the menu. '&View' and
-        '&Help' always exist and get the sidebar-visibility/about controls appended regardless
-        of whether the caller supplies its own entries for them."""
+        """groups maps a stable, language-independent topbar menu key (e.g. 'PTWs') to
+        the buttons/actions shown in that menu, in order; a None entry inserts a
+        separator within the menu. 'View' and 'Help' always exist and get the
+        sidebar-visibility/about controls appended regardless of whether the caller
+        supplies its own entries for them.
+
+        The key itself is never displayed - `make_menu_btn` looks up its translated
+        label via `t(key)` and its keyboard mnemonic letter via `_MENU_MNEMONICS`
+        (below), so the key has to stay a plain English identifier (no leading '&')
+        for `group_widgets.pop("View", [])`/`pop("Help", [])` to keep working
+        regardless of the active language."""
 
         # --- Top toolbar (grouped) ---
         TOOLBAR_BTN_STYLE = """
@@ -1462,12 +1509,36 @@ class MainWindow(QMainWindow):
             QToolButton::menu-indicator { image: none; width: 0px; }
         """
 
-        def make_menu_btn(text, actions):
+        # Not translated content (see ArabicText.py's "docstrings/comments" rule for why
+        # a keyboard accelerator isn't UI copy) - just which character in each menu's
+        # *translated* label becomes its Alt+<letter> shortcut. English mnemonics are
+        # each key's original first letter, preserved so existing muscle memory doesn't
+        # change; Arabic ones are hand-picked to avoid colliding with each other (an
+        # Arabic label's first letter alone repeats too often - e.g. both "PTWs" and
+        # "Risks" translate to a phrase starting with ت).
+        MENU_MNEMONICS = {
+            'en': {'PTWs': 'P', 'ICs': 'I', 'Users': 'U', 'Risks': 'R', 'View': 'V', 'Help': 'H'},
+            'ar': {'PTWs': 'ت', 'ICs': 'ش', 'Users': 'م', 'Risks': 'ق', 'View': 'ع', 'Help': 'س'},
+        }
+
+        def make_menu_btn(key, actions):
+            label = t(key)
+            mnemonic = MENU_MNEMONICS.get(i18n.current_lang(), MENU_MNEMONICS['en']).get(key)
+            text = label
+            if mnemonic:
+                idx = label.find(mnemonic)
+                if idx == -1:
+                    idx = label.lower().find(mnemonic.lower())
+                if idx != -1:
+                    text = label[:idx] + '&' + label[idx:]
             btn = QToolButton()
             btn.setText(text)
-            m = re.search(r'&([A-Za-z])', text)
-            if m:
-                btn.setShortcut(QKeySequence(f"Alt+{m.group(1).upper()}"))
+            # QKeySequence.mnemonic() is Qt's own '&'-marker parser (vs. hand-rolling
+            # "Alt+<letter>" from a regex match) - it's exactly as Unicode-safe as this
+            # needs, confirmed directly against Arabic mnemonic letters.
+            mnemonicSeq = QKeySequence.mnemonic(text)
+            if not mnemonicSeq.isEmpty():
+                btn.setShortcut(mnemonicSeq)
             btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
             btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
             btn.setStyleSheet(TOOLBAR_BTN_STYLE)
@@ -1518,16 +1589,16 @@ class MainWindow(QMainWindow):
             self._sidebarDockActions[area] = act
             sidebarDockActions.append(act)
 
-        viewItems = group_widgets.pop("&View", [])
-        group_widgets["&View"] = [sidebarToggle, *sidebarDockActions] + ([None] + viewItems if viewItems else [])
+        viewItems = group_widgets.pop("View", [])
+        group_widgets["View"] = [sidebarToggle, *sidebarDockActions] + ([None] + viewItems if viewItems else [])
 
         aboutAction = QAction(qta.icon('fa6s.circle-info'), t("About PTW"), self)
         aboutAction.triggered.connect(self._showAboutPTW)
         aboutQtAction = QAction(qta.icon('fa6s.circle-question'), t("About Qt"), self)
         aboutQtAction.triggered.connect(lambda: QMessageBox.aboutQt(self, t("About Qt")))
 
-        helpItems = group_widgets.pop("&Help", [])
-        group_widgets["&Help"] = (helpItems + [None] if helpItems else []) + [aboutAction, aboutQtAction]
+        helpItems = group_widgets.pop("Help", [])
+        group_widgets["Help"] = (helpItems + [None] if helpItems else []) + [aboutAction, aboutQtAction]
 
         self.toolbar.clear()
         for name, btns in group_widgets.items():
@@ -1585,9 +1656,11 @@ class MainWindow(QMainWindow):
 
     def _openRunningFilteredByLocation(self, location: str):
         """Navigate to the Running PTWs tab and filter it down to `location`,
-        invoked when a running-PTWs-by-location donut segment is clicked."""
+        invoked when a running-PTWs-by-location donut segment is clicked. `location`
+        stays the raw English value, matching `TablePTWs`'s UserRole-backed filter
+        values - only the segment's own displayed label is translated, above."""
         self.btnRunningPTWs.click()
-        self.tabRunningPTWs.filterColumn('Location', {location})
+        self.tabRunningPTWs.filterColumn('location', {location})
 
     def _showAboutPTW(self):
         """Show the 'About PTW' dialog, with a usage summary tailored to the logged-in

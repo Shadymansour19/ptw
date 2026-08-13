@@ -65,14 +65,14 @@ class IssuingMainWindow(MainWindow):
                 self._icTabs,
             ],
             {   # topbar: full set
-                '&PTWs': [
+                'PTWs': [
                     self.btnUnderReviewPTWs, self.btnMeetingPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs,
                     None,
                     self.btnWaitingRunConfirmationPTWs, self.btnRunningPTWs, self.btnWaitingHldConfirmationPTWs,
                     self.btnHeldPTWs, self.btnWaitingClsConfirmationPTWs, self.btnClosedPTWs, self.btnArchivedPTWs,
                 ],
-                '&ICs': self._icTabs,
-                '&View': [self.btnWelcome, *self._footerButtons()],
+                'ICs': self._icTabs,
+                'View': [self.btnWelcome, *self._footerButtons()],
             },
         )
 

@@ -42,13 +42,13 @@ class ManagerMainWindow(MainWindow):
                 [self.btnCertUnderReview],
             ],
             {
-                '&PTWs': [
+                'PTWs': [
                     self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs,
                     None,
                     self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs,
                 ],
-                '&ICs': [self.btnCertUnderReview],
-                '&View': [self.btnWelcome, *self._footerButtons()],
+                'ICs': [self.btnCertUnderReview],
+                'View': [self.btnWelcome, *self._footerButtons()],
             },
         )
 

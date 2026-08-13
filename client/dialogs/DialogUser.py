@@ -52,13 +52,15 @@ class DialogUser(QDialog):
         self.lblUserExists.setStyleSheet('QLabel { border: none; color: red; }')
         self.lblUserExists.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        self.txtRole.addItems([role for role in UserRoles])
-        self.txtDepartment.addItems([dept for dept in UserDepartments])
+        for role in UserRoles:
+            self.txtRole.addItem(t(role), role.value)
+        for dept in UserDepartments:
+            self.txtDepartment.addItem(t(dept), dept.value)
 
         self.txtUsername.setText(self.toEditUser.getUsername())
         self.txtName.setText(self.toEditUser.getName())
-        self.txtRole.setCurrentText(self.toEditUser.getRole())
-        self.txtDepartment.setCurrentText(self.toEditUser.getDepartment())
+        self.txtRole.setCurrentIndex(max(0, self.txtRole.findData(self.toEditUser.getRole())))
+        self.txtDepartment.setCurrentIndex(max(0, self.txtDepartment.findData(self.toEditUser.getDepartment())))
         self.txtEmail.setText(self.toEditUser.getEmail())
         self.txtExt.setText(self.toEditUser.getExt())
 
@@ -124,8 +126,8 @@ class DialogUser(QDialog):
         if self.isNew:
             self.toEditUser.setPassword(self.txtPassword.text().strip())
         self.toEditUser.setName(self.txtName.text().strip())
-        self.toEditUser.setRole(self.txtRole.currentText())
-        self.toEditUser.setDepartment(self.txtDepartment.currentText())
+        self.toEditUser.setRole(self.txtRole.currentData())
+        self.toEditUser.setDepartment(self.txtDepartment.currentData())
         self.toEditUser.setEmail(self.txtEmail.text().strip())
         self.toEditUser.setExt(self.txtExt.text().strip())
 

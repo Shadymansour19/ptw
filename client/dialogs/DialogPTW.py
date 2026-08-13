@@ -200,7 +200,8 @@ class DialogPTW(TabbedDialog):
             self.boxAreaClass.addItem(t(areaClass), areaClass.value)
         self.boxEquipment = QLineEdit()
         self.boxFastTrack = QComboBox()
-        self.boxFastTrack.addItems(['No', 'Yes'])
+        for val in ('No', 'Yes'):
+            self.boxFastTrack.addItem(t(val), val)
         self.boxDescription = QTextEdit()
         self.boxDescription.setFixedHeight(self.boxDescription.fontMetrics().lineSpacing() * 5 + 10)
         self.boxDescription.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
@@ -216,7 +217,7 @@ class DialogPTW(TabbedDialog):
         self.boxLocation.setCurrentIndex(max(0, self.boxLocation.findData(str(ptw.location) if ptw.location else '')))
         self.boxAreaClass.setCurrentIndex(max(0, self.boxAreaClass.findData(str(ptw.area_class) if ptw.area_class else '')))
         self.boxEquipment.setText(str(ptw.equipment) if ptw.equipment else '')
-        self.boxFastTrack.setCurrentText('Yes' if ptw.fast_track else 'No')
+        self.boxFastTrack.setCurrentIndex(max(0, self.boxFastTrack.findData('Yes' if ptw.fast_track else 'No')))
         self.boxDescription.setText(str(ptw.description) if ptw.description else '')
 
         self.boxPTWId.setReadOnly(True)
@@ -971,7 +972,7 @@ class DialogPTW(TabbedDialog):
         self.ptw.setLocation(self.boxLocation.currentData())
         self.ptw.setAreaClass(self.boxAreaClass.currentData())
         self.ptw.setEquipment(self.boxEquipment.text())
-        self.ptw.setFastTrack(self.boxFastTrack.currentText() == 'Yes')
+        self.ptw.setFastTrack(self.boxFastTrack.currentData() == 'Yes')
         self.ptw.setDescription(self.boxDescription.toPlainText())
         if self.btnMiwi.isChecked():
             self.ptw.setMiwi(self.boxMiwi.currentText())

@@ -29,8 +29,8 @@ class IsolatorMainWindow(MainWindow):
                 [self.btnCertPending, self.btnCertActive, self.btnCertClosing, self.btnCertSanctioned],
             ],
             {
-                '&ICs': [self.btnCertPending, self.btnCertActive, self.btnCertClosing, self.btnCertSanctioned],
-                '&View': [self.btnWelcome, *self._footerButtons()],
+                'ICs': [self.btnCertPending, self.btnCertActive, self.btnCertClosing, self.btnCertSanctioned],
+                'View': [self.btnWelcome, *self._footerButtons()],
             },
         )
 

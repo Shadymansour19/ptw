@@ -19,6 +19,13 @@ from GlobalData import globalData
 from helper.i18n import t
 
 
+# Fields whose stored value is a fixed, translatable vocabulary word rather
+# than free text a user typed - these get a t()-translated display/filter-dropdown
+# label while every comparison/filter/sort still happens on the real underlying
+# value via UserRole, exactly like the existing _LongTermItem/_cellFilterText split.
+_TRANSLATABLE_FIELDS = {'status', 'type', 'long_term', 'requestor_department', 'execution_department', 'location'}
+
+
 class _LongTermItem(QTableWidgetItem):
     """Long Term column cell: display text is left empty (so no colored/highlighted
     text can ever leak through, selected or not - the icon is drawn by a separate
@@ -46,7 +53,7 @@ class TableICs(QWidget):
         self.loggedUser = loggedUser
         self.options = []
 
-        self.summeryLabels = ['IC#', 'Status', 'Type', 'L.T.',      'Requestor', 'Request Time',        'Requestor Dept.',      'Execution Dept.',      'Location', 'Equipment', 'Reason']
+        self.summeryLabels = [t('IC#'), t('Status'), t('Type'), t('L.T.'), t('Requestor'), t('Request Time'), t('Requestor Dept.'), t('Execution Dept.'), t('Location'), t('Equipment'), t('Reason')]
         self.summeryFields = ['id',  'status', 'type', 'long_term', 'requestor', 'requestor_timestamp', 'requestor_department', 'execution_department', 'location', 'equipment', 'reason']
         self._ltCol = self.summeryFields.index('long_term')
 
@@ -124,15 +131,17 @@ class TableICs(QWidget):
             self._showAllRows()
 
     def _cellFilterText(self, col: int, item: QTableWidgetItem) -> str:
-        """Return the value to filter/compare on for a cell: the stashed
-        real Yes/No value for the L.T. column, otherwise its display text."""
-        if col == self._ltCol:
-            return item.data(Qt.ItemDataRole.UserRole)
-        return item.text()
+        """Return the value to filter/compare on for a cell: its stashed
+        UserRole data if present (L.T. and other translatable columns),
+        otherwise its display text."""
+        userData = item.data(Qt.ItemDataRole.UserRole)
+        return userData if userData is not None else item.text()
 
     def _populateFilters(self):
         """Rebuild each column's filter combo options from the table's current
-        cell values, preserving any existing checked selections."""
+        cell values, preserving any existing checked selections. Fixed-vocabulary
+        columns (`_TRANSLATABLE_FIELDS`) get a translated dropdown label per value,
+        same real value underneath - see `CheckableComboBox.setItems()`."""
         col_values = [set() for _ in self.summeryLabels]
         for row in range(self.tbl.rowCount()):
             for col in range(len(self.summeryLabels)):
@@ -140,7 +149,8 @@ class TableICs(QWidget):
                 if item:
                     col_values[col].add(self._cellFilterText(col, item))
         for col, combo in enumerate(self._filterCombos):
-            combo.setItems(col_values[col], preserve_selection=True)
+            display = t if self.summeryFields[col] in _TRANSLATABLE_FIELDS else None
+            combo.setItems(col_values[col], preserve_selection=True, display=display)
 
     def _syncFilterWidths(self):
         """Resize each filter combo to match its column's current header
@@ -172,17 +182,18 @@ class TableICs(QWidget):
         for row in range(self.tbl.rowCount()):
             self.tbl.setRowHidden(row, False)
 
-    def filterColumn(self, label: str, values: set):
-        """Programmatically filter one column down to a specific set of
-        values, opening the filter bar first if it isn't already visible.
+    def filterColumn(self, field: str, values: set):
+        """Programmatically filter one column down to a specific set of values.
 
         Args:
-            label: column label as it appears in `summeryLabels`.
+            field: column identifier as it appears in `summeryFields` (e.g.
+                'location') - NOT the (translated, so language-dependent)
+                display label in `summeryLabels`.
             values: the set of cell values to keep checked in that column.
         """
-        if label not in self.summeryLabels:
+        if field not in self.summeryFields:
             return
-        col = self.summeryLabels.index(label)
+        col = self.summeryFields.index(field)
         if not self._filterBtn.isChecked():
             self._filterBtn.setChecked(True)   # -> _toggleFilters(True): populates + applies
         else:
@@ -218,9 +229,15 @@ class TableICs(QWidget):
 
     def _makeCell(self, col: int, value: str) -> QTableWidgetItem:
         """Build the QTableWidgetItem for one cell, using `_LongTermItem`
-        (empty text, real value in UserRole) for the L.T. column."""
+        (empty text, real value in UserRole) for the L.T. column, and translated
+        display text (real value still in UserRole) for the other fixed-vocabulary
+        columns in `_TRANSLATABLE_FIELDS`."""
         if col == self._ltCol:
             cell = _LongTermItem("")
+            cell.setData(Qt.ItemDataRole.UserRole, value)
+            return cell
+        if self.summeryFields[col] in _TRANSLATABLE_FIELDS:
+            cell = QTableWidgetItem(t(value))
             cell.setData(Qt.ItemDataRole.UserRole, value)
             return cell
         return QTableWidgetItem(value)
