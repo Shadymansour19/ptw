@@ -373,6 +373,11 @@ class DialogPTW(TabbedDialog):
 
         self.riskAssessmentPreviewTable = RiskAssessmentPreview(self.tabRisks, self.riskAssessment, readonly=readOnly)
         lytRisks.addWidget(self.riskAssessmentPreviewTable, stretch=1)
+        # Its own inline "Add Items" button is redundant now that the Risks tab has a FAB
+        # action for the same thing (see updateFabForTab) - Delete/Print stay inline since
+        # the FAB only ever stands in for a tab's single "add new" action.
+        if not readOnly:
+            self.riskAssessmentPreviewTable.btnAddItems.hide()
         # if not readOnly:
             # TableRisks(self.tabRisks, self.loggedUser, readonly=True, selectable=True)
 
@@ -430,23 +435,17 @@ class DialogPTW(TabbedDialog):
         lytMiwiMos.addLayout(miwiLyt, 1, 1)
 
         self.tableAttachments = TableAttachments(self.tabAttachments, loggedUser, self.ptw.id, referencePTW.id if referencePTW else None, attachs, readOnly)
-
-        self.btnNewAttach = QPushButton(qta.icon("fa6s.plus"), t('New Attachment'))
-        self.btnNewAttach.clicked.connect(self.newAttachment)
-
+        # "New Attachment" itself is exposed via the FAB (see updateFabForTab) rather
+        # than an inline button here.
         lytAttachments.addWidget(self.tableAttachments, stretch=1)
-        if not readOnly:
-            lytAttachments.addWidget(self.btnNewAttach, stretch=0)
 
         if readOnly:
             lytHistoryPanes.addWidget(self._buildApprovalTimelinePane(), stretch=1)
             lytHistoryPanes.addWidget(self._buildRunningTimelinePane(), stretch=1)
 
             self._addICLinkRows(lytLinkage, self.ptw.linked_ics)
-            self.btnLinkNewIC = QPushButton(qta.icon("mdi.link-variant"), t("Link New IC"))
-            self.btnLinkNewIC.clicked.connect(self._linkNewIC)
-            self.btnLinkNewIC.setVisible(self.ptw.canLinkIC() and self.loggedUser.getRole() in (UserRoles.USER, UserRoles.ISSUING, UserRoles.COORDINATOR))
-            lytLinkage.addWidget(self.btnLinkNewIC)
+            # "Link New IC" itself is exposed via the FAB when eligible (see
+            # updateFabForTab) rather than an inline button here.
             lytLinkage.addStretch(1)
 
         for tabIdx in range(self.stack.count()):
@@ -459,6 +458,26 @@ class DialogPTW(TabbedDialog):
         self.ptwTypeChanged()
 
         self._refreshOverlay = RefreshOverlay(self)
+
+    def updateFabForTab(self, tab: QWidget):
+        """TabbedDialog hook: show the floating action button for whichever "add new"
+        action `tab` supports, mirroring each one's own existing gating - Attachments/
+        Risks/Isolation only while editable, and IC Linkage only in readonly mode with
+        the same canLinkIC()/role check "Link New IC" used to have. MIWI/MOS keeps its
+        own inline "New MIWI" button instead of a FAB action (New MIWI only applies
+        while MIWI itself is selected, not just while that tab is showing - see
+        miwiMosSwitch). Every other tab (Basic Info, Tools/Hazards/Controls, History)
+        has no single "add new" action, so the FAB just stays hidden there."""
+        if tab is self.tabAttachments and not self.readonly:
+            self._setFabAction('fa6s.plus', t('New Attachment'), self.newAttachment)
+        elif tab is self.tabRisks and not self.readonly:
+            self._setFabAction('fa6s.plus', t('Add Risk Items'), self.riskAssessmentPreviewTable.table.addRiskItemsDialog)
+        elif tab is self.tabIsolation and not self.readonly:
+            self._setFabAction('fa6s.plus', t('New Isolation'), self.tableIsolation.newIsolationDialog)
+        elif self.readonly and tab is self.tabLinkage and self.ptw.canLinkIC() and self.loggedUser.getRole() in (UserRoles.USER, UserRoles.ISSUING, UserRoles.COORDINATOR):
+            self._setFabAction('mdi.link-variant', t('Link New IC'), self._linkNewIC)
+        else:
+            self._hideFab()
 
     def _makeReadOnlyField(self, text: str) -> QLineEdit:
         """Build a read-only QLineEdit showing `text`, cursor reset to the start."""

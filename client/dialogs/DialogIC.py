@@ -268,10 +268,8 @@ class DialogIC(TabbedDialog):
             lytHistoryPanes.addWidget(self._buildIsolationTimelinePane(), stretch=1)
 
             self._addPTWLinkRows(lytLinkage, ic.linked_ptws)
-            self.btnLinkNewPTW = QPushButton(qta.icon("mdi.link-variant"), t("Link to PTW"))
-            self.btnLinkNewPTW.clicked.connect(self._linkNewPTW)
-            self.btnLinkNewPTW.setVisible(not self.ic.isWindingDown() and self.loggedUser.getRole() in (UserRoles.USER, UserRoles.ISSUING, UserRoles.COORDINATOR))
-            lytLinkage.addWidget(self.btnLinkNewPTW)
+            # "Link to PTW" itself is exposed via the FAB when eligible (see
+            # updateFabForTab) rather than an inline button here.
             lytLinkage.addStretch(1)
 
         self._refreshOverlay = RefreshOverlay(self)
@@ -287,6 +285,19 @@ class DialogIC(TabbedDialog):
         if parent:
             self.setMinimumWidth(int(parent.width() * 0.6))
         self.setMinimumHeight(650)
+
+    def updateFabForTab(self, tab: QWidget):
+        """TabbedDialog hook: show the floating action button for whichever "add new"
+        action `tab` supports - Isolation Items while editable, PTW Linkage in readonly
+        mode with the same isWindingDown()/role check "Link to PTW" used to have. Every
+        other tab (Basic Info, P&ID/Wiring, PSIC, History) has no single "add new"
+        action, so the FAB just stays hidden there."""
+        if tab is self.tabItems and not self.readonly:
+            self._setFabAction('fa6s.plus', t('New Isolation Item'), self.itemsTable.newItemDialog)
+        elif self.readonly and tab is self.tabLinkage and not self.ic.isWindingDown() and self.loggedUser.getRole() in (UserRoles.USER, UserRoles.ISSUING, UserRoles.COORDINATOR):
+            self._setFabAction('mdi.link-variant', t('Link to PTW'), self._linkNewPTW)
+        else:
+            self._hideFab()
 
     def _makeReadOnlyField(self, text: str) -> QLineEdit:
         """Build a read-only QLineEdit showing text, scrolled to its start."""

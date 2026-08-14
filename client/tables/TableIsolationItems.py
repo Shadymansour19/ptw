@@ -3,12 +3,11 @@ lock #/lock box #) shown inside DialogIC's Isolation Items tab. Emits
 `itemsChanged` on any add/edit/bulk-delete so the P&ID/Wiring tab can prompt
 to resync its highlights."""
 
-from PyQt6.QtCore import Qt, QPoint, QSize, pyqtSignal
+from PyQt6.QtCore import Qt, QPoint, pyqtSignal
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem,
-                              QAbstractItemView, QHeaderView, QPushButton, QDialog, QMessageBox,
+                              QAbstractItemView, QHeaderView, QDialog, QMessageBox,
                               QMenu)
-from PyQt6.QtGui import QKeySequence, QAction, QShortcut
-import qtawesome as qta
+from PyQt6.QtGui import QAction
 
 from models.Isolation import IC
 from dialogs.DialogIsolationItem import DialogIsolationItem
@@ -21,10 +20,12 @@ class TableIsolationItems(QWidget):
     itemsChanged = pyqtSignal()
 
     def __init__(self, parent, items, readonly):
-        """Build the isolation-item table (Tag/Description/State/Lock #/Lock
-        Box #) from `items`, plus, when not readonly, the floating "New
-        Isolation Item" button and its Ctrl+N shortcut and right-click delete
-        menu. Double-clicking a row always opens it for editing/viewing."""
+        """Build the isolation-item table (Tag/Description/State/Lock #/Lock Box #)
+        from `items`, plus, when not readonly, its right-click delete menu (the "New
+        Isolation Item" action itself is exposed via DialogIC's floating action button
+        and its shared Ctrl+N shortcut - see DialogIC.updateFabForTab and
+        TabbedDialog's own Ctrl+N wiring). Double-clicking a row always opens it for
+        editing/viewing."""
         super().__init__(parent)
         lyt = QVBoxLayout()
         self.tbl = QTableWidget()
@@ -51,47 +52,6 @@ class TableIsolationItems(QWidget):
             self.tbl.customContextMenuRequested.connect(self.showContextMenu)
         for item in self.items:
             self.__addItemToGUI(item)
-
-        self.btnNewItem = QPushButton(self)
-        self.btnNewItem.setIcon(qta.icon('fa6s.plus', color='white'))
-        self.btnNewItem.setFixedSize(60, 60)
-        self.btnNewItem.setIconSize(QSize(32, 32))
-        self.btnNewItem.setStyleSheet("""
-            QPushButton {
-                background-color: #1976D2;
-                color: white;
-                border-radius: 30px;
-                border: none;
-            }
-            QPushButton:hover {
-                background-color: #1565C0;
-            }
-            QPushButton:pressed {
-                background-color: #0D47A1;
-            }
-        """)
-        self.btnNewItem.setToolTip(t("New Isolation Item [Ctrl+N]"))
-        self.btnNewItem.clicked.connect(self.newItemDialog)
-        self.btnNewItem.setVisible(not readonly)
-        self.btnFABUpdatePosition()
-
-        if not readonly:
-            shortcut = QShortcut(QKeySequence("Ctrl+N"), self)
-            shortcut.activated.connect(self.newItemDialog)
-
-    def resizeEvent(self, event):
-        """Reposition the floating "New Isolation Item" button whenever the
-        widget is resized, then delegate to the base implementation."""
-        self.btnFABUpdatePosition()
-        return super().resizeEvent(event)
-
-    def btnFABUpdatePosition(self):
-        """Move the floating "New Isolation Item" button to the widget's
-        bottom-right corner, inset by a fixed margin."""
-        margin = 40
-        x = self.width() - self.btnNewItem.width() - margin
-        y = self.height() - self.btnNewItem.height() - margin
-        self.btnNewItem.move(x, y)
 
     def clear(self):
         """Remove all rows and clear the underlying items list."""

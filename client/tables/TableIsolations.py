@@ -2,12 +2,11 @@
 (type/tag/description only, no runtime state) shown inside DialogPTW's
 Isolation tab."""
 
-from PyQt6.QtCore import Qt, QPoint, QSize
+from PyQt6.QtCore import Qt, QPoint
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem,
-                              QAbstractItemView, QHeaderView, QPushButton, QDialog, QMessageBox,
+                              QAbstractItemView, QHeaderView, QDialog, QMessageBox,
                               QMenu)
-from PyQt6.QtGui import QKeySequence, QAction, QShortcut
-import qtawesome as qta
+from PyQt6.QtGui import QAction
 
 from models.Isolation import Isolation
 from dialogs.DialogIsolation import DialogIsolation
@@ -18,9 +17,11 @@ class TablePTWIsolations(QWidget):
     """Editable isolation list embedded inside a PTW form."""
 
     def __init__(self, parent, isolations, readonly):
-        """Build the isolation table (Type/Tag/Description) from `isolations`,
-        plus, when not readonly, the floating "New Isolation" button and its
-        Ctrl+N shortcut and right-click delete menu."""
+        """Build the isolation table (Type/Tag/Description) from `isolations`, plus,
+        when not readonly, its right-click delete menu (the "New Isolation" action
+        itself is exposed via DialogPTW's floating action button and its shared
+        Ctrl+N shortcut - see DialogPTW.updateFabForTab and TabbedDialog's own
+        Ctrl+N wiring)."""
         super().__init__(parent)
         lyt = QVBoxLayout()
         self.tbl = QTableWidget()
@@ -46,47 +47,6 @@ class TablePTWIsolations(QWidget):
             self.tbl.customContextMenuRequested.connect(self.showContextMenu)
         for isolation in self.isolations:
             self.__addIsolationToGUI(isolation)
-
-        self.btnNewIsolation = QPushButton(self)
-        self.btnNewIsolation.setIcon(qta.icon('fa6s.plus', color='white'))
-        self.btnNewIsolation.setFixedSize(60, 60)
-        self.btnNewIsolation.setIconSize(QSize(32, 32))
-        self.btnNewIsolation.setStyleSheet("""
-            QPushButton {
-                background-color: #1976D2;
-                color: white;
-                border-radius: 30px;
-                border: none;
-            }
-            QPushButton:hover {
-                background-color: #1565C0;
-            }
-            QPushButton:pressed {
-                background-color: #0D47A1;
-            }
-        """)
-        self.btnNewIsolation.setToolTip(t("New Isolation [Ctrl+N]"))
-        self.btnNewIsolation.clicked.connect(self.newIsolationDialog)
-        self.btnNewIsolation.setVisible(not readonly)
-        self.btnFABUpdatePosition()
-
-        if not readonly:
-            shortcut = QShortcut(QKeySequence("Ctrl+N"), self)
-            shortcut.activated.connect(self.newIsolationDialog)
-
-    def resizeEvent(self, event):
-        """Reposition the floating "New Isolation" button whenever the widget
-        is resized, then delegate to the base implementation."""
-        self.btnFABUpdatePosition()
-        return super().resizeEvent(event)
-
-    def btnFABUpdatePosition(self):
-        """Move the floating "New Isolation" button to the widget's
-        bottom-right corner, inset by a fixed margin."""
-        margin = 40
-        x = self.width() - self.btnNewIsolation.width() - margin
-        y = self.height() - self.btnNewIsolation.height() - margin
-        self.btnNewIsolation.move(x, y)
 
     def clear(self):
         """Remove all rows and clear the underlying isolations list."""
