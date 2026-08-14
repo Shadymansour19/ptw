@@ -83,6 +83,27 @@ class DialogPTW(TabbedDialog):
         user = globalData.allUsers.get(username)
         return user.getName() if user else username
 
+    def displayNameForApproval(approval) -> str:
+        """Return "<role> <name> (<department>)" for a USER approver, "<role> <name>"
+        otherwise, or a translated deleted-user placeholder if the acting account no
+        longer exists - the Arabic-aware equivalent of PTW.Approval's own English-only
+        __str__ (used only for Timeline rendering here, not shared with the PDF report
+        path in ReportGenerator.py, so translating it doesn't affect reports)."""
+        user = globalData.allUsers.get(approval.username)
+        if user is None:
+            return f"[{t('deleted user')}: {approval.username}]"
+        if user.getRole() == UserRoles.USER:
+            return f"{t(user.getRole())} {user.getName()} ({t(user.getDepartment())})"
+        return f"{t(user.getRole())} {user.getName()}"
+
+    def displayNameForApprover(approver) -> str:
+        """Return the translated department name for a USER-role Approver with a
+        department set, else the translated role name - the Arabic-aware equivalent
+        of PTW.Approver's own English-only __str__."""
+        if approver.role == UserRoles.USER and approver.department:
+            return t(approver.department)
+        return t(approver.role)
+
     def __init__(self, parent, loggedUser, ptw: PTW, referencePTW: PTW, new: bool, readOnly: bool, lbl: str):
         """Build every tab of the PTW form from `ptw` and wire up its fields' enabled state.
 
@@ -595,7 +616,7 @@ class DialogPTW(TabbedDialog):
         entries = []
         if self.ptw.requestor:
             color = QColor('green')
-            text = f"<b>Requested</b> by {DialogPTW.displayNameForUsername(self.ptw.requestor)} at {self.ptw.request_date}"
+            text = f"<b>{t('Requested')}</b> {t('by')} {DialogPTW.displayNameForUsername(self.ptw.requestor)} {t('at')} {self.ptw.request_date}"
             content = QLabel(text)
             content.setWordWrap(True)
             content.setFont(QFont("Helvetica", 13))
@@ -605,12 +626,11 @@ class DialogPTW(TabbedDialog):
         skipPending = False
         for approval in self.ptw.approvals:
             if approval.action == PTW.ApprovalActions.APPROVED:
-                color = QColor('green') 
+                color = QColor('green')
             else:
                 color = QColor('orange')
                 skipPending = True
-            firstWord, _, rest = str(approval).partition(' ')
-            text = f"<b>{firstWord}</b> {rest}"
+            text = f"<b>{t(approval.action)}</b> {t('by')} {DialogPTW.displayNameForApproval(approval)} {t('at')} {approval.timestamp}"
             if approval.comment:
                 text += f"<br><b>{t('Comment')}:</b> {approval.comment}"
             content = QLabel(text)
@@ -622,7 +642,7 @@ class DialogPTW(TabbedDialog):
         if not skipPending:
             for approver in self.ptw.pendingApprovers():
                 color = QColor('gray')
-                content = QLabel('<b>Pending</b> ' + str(approver))
+                content = QLabel(f"<b>{t('Pending')}</b> {DialogPTW.displayNameForApprover(approver)}")
                 content.setFont(QFont("Helvetica", 13))
                 content.setStyleSheet(f"color: {color.name()};")
                 entries.append((color, content))
@@ -640,9 +660,9 @@ class DialogPTW(TabbedDialog):
         fields are always already filled in.
         """
         if username:
-            text = f"<b>{label}</b> by {DialogPTW.displayNameForUsername(username)}"
+            text = f"<b>{label}</b> {t('by')} {DialogPTW.displayNameForUsername(username)}"
             if timestamp:
-                text += f" at {timestamp}"
+                text += f" {t('at')} {timestamp}"
             if comment:
                 text += f"<br><b>{t('Comment')}:</b> {comment}"
             color = QColor('green')
@@ -666,9 +686,9 @@ class DialogPTW(TabbedDialog):
         """
         if action:
             color = QColor('orange') if action == PTW.RunCycle.Actions.REJECTED else QColor('green')
-            text = f"<b>{verb} {action}</b> by {DialogPTW.displayNameForUsername(username)}"
+            text = f"<b>{verb} {t(action)}</b> {t('by')} {DialogPTW.displayNameForUsername(username)}"
             if timestamp:
-                text += f" at {timestamp}"
+                text += f" {t('at')} {timestamp}"
             if comment:
                 text += f"<br><b>{t('Comment')}:</b> {comment}"
         else:

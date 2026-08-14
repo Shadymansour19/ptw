@@ -75,6 +75,27 @@ class DialogIC(TabbedDialog):
         user = globalData.allUsers.get(username)
         return user.getName() if user else username
 
+    def displayNameForApproval(approval) -> str:
+        """Return "<role> <name> (<department>)" for a USER approver, "<role> <name>"
+        otherwise, or a translated deleted-user placeholder if the acting account no
+        longer exists - the Arabic-aware equivalent of IC.Approval's own English-only
+        __str__ (used only for Timeline rendering here, not shared with the PDF report
+        path in ReportGenerator.py, so translating it doesn't affect reports)."""
+        user = globalData.allUsers.get(approval.username)
+        if user is None:
+            return f"[{t('deleted user')}: {approval.username}]"
+        if user.getRole() == UserRoles.USER:
+            return f"{t(user.getRole())} {user.getName()} ({t(user.getDepartment())})"
+        return f"{t(user.getRole())} {user.getName()}"
+
+    def displayNameForApprover(approver) -> str:
+        """Return the translated department name for a USER-role Approver with a
+        department set, else the translated role name - the Arabic-aware equivalent
+        of IC.Approver's own English-only __str__."""
+        if approver.role == UserRoles.USER and approver.department:
+            return t(approver.department)
+        return t(approver.role)
+
     def __init__(self, parent, loggedUser, ic: IC, new: bool, readOnly: bool, title: str):
         """Build every tab's widgets and wire up their signals, then populate them from
         ic and apply the readOnly state. History/PTW Linkage tabs are only added when
@@ -377,7 +398,7 @@ class DialogIC(TabbedDialog):
         entries = []
         if self.ic.requestor:
             color = QColor('green')
-            text = f"<b>Requested</b> by {DialogIC.displayNameForUsername(self.ic.requestor)} at {self.ic.requestor_timestamp}"
+            text = f"<b>{t('Requested')}</b> {t('by')} {DialogIC.displayNameForUsername(self.ic.requestor)} {t('at')} {self.ic.requestor_timestamp}"
             content = QLabel(text)
             content.setWordWrap(True)
             content.setFont(QFont("Helvetica", 13))
@@ -386,8 +407,7 @@ class DialogIC(TabbedDialog):
 
         for approval in self.ic.approvals:
             color = QColor('green') if approval.action == IC.ApprovalActions.APPROVED else QColor('orange')
-            firstWord, _, rest = str(approval).partition(' ')
-            text = f"<b>{firstWord}</b> {rest}"
+            text = f"<b>{t(approval.action)}</b> {t('by')} {DialogIC.displayNameForApproval(approval)} {t('at')} {approval.timestamp}"
             if approval.comment:
                 text += f"<br><b>{t('Comment')}:</b> {approval.comment}"
             content = QLabel(text)
@@ -398,7 +418,7 @@ class DialogIC(TabbedDialog):
 
         for approver in self.ic.pendingApprovers():
             color = QColor('gray')
-            content = QLabel('<b>Pending</b> ' + str(approver))
+            content = QLabel(f"<b>{t('Pending')}</b> {DialogIC.displayNameForApprover(approver)}")
             content.setFont(QFont("Helvetica", 13))
             content.setStyleSheet(f"color: {color.name()};")
             entries.append((color, content))
@@ -410,9 +430,9 @@ class DialogIC(TabbedDialog):
         """Build one Isolation Timeline entry: label plus who/when in doneColor (default
         green) if username is set, else a gray "Pending" placeholder."""
         if username:
-            text = f"<b>{label}</b> by {DialogIC.displayNameForUsername(username)}"
+            text = f"<b>{label}</b> {t('by')} {DialogIC.displayNameForUsername(username)}"
             if timestamp:
-                text += f" at {timestamp}"
+                text += f" {t('at')} {timestamp}"
             color = doneColor or QColor('green')
         else:
             text = f"<b>{label}</b> — {t('Pending')}"
@@ -435,28 +455,28 @@ class DialogIC(TabbedDialog):
         # until reached. Sanction-for-test and Re-isolate are optional excursions that
         # may not happen at all, so each of their rows only appears once it's set.
         issuingColor = QColor('orange') if ic.isolate_issuing_action == IC.ApprovalActions.RETURNED else QColor('green')
-        issuingLabel = f"Isolate {ic.isolate_issuing_action}" if ic.isolate_issuing_action else "Isolate Confirmed"
-        entries.append(self._isolationStageEntry("Isolate Requested", ic.isolate_requestor, ic.isolate_requestor_timestamp))
+        issuingLabel = f"{t('Isolate')} {t(ic.isolate_issuing_action)}" if ic.isolate_issuing_action else f"{t('Isolate')} {t('Confirmed')}"
+        entries.append(self._isolationStageEntry(f"{t('Isolate')} {t('Requested')}", ic.isolate_requestor, ic.isolate_requestor_timestamp))
         entries.append(self._isolationStageEntry(issuingLabel, ic.isolate_issuing, ic.isolate_issuing_timestamp, doneColor=issuingColor))
-        entries.append(self._isolationStageEntry("Isolate Carried Out", ic.isolate_isolator, ic.isolate_isolator_timestamp))
+        entries.append(self._isolationStageEntry(f"{t('Isolate')} {t('Carried Out')}", ic.isolate_isolator, ic.isolate_isolator_timestamp))
 
         if ic.sanction_requestor:
-            entries.append(self._isolationStageEntry("Sanction Requested", ic.sanction_requestor, ic.sanction_requestor_timestamp))
+            entries.append(self._isolationStageEntry(f"{t('Sanction')} {t('Requested')}", ic.sanction_requestor, ic.sanction_requestor_timestamp))
         if ic.sanction_issuing:
-            entries.append(self._isolationStageEntry("Sanction Confirmed", ic.sanction_issuing, ic.sanction_issuing_timestamp))
+            entries.append(self._isolationStageEntry(f"{t('Sanction')} {t('Confirmed')}", ic.sanction_issuing, ic.sanction_issuing_timestamp))
         if ic.sanction_isolator:
-            entries.append(self._isolationStageEntry("Sanction Carried Out", ic.sanction_isolator, ic.sanction_isolator_timestamp))
+            entries.append(self._isolationStageEntry(f"{t('Sanction')} {t('Carried Out')}", ic.sanction_isolator, ic.sanction_isolator_timestamp))
 
         if ic.reisolate_requestor:
-            entries.append(self._isolationStageEntry("Re-isolate Requested", ic.reisolate_requestor, ic.reisolate_requestor_timestamp))
+            entries.append(self._isolationStageEntry(f"{t('Re-isolate')} {t('Requested')}", ic.reisolate_requestor, ic.reisolate_requestor_timestamp))
         if ic.reisolate_issuing:
-            entries.append(self._isolationStageEntry("Re-isolate Confirmed", ic.reisolate_issuing, ic.reisolate_issuing_timestamp))
+            entries.append(self._isolationStageEntry(f"{t('Re-isolate')} {t('Confirmed')}", ic.reisolate_issuing, ic.reisolate_issuing_timestamp))
         if ic.reisolate_isolator:
-            entries.append(self._isolationStageEntry("Re-isolate Carried Out", ic.reisolate_isolator, ic.reisolate_isolator_timestamp))
+            entries.append(self._isolationStageEntry(f"{t('Re-isolate')} {t('Carried Out')}", ic.reisolate_isolator, ic.reisolate_isolator_timestamp))
 
-        entries.append(self._isolationStageEntry("De-isolate Requested", ic.deisolate_requestor, ic.deisolate_requestor_timestamp))
-        entries.append(self._isolationStageEntry("De-isolate Confirmed", ic.deisolate_issuing, ic.deisolate_issuing_timestamp))
-        entries.append(self._isolationStageEntry("De-isolate Carried Out", ic.deisolate_isolator, ic.deisolate_isolator_timestamp))
+        entries.append(self._isolationStageEntry(f"{t('De-isolate')} {t('Requested')}", ic.deisolate_requestor, ic.deisolate_requestor_timestamp))
+        entries.append(self._isolationStageEntry(f"{t('De-isolate')} {t('Confirmed')}", ic.deisolate_issuing, ic.deisolate_issuing_timestamp))
+        entries.append(self._isolationStageEntry(f"{t('De-isolate')} {t('Carried Out')}", ic.deisolate_isolator, ic.deisolate_isolator_timestamp))
 
         timeline = Timeline(entries, t("No isolation activity yet"))
         return self._timelinePane(t("Isolation Timeline"), timeline)
