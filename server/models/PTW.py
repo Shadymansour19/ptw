@@ -992,12 +992,33 @@ class PTW:
         return docs
     
     def requiredDocsToPrint(self) -> list[str]:
-        """Return the report keys to generate for this PTW: always 'toolbox'
-        and 'audit', plus 'gas-test' if Initial Gas Test is among the selected
-        controls."""
+        """Return the report document keys that should be printed for this PTW,
+        each resolving to a bundled client reports/docs/<key>.pdf, all merged
+        into one PDF by ReportGenerator.ptwReport(): always 'toolbox' and
+        'audit', 'gas-test' if Initial Gas Test is a selected control, plus the Safe Work Cards matching the permit type (hot work
+        also covers Spark permits) and the selected hazards/controls; the energy
+        isolation and de-isolation cards come as a pair whenever the PTW carries
+        isolations or linked ICs. (The driving / man-riding / rig-floor SWCs
+        have no matching PTW field to key off and are never auto-included.)"""
         docs = ['toolbox', 'audit']
         if 'Initial Gas Test' in self.controls:
             docs.append('gas-test')
+        if self.type in [PTW.Types.HT, PTW.Types.SP]:
+            docs.append('swc-hot-work')
+        if self.type == PTW.Types.CS:
+            docs.append('swc-confined-space')
+        if self.type == PTW.Types.EX or 'Excavation' in self.hazards:
+            docs.append('swc-excavation')
+        if 'Working at Height' in self.hazards:
+            docs.append('swc-working-at-height')
+        if 'Heavy / Complex Lifts' in self.hazards or 'Lifting Plan' in self.controls:
+            docs.append('swc-mechanical-lifting')
+        if 'Overside Working' in self.hazards:
+            docs.append('swc-work-near-water')
+        if 'Moving Vehicle' in self.hazards:
+            docs.append('swc-mobile-equipment')
+        if self.isolations or self.linked_ics:
+            docs.extend(['swc-energy-isolation', 'swc-de-isolation'])
         return docs
     
     def updateApprovals(self, approval):

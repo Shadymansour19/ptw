@@ -17,6 +17,8 @@ from reportlab.lib.units import mm, inch
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 import qrcode
+from pypdf import PdfWriter, PaperSize, Transformation
+from pypdf.generic import RectangleObject
 from PIL import Image as PILImage, ImageDraw as PILImageDraw
 import webbrowser
 from datetime import datetime
@@ -154,7 +156,9 @@ class ReportGenerator:
         approval chain (`ptw.requiredApprovers()`) and the PA/IA running
         confirmations. After writing and opening the PDF, it also fetches and opens
         the PTW's MIWI document, the PTW-specific risk assessment report, and every
-        uploaded attachment.
+        uploaded attachment, plus the PTW's bundled required documents
+        (`ptw.requiredDocsToPrint()`, resolved from reports/docs/) merged into a
+        single PDF.
 
         Args:
             loggedUser: user requesting the report, used to authorize the server
@@ -512,9 +516,43 @@ class ReportGenerator:
             else:
                 ReportGenerator.openPDF(filepath)
 
-        for doc in ptw.requiredDocsToPrint():
-            continue
-            ReportGenerator.openPDF(doc)
+        requiredDocs = PdfWriter()
+        for docKey in ptw.requiredDocsToPrint():
+            docPath = resource_path(os.path.join('reports', 'docs', f'{docKey}.pdf'))
+            if os.path.isfile(docPath):
+                requiredDocs.append(docPath)
+            else:
+                print(f"Missing bundled required doc '{docKey}': {docPath}")
+        if len(requiredDocs.pages):
+            # Normalize every page to one uniform size and orientation - portrait A4.
+            # Landscape pages (the audit and gas-test forms) are first rotated with
+            # /Rotate 270, putting their content's top at the portrait page's left
+            # edge (the binding convention where turning the sheet clockwise makes it
+            # readable), then each page is uniformly scaled to fit A4 and centered on
+            # an exact-A4 page: the A3 toolbox form shrinks 1:1 (same aspect ratio),
+            # while the letter-size audit form keeps its proportions and just gains
+            # small margins.
+            A4_WIDTH, A4_HEIGHT = float(PaperSize.A4.width), float(PaperSize.A4.height)
+            for page in requiredDocs.pages:
+                displayedWidth, displayedHeight = float(page.mediabox.width), float(page.mediabox.height)
+                if page.rotation % 180:
+                    displayedWidth, displayedHeight = displayedHeight, displayedWidth
+                if displayedWidth > displayedHeight:
+                    page.rotate(270)
+                if page.rotation:
+                    page.transfer_rotation_to_content()
+                pageWidth, pageHeight = float(page.mediabox.width), float(page.mediabox.height)
+                scale = min(A4_WIDTH / pageWidth, A4_HEIGHT / pageHeight)
+                page.scale_by(scale)
+                page.add_transformation(Transformation().translate(
+                    (A4_WIDTH - pageWidth * scale) / 2,
+                    (A4_HEIGHT - pageHeight * scale) / 2,
+                ))
+                page.mediabox = RectangleObject([0, 0, A4_WIDTH, A4_HEIGHT])
+                page.cropbox = RectangleObject([0, 0, A4_WIDTH, A4_HEIGHT])
+            with tempfile.NamedTemporaryFile(delete=False, prefix=f'ptw-{ptw.id}-required-docs-', suffix='.pdf') as requiredDocsFile:
+                requiredDocs.write(requiredDocsFile)
+            ReportGenerator.openPDF(requiredDocsFile.name)
 
         return None
 
