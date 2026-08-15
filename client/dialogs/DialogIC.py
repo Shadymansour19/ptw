@@ -370,7 +370,9 @@ class DialogIC(TabbedDialog):
     def _ptwLinkRow(self, ptwId) -> QWidget:
         """Build one PTW Linkage tab row: a read-only label (PTW id plus running status,
         if the PTW is found) with a View button, and an Unlink button for
-        User/Issuing/Coordinator roles."""
+        User/Issuing/Coordinator roles - enabled only while self.ic.canUnlinkPTW(ptw)
+        allows it (this IC not yet isolated/closed/requested to close, and the PTW
+        approved-not-running or fully held)."""
         ptw = globalData.allPTWs.get(int(ptwId)) or globalData.archivedPTWs.get(int(ptwId))
         label = f"PTW #{ptwId} — {ptw.running_status}" if ptw else f"PTW #{ptwId}"
 
@@ -383,6 +385,7 @@ class DialogIC(TabbedDialog):
         lyt.addWidget(btnView)
         if self.loggedUser.getRole() in (UserRoles.USER, UserRoles.ISSUING, UserRoles.COORDINATOR):
             btnUnlink = QPushButton(qta.icon("mdi.link-variant-off"), t("Unlink"))
+            btnUnlink.setEnabled(self.ic.canUnlinkPTW(ptw))
             btnUnlink.clicked.connect(partial(self._unlinkPTW, ptwId))
             lyt.addWidget(btnUnlink)
         return row

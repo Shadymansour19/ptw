@@ -883,10 +883,13 @@ def unlinkPTWFromIC():
     POST /ics/unlink-ptw. Requires the ``USER``, ``ISSUING``, or
     ``COORDINATOR`` role (403 otherwise). Body: ``{"ic-id": <int>,
     "ptw-id": <int>}``. 400 if the PTW isn't currently in the IC's
-    ``linked_ptws``/``held_by``. Updates ``IC.linked_ptws``/``held_by`` and
-    ``PTW.linked_ics``, resyncs the PTW cache, broadcasts UNLINKED SSE
-    events for both the IC and the PTW, and runs the automatic
-    de-isolate check on the IC. Responds with ``{"success": True}``.
+    ``linked_ptws``/``held_by``. 403 if ``IC.canUnlinkPTW(ptw)`` rejects the
+    pair (skipped, allowing the unlink through, if the PTW record itself
+    can't be found - nothing left to protect). Updates
+    ``IC.linked_ptws``/``held_by`` and ``PTW.linked_ics``, resyncs the PTW
+    cache, broadcasts UNLINKED SSE events for both the IC and the PTW, and
+    runs the automatic de-isolate check on the IC. Responds with
+    ``{"success": True}``.
     """
     user = getVerifiedUser(request.authorization)
     if user is None:
@@ -910,6 +913,12 @@ def unlinkPTWFromIC():
         return jsonify({"success": False, "error": f"PTW #{ptwId} is not linked to this IC"}), 400
     try:
         ptw = ptwDB.getPTWById(ptwId)
+        if ptw is not None and not ic.canUnlinkPTW(ptw):
+            log.warning(
+                "POST /ics/unlink-ptw: forbidden — IC #%s / PTW #%s not in an unlinkable state (ic status='%s', PTW approval='%s', PTW running='%s') (user='%s')",
+                icId, ptwId, ic.getStatus(), ptw.approval_status, ptw.running_status, user.getUsername(),
+            )
+            return jsonify({"success": False, "error": "IC or PTW is not in an unlinkable state"}), 403
         ic.unlinkPTW(ptwId)
         icDB.updateICFromDict({
             'id': icId,

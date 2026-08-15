@@ -579,7 +579,10 @@ class DialogPTW(TabbedDialog):
 
     def _icLinkRow(self, icId) -> QWidget:
         """Build one IC Linkage row: label plus View and (role-permitting)
-        Request Isolate/Unlink buttons for the IC identified by icId."""
+        Request Isolate/Unlink buttons for the IC identified by icId. Unlink is
+        enabled only while ic.canUnlinkPTW(self.ptw) allows it (that IC not yet
+        isolated/closed/requested to close, and this PTW approved-not-running or
+        fully held)."""
         icsById = {str(ic.id): ic for ic in globalData.ics.values()}
         ic = icsById.get(str(icId))
         label = f"IC #{icId} — {ic.getStatus()}" if ic else f"IC #{icId}"
@@ -598,6 +601,7 @@ class DialogPTW(TabbedDialog):
             lyt.addWidget(btnRequestIsolate)
         if self.loggedUser.getRole() in (UserRoles.USER, UserRoles.ISSUING, UserRoles.COORDINATOR):
             btnUnlink = QPushButton(qta.icon("mdi.link-variant-off"), t("Unlink"))
+            btnUnlink.setEnabled(bool(ic) and ic.canUnlinkPTW(self.ptw))
             btnUnlink.clicked.connect(partial(self._unlinkIC, icId))
             lyt.addWidget(btnUnlink)
         return row

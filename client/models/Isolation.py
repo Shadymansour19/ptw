@@ -565,6 +565,21 @@ class IC:
         from models.PTW import PTW
         return ptw is not None and ptw.approval_status == PTW.ApprovalStatus.APPROVED and ptw.running_status == PTW.RunningStatus.NOT_RUNNING
 
+    def canUnlinkPTW(self, ptw) -> bool:
+        """Reverse of canLinkPTW: this IC must still be short of physically isolated -
+        not yet ACTIVE, and not winding down (SANCTIONED/DEISOLATE_CONFIRMING/CLOSING/
+        CLOSED) - and the target PTW must be approved but not yet running, or fully
+        held (accepted, not just a pending hold request still awaiting IA confirm)."""
+        if self.getStatus() == IC.Status.ACTIVE or self.isWindingDown():
+            return False
+        from models.PTW import PTW
+        if ptw is None:
+            return False
+        return (
+            (ptw.approval_status == PTW.ApprovalStatus.APPROVED and ptw.running_status == PTW.RunningStatus.NOT_RUNNING)
+            or ptw.running_status == PTW.RunningStatus.HELD
+        )
+
     def linkPTW(self, ptwId):
         """Link the given PTW id to this IC: un-hold it if held, then add it to
         `linked_ptws` if not already present."""
