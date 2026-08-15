@@ -1973,6 +1973,11 @@ class MainWindow(QMainWindow):
         tabs from the refreshed cache; optionally also refresh archived PTWs; and
         update the home dashboard."""
         def on_done(err, _):
+            if err:
+                self._refreshOverlay.hideBusy()
+                QMessageBox.warning(self, t("Error"), t("Failed to refresh data:") + f" {err}")
+                return
+
             tabs = self._allPTWTabs()
 
             for tab in tabs:

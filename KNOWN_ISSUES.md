@@ -21,20 +21,6 @@ The **Full-Project Audit (2026-08-15)** section below was added after a code rev
 
 ### High
 
-#### H5 — Deleting or re-roling an approver silently regresses APPROVED/RUNNING permits
-**File:** `server/models/PTW.py` / `client/models/PTW.py` — `_stageSatisfied` (`:1103`), `__updateRunningStatus` (`:1136-1138`); `server/routes/users.py` — `deleteUserRequest`
-
-Approval replay resolves each approver through `globalData.allUsers.get(a.username)` and matches their **current** role/department (`matchesUser`). User deletion is a hard delete with no guard for outstanding approvals. When an approver of an already-`APPROVED`/`RUNNING` permit is deleted (or has their role/department changed), the next status recompute (runs on every mutation and on the periodic refresh) fails `_stageSatisfied`, regresses `approval_status` to `UNDER_REVIEW`, and — because `__updateRunningStatus` early-returns `NOT_RUNNING` for any non-approved permit — forces a **physically running permit back to NOT_RUNNING**, hiding it from Running tabs and re-enabling run-requests on it. Client and server regress identically, so nothing flags it. (Pre-isolation ICs regress `APPROVED → REQUESTED` the same way; already-ACTIVE ICs are protected because `IC.getStatus()` checks isolator fields first.)
-
-**Fix:** Block deletion/role-change of a user with outstanding approvals, or snapshot the approver's role+department into each `Approval` at approval time and replay against the snapshot instead of the live user record.
-
-#### H6 — SSE stream has no read timeout: a half-open connection silently kills all real-time updates
-**File:** `client/network/SSEListener.py:60` (`timeout=(10, None)`)
-
-The read timeout is `None`. The server heartbeats every 30 s, but if the TCP connection dies without FIN/RST (server crash, NAT/Wi-Fi idle drop, VLAN change) `resp.iter_lines()` blocks forever — no exception, so the reconnect path never runs. The client keeps relying on SSE for post-action refresh (`MainWindow` deliberately does not re-fetch after actions), so operators act on stale isolation/permit state indefinitely while the app looks alive.
-
-**Fix:** Set a read timeout greater than the heartbeat interval, e.g. `timeout=(10, 65)`, so a dead link raises `ReadTimeout` and the existing reconnect loop recovers.
-
 #### H7 — SSE reconnect loses every event during the outage, with no resync
 **File:** `client/network/SSEListener.py:81-83`; `server/sse.py` (per-connection queue, no replay/Last-Event-ID); `client/windows/MainWindow.py` (no refetch-on-reconnect)
 
@@ -170,19 +156,12 @@ These do `showBusy()` … construct a dialog … `hideBusy()` with no `try/final
 
 **Fix:** Wrap each show/construct/hide in `try/finally: hideBusy()`.
 
-#### M29 — `refreshPtwUserGUI` ignores the refresh error and reports success on stale data
-**File:** `client/windows/MainWindow.py:1975-1997`
-
-`on_done(err, _)` never checks `err`; it rebuilds every tab from the (possibly stale) cache, beeps, and shows "GUI refreshed successfully." even when the server is unreachable. (`refreshArchivedPTWs` and the Isolator/Admin refreshers all check `err`.)
-
-**Fix:** Check `err` and surface it instead of the success toast.
-
 #### M30 — Client-supplied actor identity on create/approve/run endpoints (audit-trail integrity)
 **File:** `server/routes/ptws.py` — `addPTWRequest` (`requestor`/`department` from payload), `updatePTWApprovals` (`approval` built from payload), `requestToRunPTW`/`runPTW`/hold/close (`pa`/`ia` from payload); `server/routes/ics.py` — `updateICApprovals`
 
 The server authorizes against the authenticated user but records the actor from client-supplied fields. An eligible approver can record an approval under a different `username`; a run/hold/close records whatever `pa`/`ia` name the client sends; `POST /ptws` trusts `requestor`/`department`. For a safety-permit audit trail ("who requested/approved/ran/issued") this is spoofable by a crafted request. (Part of the cross-cutting root cause above; `POST /ics` already stamps its requestor correctly and is the model to follow.)
 
-**Fix:** Stamp `requestor`/`pa`/`ia`/`approval.username`/`department` from `getVerifiedUser()`; ignore those fields in the payload.
+**Fix:** Stamp `requestor`/`pa`/`ia`/`approval.username`/`department` from `getVerifiedUser()`; ignore those fields in the payload. (Partial progress 2026-08-15: the H5 fix now stamps `approval.role`/`approval.department` from the verified user on `POST /ptws/approvals` and `POST /ics/approvals` — but `approval.username` and the `pa`/`ia`/`requestor` fields are still client-supplied.)
 
 #### M31 — Unguarded `datetime.strptime` on client-supplied approval timestamp → server 500 + USER-client crash-loop
 **File:** `server/models/PTW.py:1229` / `client/models/PTW.py` — `fullApprovalTimestamp`; timestamp comes from `PTW.Approval(**approvalData)` (`server/routes/ptws.py:267`)
@@ -190,17 +169,6 @@ The server authorizes against the authenticated user but records the actor from 
 `fullApprovalTimestamp` does `datetime.strptime(self.approvals[-1].timestamp, TIMESTAMP_FORMAT)` with no try/except and no `None` guard. Since the approval `timestamp` is taken verbatim from the request body, one malformed/None timestamp on the chain-completing approval makes `POST /ptws/run-request` raise before its try block (persistent 500 for that permit) and makes the client's 60 s `_checkPtwAlarms` timer slot raise every minute — aborting the app for every USER client in that department. The normal UI always writes the right format, so the trigger is a raw API caller or edited/legacy data, but the blast radius is large.
 
 **Fix:** Guard the parse (try/except + None check) and reject malformed timestamps at the route; combined with M30 (stamp the timestamp server-side), the input can't be malformed.
-
-#### M32 — `slr()` crashes the risk report on an empty analysis field
-**File:** `client/reports/ReportGenerator.py:1138`
-
-```python
-t = text or ''
-return t[0], t[-1], t
-```
-Any risk item with an empty severity/likelihood/evaluation string → `IndexError`, which kills `riskAssessmentReport` and therefore the whole PTW PDF (called from `ptwReport`).
-
-**Fix:** `return (t[:1] or ' '), (t[-1:] or ' '), t`.
 
 ### Low
 
@@ -214,7 +182,7 @@ Any risk item with an empty severity/likelihood/evaluation string → `IndexErro
 - **L12 — `TablePTWs.showContextMenu` ignores `MenuOption.visibleFor`.** `TablePTWs.py:445-448` (contrast `TableICs.py:380-382`). Currently masked because the only predicate-guarded PTW option is wired to tabs where it's always true, but any future wiring to a mixed tab silently shows forbidden actions. Also `TableICs.showContextMenu` gates on the right-clicked row but then runs the action over all selected rows.
 - **L13 — `isInMeeting()` includes RETURNED permits in the "PTW in Meeting" overlay.** `client/models/PTW.py:2260-2263`: the per-role `getApprovalStatus` check ignores the overall RETURNED state, so a permit returned at the parallel Issuing/Safety stage still shows in the Meeting tab. Fix: add an `approval_status != RETURNED` conjunct.
 - **L14 — `PTW.Approval.__str__` diverged between copies.** `client/models/PTW.py:1565-1566` shows the USER approver's department; `server/models/PTW.py:545-552` doesn't (yet `IC.Approval.__str__` has it on both sides). Latent until a server-side report/log stringifies an approval.
-- **L15 — Login `SSEListener.stop()` can't interrupt a blocked read.** `client/network/SSEListener.py` (read timeout `None`) + `MainWindow.py` `stop(); wait(1000)`: after logout the old thread can linger up to 30 s (next heartbeat) still authenticated as the previous user, and can be torn down while running on quit. Fix: keep a reference to the `requests` response and `.close()` it in `stop()` (plus the H6 read timeout).
+- **L15 — Login `SSEListener.stop()` can't interrupt a blocked read.** `client/network/SSEListener.py` + `MainWindow.py` `stop(); wait(1000)`: after logout the old thread can linger up to 30 s (next heartbeat) still authenticated as the previous user, and can be torn down while running on quit. Fix: keep a reference to the `requests` response and `.close()` it in `stop()` (the H6 read timeout, fixed 2026-08-15, already caps the lingering window at 65 s).
 - **L16 — Async callbacks can fire into deleted/closed dialogs.** `client/network/RequestWorker.py:45-47` calls `cb(err, result)` with no guard; a callback bound to a dialog deleted before delivery raises `RuntimeError: wrapped C/C++ object has been deleted`. Fix: guard with `sip.isdeleted(cb.__self__)` / try-except.
 - **L17 — `@async_request` spawns an unbounded QThread per call.** `client/network/RequestWorker.py`: the bulk user-import loop (`TableUsers.py:466-467`) fires one thread + HTTP request per row (a 1,000-row file → 1,000 concurrent). Resource exhaustion, not a crash. Fix: a bounded pool / batch endpoint.
 - **L18 — Bulk user import surfaces and exports plaintext passwords; weak validation.** `client/reports/ImportUsersExcel.py:105-109,210-218`, `client/tables/TableUsers.py:437-491`: generated passwords are shown and written to an xlsx 'Password' column; no email-format or username-charset validation (a username containing `:` corrupts HTTP Basic auth). Fix: don't persist plaintext credentials to disk; validate email/username.
@@ -262,6 +230,34 @@ The server binds to plain HTTP on port 5000. Every request sends the username an
 **File:** `server/routes/users.py` — `updateUserRequest`
 
 A non-admin self-update (`authUser.getUsername() == target`) handed the full client dict to `updateUserFromDict` → `updateRecordFromDict`, which set **every key that is a real column** — including `role`, `is_active`, and `department`. A logged-in low-privilege user could send `PUT /users {"username": "<self>", "role": "Admin"}` and become an administrator, or widen PTW/IC visibility by changing their own `department`. Fixed (2026-08-15) by introducing `SELF_EDITABLE_FIELDS = {name, email, ext, password}` in `server/routes/users.py`: a non-admin self-update is stripped to that whitelist (plus `username`, kept only as the row-match key) before reaching the generic column-setter, and any dropped privileged fields are logged at `WARNING` as an attack indicator. Admin updates are unchanged. The client's Settings self-update still sends the full `user.__dict__`, but its `role`/`department`/`is_active` values match the existing row, so dropping them is behavior-neutral. (The sibling findings from the same root cause — C2, M30 — remain open.)
+
+---
+
+### ~~H5 — Deleting or re-roling an approver silently regresses APPROVED/RUNNING permits~~ ✓
+**File:** `server/models/PTW.py` / `client/models/PTW.py`, `server/models/Isolation.py` / `client/models/Isolation.py` — `Approval`, `_stageSatisfied`, `pendingApprovers`, `getApprovalStatus`; `server/routes/ptws.py` — `updatePTWApprovals`; `server/routes/ics.py` — `updateICApprovals`; `client/reports/ReportGenerator.py` — the two `lastApprovalFor` helpers
+
+Approval replay resolved each approver through `globalData.allUsers.get(a.username)` and matched their **current** role/department, so deleting or re-roling an approver of an already-`APPROVED`/`RUNNING` permit made the next status recompute fail `_stageSatisfied`, regress `approval_status` to `UNDER_REVIEW`, and force a physically running permit back to `NOT_RUNNING`. Pre-isolation ICs regressed `APPROVED → REQUESTED` the same way. Fixed (2026-08-15) by snapshotting the actor's `role`/`department` into each `Approval` record at approval time — stamped server-side from `getVerifiedUser()` on `POST /ptws/approvals` and `POST /ics/approvals`, never from the payload — and replaying the chain against the snapshot via a new `Approval.roleDept()` helper (`_approvedRoleDepts()` + `matchesRoleDept` replace the live-user `matchesUser` lookups in `_stageSatisfied`/`pendingApprovers`/`getApprovalStatus`, in all four model files). The PDF report generators' approval-signature matching was moved to the same snapshot (and the PTW report no longer KeyErrors on a deleted approver's name). Legacy approvals recorded before the snapshot existed fall back to the live user record, so they replay exactly as before — meaning a permit whose approvals all predate this fix is still exposed until its chain is re-recorded; blocking deletion/re-role of users with outstanding *legacy* approvals remains available as a belt-and-braces follow-up if that window matters.
+
+---
+
+### ~~H6 — SSE stream has no read timeout: a half-open connection silently kills all real-time updates~~ ✓
+**File:** `client/network/SSEListener.py`
+
+The read timeout was `None` (`timeout=(10, None)`). The server heartbeats every 30 s, but if the TCP connection died without FIN/RST (server crash, NAT/Wi-Fi idle drop, VLAN change) `resp.iter_lines()` blocked forever — no exception, so the reconnect path never ran, and operators acted on stale isolation/permit state indefinitely while the app looked alive. Fixed (2026-08-15) by setting `timeout=(10, 65)` — the 65 s read timeout is comfortably above the 30 s heartbeat interval, so a dead link raises `ReadTimeout` and the existing 5 s-sleep reconnect loop recovers.
+
+---
+
+### ~~M29 — `refreshPtwUserGUI` ignores the refresh error and reports success on stale data~~ ✓
+**File:** `client/windows/MainWindow.py`
+
+`on_done(err, _)` never checked `err`; it rebuilt every tab from the (possibly stale) cache, beeped, and showed "GUI refreshed successfully." even when the server was unreachable. Fixed (2026-08-15) by adding the same guard the sibling refreshers (`refreshArchivedPTWs`, Isolator/Admin) already had: on error, hide the busy overlay and show a "Failed to refresh data" warning instead of rebuilding the tabs and toasting success.
+
+---
+
+### ~~M32 — `slr()` crashes the risk report on an empty analysis field~~ ✓
+**File:** `client/reports/ReportGenerator.py`
+
+`slr()` returned `t[0], t[-1], t`, so any risk item with an empty severity/likelihood/evaluation string raised `IndexError`, killing `riskAssessmentReport` and therefore the whole PTW PDF (called from `ptwReport`). Fixed (2026-08-15) with slice-based indexing: `return (t[:1] or ' '), (t[-1:] or ' '), t` — empty fields now render as blanks instead of crashing the report.
 
 ---
 

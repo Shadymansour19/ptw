@@ -265,6 +265,11 @@ def updatePTWApprovals():
         log.warning("POST /ptws/approvals: forbidden — user '%s' (role=%s, dept=%s) not an eligible approver for PTW #%s at its current stage", user.getUsername(), user.getRole(), user.getDepartment(), ptwId)
         return jsonify({"success": False, "error": "You are not an eligible approver for this PTW at its current stage"}), 403
     approval = PTW.Approval(**approvalData)
+    # Snapshot the verified actor's role/department into the record (never the
+    # payload's), so replaying the approval chain stays valid even if this
+    # user is later deleted or re-roled.
+    approval.role = user.getRole()
+    approval.department = user.getDepartment()
     try:
         result = ptwDB.updatePTWApprovals(ptwId, approval)
         syncPtwCache(ptwId)

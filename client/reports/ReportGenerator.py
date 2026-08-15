@@ -358,7 +358,7 @@ class ReportGenerator:
                 """Return the most recent approval on ptw matching approver, or None."""
                 match = None
                 for approval in ptw.approvals:
-                    if approver.matchesUser(globalData.allUsers.get(approval.username)):
+                    if approver.matchesRoleDept(*approval.roleDept()):
                         match = approval
                 return match
 
@@ -367,7 +367,8 @@ class ReportGenerator:
                 for approver in stage:
                     approval = lastApprovalFor(approver)
                     if approval and approval.action == PTW.ApprovalActions.APPROVED:
-                        name = globalData.allUsers[approval.username].getName()
+                        approvalUser = globalData.allUsers.get(approval.username)
+                        name = approvalUser.getName() if approvalUser else str(approval.username)
                         ts   = approval.timestamp or ''
                     else:
                         name, ts = '', ''
@@ -769,7 +770,7 @@ class ReportGenerator:
                 """Return the most recent approval on ic matching approver, or None."""
                 match = None
                 for approval in ic.approvals:
-                    if approver.matchesUser(globalData.allUsers.get(approval.username)):
+                    if approver.matchesRoleDept(*approval.roleDept()):
                         match = approval
                 return match
 
@@ -1171,9 +1172,10 @@ class ReportGenerator:
         def slr(text):
             """Split a Severity/Likelihood/Risk analysis string into its (severity,
             likelihood, full text) parts: the first and last characters of text,
-            plus text itself."""
+            plus text itself. An empty/missing text yields blank parts instead
+            of raising."""
             t = text or ''
-            return t[0], t[-1], t
+            return (t[:1] or ' '), (t[-1:] or ' '), t
 
         def bulleted(text):
             """Split text on newlines, dropping blank lines, and render each

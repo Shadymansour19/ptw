@@ -39,7 +39,9 @@ class SSEListener(QThread):
         """Thread entry point: connect to GET /events and emit events until stopped.
 
         Loops while ``_running``. Each iteration opens a streaming, Basic-Auth
-        GET to ``{server_url}/events`` (10s connect timeout, no read timeout)
+        GET to ``{server_url}/events`` (10s connect timeout, 65s read timeout
+        — comfortably above the server's 30s heartbeat, so a half-open
+        connection surfaces as ReadTimeout and triggers a reconnect)
         and reads it line by line in the SSE wire format: a blank line resets
         the current event type back to ``"message"``, a line starting with
         ``:`` is a comment and is ignored, an ``event:`` line updates the
@@ -57,7 +59,11 @@ class SSEListener(QThread):
                     f"{self._server_url}/events",
                     auth=(self._username, self._password),
                     stream=True,
-                    timeout=(10, None),
+                    # Read timeout must exceed the server's 30s heartbeat interval:
+                    # a half-open connection (no FIN/RST) then raises ReadTimeout
+                    # instead of blocking iter_lines() forever, letting the outer
+                    # loop reconnect.
+                    timeout=(10, 65),
                 ) as resp:
                     resp.raise_for_status()
                     event_type = "message"

@@ -225,14 +225,33 @@ class IC:
         RETURNED = 'Returned'
 
     class Approval:
-        """One recorded action (approve/return) in the IC's approval chain, by whom and when."""
+        """One recorded action (approve/return) in the IC's approval chain, by whom and when.
+        role/department snapshot the actor's role and department at approval time (stamped
+        server-side), so replay stays valid even if the user is later deleted or re-roled;
+        records predating the snapshot fall back to the live user record (see roleDept())."""
 
-        def __init__(self, action=None, username: str = None, timestamp: str = None, comment: str = None):
-            """Set the action, acting user, timestamp, and optional comment."""
+        def __init__(self, action=None, username: str = None, timestamp: str = None, comment: str = None,
+                     role: str = None, department: str = None):
+            """Set the action, acting user, timestamp, optional comment, and the
+            actor's role/department snapshot."""
             self.action = action
             self.username = username
             self.timestamp = timestamp
             self.comment = comment
+            self.role = role
+            self.department = department
+
+        def roleDept(self) -> tuple:
+            """The (role, department) this approval counts for: the snapshot
+            taken at approval time, or — for legacy records without one — the
+            acting user's current role/department, or (None, None) if that
+            user no longer exists."""
+            if self.role:
+                return self.role, self.department
+            user = globalData.allUsers.get(self.username)
+            if user is not None:
+                return user.getRole(), user.getDepartment()
+            return None, None
 
         def setAll(self, data: dict):
             """Bulk-assign matching attributes from a dict and return self."""
@@ -408,10 +427,18 @@ class IC:
             ])
         return stages
 
+    def _approvedRoleDepts(self) -> list[tuple]:
+        """(role, department) pairs credited by this IC's APPROVED entries —
+        each approval's at-approval-time snapshot where available (see
+        Approval.roleDept()), so replay doesn't regress when an approver is
+        later deleted or re-roled."""
+        pairs = [a.roleDept() for a in self.approvals if a.action == IC.ApprovalActions.APPROVED]
+        return [(role, dept) for role, dept in pairs if role is not None]
+
     def _stageSatisfied(self, stage: list['IC.Approver']) -> bool:
         """Return True if every Approver in the given stage has a matching Approved entry."""
-        approvedBy = [globalData.allUsers.get(a.username) for a in self.approvals if a.action == IC.ApprovalActions.APPROVED]
-        return all(any(approver.matchesUser(user) for user in approvedBy) for approver in stage)
+        approvedRoleDepts = self._approvedRoleDepts()
+        return all(any(approver.matchesRoleDept(role, dept) for role, dept in approvedRoleDepts) for approver in stage)
 
     def _pendingStageIndex(self) -> int:
         """Index of the first not-yet-satisfied approval stage, or len(stages) if fully approved."""
@@ -423,13 +450,13 @@ class IC:
 
     def pendingApprovers(self) -> list['IC.Approver']:
         """Flattened Approvers still needed, across the current and any later stage."""
-        approvedBy = [globalData.allUsers.get(a.username) for a in self.approvals if a.action == IC.ApprovalActions.APPROVED]
+        approvedRoleDepts = self._approvedRoleDepts()
         stages = self.requiredApprovers()
         return [
             approver
             for stage in stages[self._pendingStageIndex():]
             for approver in stage
-            if not any(approver.matchesUser(user) for user in approvedBy)
+            if not any(approver.matchesRoleDept(role, dept) for role, dept in approvedRoleDepts)
         ]
 
     def getApprovalStatus(self, role=None, department=None):
@@ -444,8 +471,8 @@ class IC:
             return IC.Status.REQUESTED
 
         for approval in self.approvals[::-1]:
-            user = globalData.allUsers.get(approval.username)
-            if user is not None and user.getRole() == role and user.getDepartment() == department:
+            aRole, aDept = approval.roleDept()
+            if aRole == role and aDept == department:
                 return approval.action
 
         stages = self.requiredApprovers()

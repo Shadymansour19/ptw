@@ -1538,13 +1538,32 @@ class PTW:
     class Approval:
         """One recorded action in a PTW's approval chain: who took it (username), what
         action (Approved/Returned), when, and an optional comment. requiredApprovers()
-        defines the stages this log is checked against."""
-        def __init__(self, action = None, username: str = None, timestamp: str = None, comment: str = None):
-            """Set the action, acting username, timestamp, and optional comment."""
+        defines the stages this log is checked against. role/department snapshot the
+        actor's role and department at approval time (stamped server-side), so replay
+        stays valid even if the user is later deleted or re-roled; records predating
+        the snapshot fall back to the live user record (see roleDept())."""
+        def __init__(self, action = None, username: str = None, timestamp: str = None, comment: str = None,
+                     role: str = None, department: str = None):
+            """Set the action, acting username, timestamp, optional comment, and the
+            actor's role/department snapshot."""
             self.action = action
             self.username = username
             self.timestamp = timestamp
             self.comment = comment
+            self.role = role
+            self.department = department
+
+        def roleDept(self) -> tuple:
+            """The (role, department) this approval counts for: the snapshot
+            taken at approval time, or — for legacy records without one — the
+            acting user's current role/department, or (None, None) if that
+            user no longer exists."""
+            if self.role:
+                return self.role, self.department
+            user = globalData.allUsers.get(self.username)
+            if user is not None:
+                return user.getRole(), user.getDepartment()
+            return None, None
 
         def setAll(self, data: dict):
             """Update fields from a dict, ignoring unknown keys and per-key errors."""
@@ -2171,11 +2190,19 @@ class PTW:
             ])
         return requiredApprovers
 
+    def _approvedRoleDepts(self) -> list[tuple]:
+        """(role, department) pairs credited by this PTW's APPROVED entries —
+        each approval's at-approval-time snapshot where available (see
+        Approval.roleDept()), so replay doesn't regress when an approver is
+        later deleted or re-roled."""
+        pairs = [a.roleDept() for a in self.approvals if a.action == PTW.ApprovalActions.APPROVED]
+        return [(role, dept) for role, dept in pairs if role is not None]
+
     def _stageSatisfied(self, stage: list['PTW.Approver']) -> bool:
         """Return whether every Approver in stage has a matching Approved action in this
         PTW's approval history."""
-        approvedBy = [globalData.allUsers.get(a.username) for a in self.approvals if a.action == PTW.ApprovalActions.APPROVED]
-        return all(any(approver.matchesUser(user) for user in approvedBy) for approver in stage)
+        approvedRoleDepts = self._approvedRoleDepts()
+        return all(any(approver.matchesRoleDept(role, dept) for role, dept in approvedRoleDepts) for approver in stage)
 
     def _pendingStageIndex(self) -> int:
         """Index of the first not-yet-satisfied stage, or len(stages) if fully approved."""
@@ -2187,13 +2214,13 @@ class PTW:
 
     def pendingApprovers(self) -> list['PTW.Approver']:
         """Flattened Approvers still needed, across the current and any later stage."""
-        approvedBy = [globalData.allUsers.get(a.username) for a in self.approvals if a.action == PTW.ApprovalActions.APPROVED]
+        approvedRoleDepts = self._approvedRoleDepts()
         stages = self.requiredApprovers()
         return [
             approver
             for stage in stages[self._pendingStageIndex():]
             for approver in stage
-            if not any(approver.matchesUser(user) for user in approvedBy)
+            if not any(approver.matchesRoleDept(role, dept) for role, dept in approvedRoleDepts)
         ]
 
     def __updateStatus(self):
@@ -2263,8 +2290,8 @@ class PTW:
             return self.approval_status
 
         for approval in self.approvals[::-1]:
-            user = globalData.allUsers.get(approval.username)
-            if user is not None and user.getRole() == role and user.getDepartment() == department:
+            aRole, aDept = approval.roleDept()
+            if aRole == role and aDept == department:
                 return approval.action
 
         stages = self.requiredApprovers()
