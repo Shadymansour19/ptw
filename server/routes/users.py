@@ -15,6 +15,12 @@ from utils import objToDict
 
 usersBp = Blueprint("users", __name__)
 
+# Fields a non-admin user may change on their own account via PUT /users.
+# Everything else (role, is_active, department, ...) is admin-only: a
+# self-update is stripped to this set before reaching the generic
+# column-setter, so a crafted payload can't escalate privileges (C1).
+SELF_EDITABLE_FIELDS = {'name', 'email', 'ext', 'password'}
+
 
 @usersBp.route("/user", methods=["GET"])
 def getSecuredUser():
@@ -205,6 +211,8 @@ def newUserRequest():
 def updateUserRequest():
     """PUT /users: admin, or the user updating their own account; GUEST is
     explicitly denied. Body: {"username": <target>, ...fields to update}.
+    A non-admin self-update only applies SELF_EDITABLE_FIELDS; privileged
+    fields (role, is_active, department, ...) in the payload are dropped.
     On success, patches globalData.allUsers with the refreshed SecuredUser and
     returns {"success": True, "user": None} (the DB layer returns None, not
     the updated record, on success; an exception it caught internally
@@ -220,7 +228,19 @@ def updateUserRequest():
         log.warning("PUT /users: guest '%s' attempted to update '%s'", authUser.getUsername(), target)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     try:
-        if authUser.getRole() == UserRoles.ADMIN or authUser.getUsername() == target:
+        isAdmin = authUser.getRole() == UserRoles.ADMIN
+        if isAdmin or authUser.getUsername() == target:
+            if not isAdmin:
+                # 'username' isn't editable but must survive the strip: it's
+                # the row-match key for updateRecordFromDict.
+                blocked = set(userDataDict) - SELF_EDITABLE_FIELDS - {'username'}
+                if blocked:
+                    log.warning(
+                        "PUT /users: '%s' self-update included non-self-editable fields %s — dropped",
+                        authUser.getUsername(), sorted(blocked)
+                    )
+                    userDataDict = {k: v for k, v in userDataDict.items()
+                                    if k in SELF_EDITABLE_FIELDS or k == 'username'}
             result = userDB.updateUserFromDict(userDataDict)
             if result is None:
                 if target:
