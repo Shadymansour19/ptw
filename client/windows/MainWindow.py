@@ -30,6 +30,7 @@ from tables.TableRisks import TableRisks
 from tables.TableICs import TableICs
 from dialogs.DialogIC import DialogIC
 from dialogs.DialogCompleteIsolation import DialogCompleteIsolation
+from dialogs.DialogDefinePsicTerms import DialogDefinePsicTerms
 from models.Isolation import IC
 from widgets.TabServerLogs import TabServerLogs
 from tables.TableBackups import TableBackups
@@ -1132,15 +1133,34 @@ class MainWindow(QMainWindow):
 
     def acceptIC(self, row: int, ic: IC):
         """Confirm and, if confirmed, record an irreversible approval for `ic` on its
-        approval chain."""
-        reply = QMessageBox.question(
-            self, t('Accept IC #{0}').format(ic.id), t("Are you sure you want to approve IC #{0}? This is irreversible").format(ic.id),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
+        approval chain. Two roles get a richer flow instead of the plain Yes/No confirm:
+        Coordinator's approval of a PSIC's own stage doubles as writing its PSIC terms
+        (DialogDefinePsicTerms, whose own OK button is the confirmation - no separate
+        "define terms" action exists outside the approval chain); Issuing's approval
+        offers a "Mark as PSIC" checkbox, since Issuing is the only role that may flag an
+        IC as PSIC in the first place."""
+        if self.loggedUser.getRole() == UserRoles.COORDINATOR and ic.is_psic:
+            dlg = DialogDefinePsicTerms(self, ic)
+            if dlg.exec() != QDialog.DialogCode.Accepted:
+                return
+            approval = IC.Approval(IC.ApprovalActions.APPROVED, self.loggedUser.getUsername(), datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
+            ClientRequests.updateApprovalIC(self.loggedUser, ic.id, approval, psic_terms=dlg.getTerms(), callback=self._on_request_done_generic)
+            return
+
+        box = QMessageBox(
+            QMessageBox.Icon.Question, t('Accept IC #{0}').format(ic.id),
+            t("Are you sure you want to approve IC #{0}? This is irreversible").format(ic.id),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, self
         )
-        if reply != QMessageBox.StandardButton.Yes:
+        box.setDefaultButton(QMessageBox.StandardButton.No)
+        markPsicBox = None
+        if self.loggedUser.getRole() == UserRoles.ISSUING and not ic.is_psic:
+            markPsicBox = QCheckBox(t("Protective System IC (PSIC)"))
+            box.setCheckBox(markPsicBox)
+        if box.exec() != QMessageBox.StandardButton.Yes:
             return
         approval = IC.Approval(IC.ApprovalActions.APPROVED, self.loggedUser.getUsername(), datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
-        ClientRequests.updateApprovalIC(self.loggedUser, ic.id, approval, callback=self._on_request_done_generic)
+        ClientRequests.updateApprovalIC(self.loggedUser, ic.id, approval, mark_psic=bool(markPsicBox and markPsicBox.isChecked()), callback=self._on_request_done_generic)
 
     def requestEditsIC(self, row: int, ic: IC):
         """Prompt for a mandatory comment and return `ic` to its requestor for edits,

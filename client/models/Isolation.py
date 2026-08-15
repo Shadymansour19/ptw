@@ -14,6 +14,38 @@ from models.User import UserRoles
 from GlobalData import globalData
 
 
+# PSIC ("Protective System IC") reason options - defined client-side only, not enforced
+# by the server as a fixed enum; the server just stores whatever list of strings is sent
+# (see POST /ics/approvals, Coordinator's PSIC-terms validation - non-empty is all it
+# checks). No server-side twin of these three constants is needed, unlike the rest of
+# this file.
+PSIC_REASONS = ['ESD', 'Fire Protection', 'Fire Detection', 'Gas Detection', 'Protection System', 'Other']
+PSIC_REASON_GRID_COLS = 3
+
+# Sample per-tag isolation data for the "autofill from tag" convenience feature - stands in
+# for a real per-tag data source, which doesn't exist yet.
+PSIC_TAG_SAMPLES = {
+    'XV-3615E': {
+        'reasons': ['ESD'],
+        'system_description': "UT-C Control Valve — part of the Unit UT-C emergency shutdown loop.",
+        'isolation_method': "Close XV-3615E and secure in the closed position with a mechanical lock-out device.",
+        'control_measures': "Verify zero-energy state with a local pressure/position check; apply lock-out tag; log in the isolation register before work starts.",
+    },
+    'SDV-6514': {
+        'reasons': ['ESD', 'Fire Protection'],
+        'system_description': "FL-A Breaker — feeds the flare header's shutdown valve actuator.",
+        'isolation_method': "Open SDV-6514's supply breaker and rack it out.",
+        'control_measures': "Verify de-energized with a voltage tester; apply electrical lock-out and danger tag; notify the Electrical shift lead.",
+    },
+    'EV-5333': {
+        'reasons': ['Protection System'],
+        'system_description': "IN-A Feeder Panel — supplies the instrument air system's protective shutdown solenoid.",
+        'isolation_method': "Isolate EV-5333 at the feeder panel and remove the fuse.",
+        'control_measures': "Confirm zero air pressure downstream; apply lock-out tag on the panel; retain the fuse with the permit holder.",
+    },
+}
+
+
 class Isolation:
     """Declarative record of an isolation required by a PTW — type/tag/description only.
     No runtime linkage state; that now lives entirely on IC (see below)."""
@@ -357,12 +389,18 @@ class IC:
         return f"{self.id} - {self.type} {self.reason if self.reason else ''}"
 
     def requiredApprovers(self) -> list[list['IC.Approver']]:
-        """Return the ordered approval stages required for this IC: Issuing alone
-        for a normal IC, or Issuing followed by PDH/PGM/SOD/DFGM (each its own
-        stage) when `is_psic` is set."""
+        """Return the ordered approval stages required for this IC: Issuing alone for a
+        normal IC, or Issuing, then Coordinator, then PDH/PGM/SOD/DFGM (each its own
+        stage) when `is_psic` is set. Issuing is the one who sets `is_psic` in the first
+        place (as part of approving their own stage - see MainWindow.acceptIC), and
+        Coordinator's approval of their stage is what supplies the PSIC terms
+        (psic_reasons/psic_moc_number/psic_system_description/psic_isolation_method/
+        psic_control_measures - see MainWindow.acceptIC's Coordinator branch and
+        POST /ics/approvals) rather than being a separate action outside the chain."""
         stages = [[IC.Approver(UserRoles.ISSUING)]]
         if self.is_psic:
             stages.extend([
+                [IC.Approver(UserRoles.COORDINATOR)],
                 [IC.Approver(UserRoles.PDH)],
                 [IC.Approver(UserRoles.PGM)],
                 [IC.Approver(UserRoles.SOD)],

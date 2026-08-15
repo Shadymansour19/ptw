@@ -355,12 +355,18 @@ class IC:
         return f"{self.id} - {self.type} {self.reason if self.reason else ''}"
 
     def requiredApprovers(self) -> list[list['IC.Approver']]:
-        """Return the ordered approval stages required for this IC: Issuing alone
-        for a normal IC, or Issuing followed by PDH/PGM/SOD/DFGM (each its own
-        stage) when `is_psic` is set."""
+        """Return the ordered approval stages required for this IC: Issuing alone for a
+        normal IC, or Issuing, then Coordinator, then PDH/PGM/SOD/DFGM (each its own
+        stage) when `is_psic` is set. Issuing is the one who sets `is_psic` in the first
+        place (as part of approving their own stage - see routes/ics.py's
+        updateICApprovals), and Coordinator's approval of their stage is what supplies
+        the PSIC terms (psic_reasons/psic_moc_number/psic_system_description/
+        psic_isolation_method/psic_control_measures - same route) rather than being a
+        separate action outside the chain."""
         stages = [[IC.Approver(UserRoles.ISSUING)]]
         if self.is_psic:
             stages.extend([
+                [IC.Approver(UserRoles.COORDINATOR)], 
                 [IC.Approver(UserRoles.PDH)],
                 [IC.Approver(UserRoles.PGM)],
                 [IC.Approver(UserRoles.SOD)],

@@ -18,7 +18,7 @@ import qtawesome as qta
 
 from models.User import UserRoles, UserDepartments
 from models.PTW import PTW
-from models.Isolation import IC
+from models.Isolation import IC, PSIC_REASONS, PSIC_REASON_GRID_COLS, PSIC_TAG_SAMPLES
 from tables.TableIsolationItems import TableIsolationItems
 from widgets.WidgetPidWiring import WidgetPidWiring
 from widgets.UiUtils import Timeline
@@ -27,35 +27,6 @@ from network.clientRequests import ClientRequests
 from helper.i18n import t
 from widgets.RefreshOverlay import RefreshOverlay
 from dialogs.TabbedDialog import TabbedDialog
-
-
-# PSIC ("Protective System IC") reason options - defined client-side only, not enforced
-# by the server as a fixed enum; the server just stores whatever list of strings is sent.
-PSIC_REASONS = ['ESD', 'Fire Protection', 'Fire Detection', 'Gas Detection', 'Protection System', 'Other']
-PSIC_REASON_GRID_COLS = 3
-
-# Sample per-tag isolation data for the "autofill from tag" convenience feature - stands in
-# for a real per-tag data source, which doesn't exist yet.
-PSIC_TAG_SAMPLES = {
-    'XV-3615E': {
-        'reasons': ['ESD'],
-        'system_description': "UT-C Control Valve — part of the Unit UT-C emergency shutdown loop.",
-        'isolation_method': "Close XV-3615E and secure in the closed position with a mechanical lock-out device.",
-        'control_measures': "Verify zero-energy state with a local pressure/position check; apply lock-out tag; log in the isolation register before work starts.",
-    },
-    'SDV-6514': {
-        'reasons': ['ESD', 'Fire Protection'],
-        'system_description': "FL-A Breaker — feeds the flare header's shutdown valve actuator.",
-        'isolation_method': "Open SDV-6514's supply breaker and rack it out.",
-        'control_measures': "Verify de-energized with a voltage tester; apply electrical lock-out and danger tag; notify the Electrical shift lead.",
-    },
-    'EV-5333': {
-        'reasons': ['Protection System'],
-        'system_description': "IN-A Feeder Panel — supplies the instrument air system's protective shutdown solenoid.",
-        'isolation_method': "Isolate EV-5333 at the feeder panel and remove the fuse.",
-        'control_measures': "Confirm zero air pressure downstream; apply lock-out tag on the panel; retain the fuse with the permit holder.",
-    },
-}
 
 
 class DialogIC(TabbedDialog):
@@ -102,6 +73,7 @@ class DialogIC(TabbedDialog):
         readOnly is True."""
         super().__init__(parent)
         self.setWindowTitle(title)
+        self.setMinimumSize(1000, 800)
         self.setModal(True)
         self.loggedUser = loggedUser
         self.ic = ic
@@ -179,15 +151,25 @@ class DialogIC(TabbedDialog):
         formBasicInfo.addRow(t("Equipment:"), self.boxEquipment)
         formBasicInfo.addRow(t("Reason:"), self.boxReason)
 
-        self.boxIsolateAsap = QCheckBox(t("Isolate ASAP (once approved)"))
-        formBasicInfo.addRow(self.boxIsolateAsap)
+        # Yes/No combo boxes rather than standalone checkboxes - a QCheckBox added as its
+        # own spanning addRow(widget) row (not addRow(label, field)) overlapped the row
+        # above it under RTL layout direction (a QFormLayout spanning-row geometry quirk
+        # that didn't reproduce in a minimal repro, so rather than chase it blind, this
+        # sidesteps it entirely: a normal addRow(label, field) row never spans). Same
+        # translated-display/real-boolean-value pattern as DialogPTW.py's boxFastTrack.
+        self.boxIsolateAsap = QComboBox()
+        for val in ('No', 'Yes'):
+            self.boxIsolateAsap.addItem(t(val), val)
+        formBasicInfo.addRow(t("Isolate ASAP (once approved):"), self.boxIsolateAsap)
 
-        self.boxLongTerm = QCheckBox(t("Long Term Isolation"))
+        self.boxLongTerm = QComboBox()
+        for val in ('No', 'Yes'):
+            self.boxLongTerm.addItem(t(val), val)
         self.boxLongTermReason = QTextEdit()
         self.boxLongTermReason.setFixedHeight(self.boxLongTermReason.fontMetrics().lineSpacing() * 2 + 10)
         self.boxLongTermReason.setPlaceholderText(t("Reason for long term isolation"))
-        self.boxLongTerm.toggled.connect(self.boxLongTermReason.setEnabled)
-        formBasicInfo.addRow(self.boxLongTerm)
+        self.boxLongTerm.currentIndexChanged.connect(lambda _: self.boxLongTermReason.setEnabled(self.boxLongTerm.currentData() == 'Yes'))
+        formBasicInfo.addRow(t("Long Term Isolation:"), self.boxLongTerm)
         formBasicInfo.addRow(t("Long Term Reason:"), self.boxLongTermReason)
 
         self.itemsTable = TableIsolationItems(self.tabItems, ic.items, readOnly)
@@ -200,13 +182,25 @@ class DialogIC(TabbedDialog):
         self.itemsTable.itemsChanged.connect(self.pidWiringWidget.onItemsChanged)
 
         # PSIC (Protective System IC) - any IC, regardless of type, can be flagged as one.
+        # Nobody can set this at creation time any more (see the self.new branch below) - Issuing
+        # is the one who flags is_psic, as part of approving their own stage, and Coordinator's own
+        # approval of the following stage is what supplies psic_reasons/moc/the three description
+        # fields (see MainWindow.acceptIC and DialogDefinePsicTerms). This block, and everything
+        # under it down to psicEditableContainer, is only ever shown/interactive in readonly mode
+        # (viewing an existing IC) - kept fully built (just hidden) rather than left out entirely in
+        # new mode, so accept()'s write-back below still always has real (empty) widgets to read '',
+        # never None, into the psic_* NOT NULL columns.
+        psicEditableContainer = QWidget()
+        lytPsicEditable = QVBoxLayout(psicEditableContainer)
+        lytPsicEditable.setContentsMargins(0, 0, 0, 0)
+
         self.boxIsPsic = QCheckBox(t("Protective System IC (PSIC)"))
         self.boxIsPsic.setFont(QFont("Helvetica", 13, QFont.Weight.Bold))
         lytIsPsicRow = QHBoxLayout()
         lytIsPsicRow.addStretch()
         lytIsPsicRow.addWidget(self.boxIsPsic)
         lytIsPsicRow.addStretch()
-        lytPsic.addLayout(lytIsPsicRow)
+        lytPsicEditable.addLayout(lytIsPsicRow)
 
         formPsicOther = QFormLayout()
         formPsicOther.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
@@ -220,16 +214,20 @@ class DialogIC(TabbedDialog):
         lytPsicAutofill.addWidget(self.btnPsicAutofill)
         formPsicOther.addRow(t("MOC Number:"), self.boxPsicMocNumber)
         formPsicOther.addRow(t("Autofill from Tag:"), lytPsicAutofill)
-        lytPsic.addLayout(formPsicOther)
+        lytPsicEditable.addLayout(formPsicOther)
 
-        lytPsic.addWidget(QLabel(f"<b>{t('PSIC Reason(s)')}</b>"))
+        lytPsicEditable.addSpacing(20)
+
+        lytPsicEditable.addWidget(QLabel(f"<b>{t('PSIC Reason(s)')}</b>"))
         gridPsicReasons = QGridLayout()
         self.psicReasonCheckboxes: dict[str, QCheckBox] = {}
         for i, reason in enumerate(PSIC_REASONS):
             btn = QCheckBox(t(reason))
             self.psicReasonCheckboxes[reason] = btn
             gridPsicReasons.addWidget(btn, i // PSIC_REASON_GRID_COLS, i % PSIC_REASON_GRID_COLS)
-        lytPsic.addLayout(gridPsicReasons)
+        lytPsicEditable.addLayout(gridPsicReasons)
+
+        lytPsicEditable.addSpacing(20)
 
         lytPsicFields = QHBoxLayout()
 
@@ -246,7 +244,18 @@ class DialogIC(TabbedDialog):
         self.boxPsicSystemDescription = addPsicFieldColumn("System to be Isolated:")
         self.boxPsicIsolationMethod = addPsicFieldColumn("Method of Isolation:")
         self.boxPsicControlMeasures = addPsicFieldColumn("Control Measure / Mitigation:")
-        lytPsic.addLayout(lytPsicFields, stretch=1)
+        lytPsicEditable.addLayout(lytPsicFields, stretch=1)
+
+        lytPsic.addWidget(psicEditableContainer, stretch=1)
+
+        psicNewModeNote = QLabel(t("PSIC is set by Issuing during approval; Coordinator then defines its terms as part of their own approval."))
+        psicNewModeNote.setWordWrap(True)
+        psicNewModeNote.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lytPsic.addWidget(psicNewModeNote)
+        if new:
+            psicEditableContainer.setVisible(False)
+        else:
+            psicNewModeNote.setVisible(False)
 
         # Combo/button/checkbox controls have no "read-only" concept, so they're always
         # disabled outright in readonly mode (matching typeCombo/boxLocation) to prevent
@@ -281,10 +290,6 @@ class DialogIC(TabbedDialog):
         self.stack.currentChanged.connect(self.stackTabChanged)
         self.stackTabChanged()
         self._certTypeChanged()
-
-        if parent:
-            self.setMinimumWidth(int(parent.width() * 0.6))
-        self.setMinimumHeight(650)
 
     def updateFabForTab(self, tab: QWidget):
         """TabbedDialog hook: show the floating action button for whichever "add new"
@@ -527,10 +532,10 @@ class DialogIC(TabbedDialog):
             self.boxLocation.setCurrentIndex(max(0, self.boxLocation.findData(self.ic.location)))
         self.boxEquipment.setText(self.ic.equipment or '')
         self.boxReason.setText(self.ic.reason or '')
-        self.boxIsolateAsap.setChecked(bool(self.ic.isolate_asap))
-        self.boxLongTerm.setChecked(bool(self.ic.long_term))
+        self.boxIsolateAsap.setCurrentIndex(max(0, self.boxIsolateAsap.findData('Yes' if self.ic.isolate_asap else 'No')))
+        self.boxLongTerm.setCurrentIndex(max(0, self.boxLongTerm.findData('Yes' if self.ic.long_term else 'No')))
         self.boxLongTermReason.setText(self.ic.long_term_reason or '')
-        self.boxLongTermReason.setEnabled(self.boxLongTerm.isChecked())
+        self.boxLongTermReason.setEnabled(self.boxLongTerm.currentData() == 'Yes')
 
         self.boxIsPsic.setChecked(bool(self.ic.is_psic))
         psicReasons = set(self.ic.psic_reasons or [])
@@ -554,7 +559,7 @@ class DialogIC(TabbedDialog):
         self.boxLongTerm.setEnabled(not self.readonly)
         self.boxLongTermReason.setReadOnly(self.readonly)
         if self.readonly:
-            self.boxLongTermReason.setEnabled(self.boxLongTerm.isChecked())
+            self.boxLongTermReason.setEnabled(self.boxLongTerm.currentData() == 'Yes')
 
         self.boxIsPsic.setEnabled(not self.readonly)
         self.boxPsicMocNumber.setReadOnly(self.readonly)
@@ -629,23 +634,20 @@ class DialogIC(TabbedDialog):
         if not reason:
             QMessageBox.warning(self, "Invalid Input", "Please enter a reason for the isolation.")
             return
-        if self.boxLongTerm.isChecked() and not long_term_reason:
+        if self.boxLongTerm.currentData() == 'Yes' and not long_term_reason:
             QMessageBox.warning(self, "Invalid Input", "Please enter a reason to isolate for long term")
             return
         if not self.itemsTable.getItems():
             QMessageBox.warning(self, "Invalid Input", "Please add at least one isolation item.")
             return
 
+        # No PSIC validation here: is_psic can never be checked in this dialog any more (see the
+        # psicEditableContainer/new-mode note above - accept()'s body only ever runs in new mode,
+        # readonly short-circuits above) - Issuing sets is_psic and Coordinator supplies its terms,
+        # both later, on the approval chain (MainWindow.acceptIC / DialogDefinePsicTerms).
         psic_system_description = self.boxPsicSystemDescription.toPlainText().strip()
         psic_isolation_method = self.boxPsicIsolationMethod.toPlainText().strip()
         psic_control_measures = self.boxPsicControlMeasures.toPlainText().strip()
-        if self.boxIsPsic.isChecked():
-            if not any(btn.isChecked() for btn in self.psicReasonCheckboxes.values()):
-                QMessageBox.warning(self, "Invalid Input", "Please select at least one PSIC reason.")
-                return
-            if not psic_system_description or not psic_isolation_method or not psic_control_measures:
-                QMessageBox.warning(self, "Invalid Input", "Please fill in the system to be isolated, method of isolation, and control measure/mitigation for this PSIC.")
-                return
 
         executionDept = self.boxExecutionDepartment.currentData()
         if not executionDept:
@@ -659,8 +661,8 @@ class DialogIC(TabbedDialog):
         self.ic.location = self.boxLocation.currentData()
         self.ic.equipment = equipment
         self.ic.reason = reason
-        self.ic.isolate_asap = self.boxIsolateAsap.isChecked()
-        self.ic.long_term = self.boxLongTerm.isChecked()
+        self.ic.isolate_asap = self.boxIsolateAsap.currentData() == 'Yes'
+        self.ic.long_term = self.boxLongTerm.currentData() == 'Yes'
         self.ic.long_term_reason = long_term_reason
 
         self.ic.is_psic = self.boxIsPsic.isChecked()

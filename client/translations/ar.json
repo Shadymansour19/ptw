@@ -533,6 +533,9 @@
     "Link PTW to IC #{0}": "ربط تصريح بـ IC رقم {0}",
     "No linked PTWs.": "لا توجد تصاريح مرتبطة.",
     "PSIC Reason(s)": "سبب/أسباب PSIC",
+    "PSIC is set by Issuing during approval; Coordinator then defines its terms as part of their own approval.": "يتم تحديد حالة PSIC من قِبل جهة الإصدار عند الاعتماد؛ وفي حال تحديدها، يقوم المنسق بتحديد شروطها كجزء من اعتماده.",
+    "Define PSIC Terms": "تحديد شروط PSIC",
+    "Define the PSIC terms for IC #{0} - required before it can proceed to PDH/PGM/SOD/DFGM.": "حدد شروط PSIC لـ IC رقم {0} - مطلوبة قبل أن يتمكن من الانتقال إلى PDH/PGM/SOD/DFGM.",
     "PTW #{0} could not be found (it may be archived).": "لم يتم العثور على التصريح رقم {0} (قد يكون مؤرشفًا).",
     "PTW #{0} has been unlinked. Reopen this IC to see the updated linkage.": "تم فصل ربط التصريح رقم {0}. أعد فتح هذا IC لرؤية الربط المحدَّث.",
     "PTW #{0} has been linked. Reopen this IC to see the updated linkage.": "تم ربط التصريح رقم {0}. أعد فتح هذا IC لرؤية الربط المحدَّث.",
@@ -651,5 +654,8 @@
     "Re-isolate": "إعادة العزل",
     "De-isolate": "إلغاء العزل",
     "Confirmed": "مؤكَّد",
-    "Carried Out": "منفَّذ"
+    "Carried Out": "منفَّذ",
+    "Isolate ASAP (once approved):": "عزل فوري (بعد الاعتماد مباشرة):",
+    "Long Term Isolation:": "عزل طويل الأمد:",
+    "Add Risk Items": "إضافة عناصر مخاطر"
 }

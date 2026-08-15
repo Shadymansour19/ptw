@@ -220,8 +220,13 @@ class ICRequests:
         return None
 
     @async_request
-    def updateApprovalIC(loggedUser: User, icId, approval: IC.Approval) -> str:
+    def updateApprovalIC(loggedUser: User, icId, approval: IC.Approval, mark_psic: bool = False, psic_terms: dict = None) -> str:
         """Submit an approval action on an IC's approval chain via POST /ics/approvals.
+
+        `mark_psic` is only meaningful for Issuing's own approval (flags the IC as a PSIC);
+        `psic_terms` is only meaningful for Coordinator's own approval of a PSIC (the
+        reasons/MOC number/description fields their approval doubles as writing - see
+        DialogDefinePsicTerms.getTerms()). Neither has any effect for any other role/stage.
 
         Returns an error string, or None on success.
         """
@@ -229,7 +234,7 @@ class ICRequests:
         try:
             response = requests.post(
                 f'{SERVER_URL}/ics/approvals',
-                json={'ic-id': icId, 'approval': approval.__dict__},
+                json={'ic-id': icId, 'approval': approval.__dict__, 'mark_psic': mark_psic, 'psic_terms': psic_terms},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
                 timeout=TIMEOUT
             )

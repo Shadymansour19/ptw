@@ -298,10 +298,13 @@ def addICRequest():
     ``requestor``/``requestor_department``/``requestor_timestamp`` from the
     caller (never trusted from the payload). 400 if ``execution_department``
     is missing, or (for a Self-type IC) doesn't match
-    ``requestor_department``, or (when ``is_psic``) ``psic_reasons`` is
-    empty or any of ``psic_system_description``/``psic_isolation_method``/
-    ``psic_control_measures`` is blank. Broadcasts an IC CREATED SSE event
-    to the ISSUING role. Responds with ``{"success": True, "ic-id": <id>}``.
+    ``requestor_department``. ``is_psic`` and every ``psic_*`` field are
+    force-blanked regardless of what the payload sends - PSIC can only ever
+    be set later, by Issuing approving their own stage (see
+    ``updateICApprovals``), with its terms supplied later still, by
+    Coordinator approving theirs - never at creation. Broadcasts an IC
+    CREATED SSE event to the ISSUING role. Responds with
+    ``{"success": True, "ic-id": <id>}``.
     """
     user = getVerifiedUser(request.authorization)
     if user is None:
@@ -313,6 +316,16 @@ def addICRequest():
     icDict = request.get_json(silent=True) or {}
     ic = IC(icDict)
     ic.requestor_department = user.getDepartment()
+    # PSIC is never set at creation - Issuing flags it later, at their own approval stage,
+    # and Coordinator supplies its terms at theirs (see updateICApprovals below). Force this
+    # independently of the client, and blank the psic_* text fields to '' rather than None -
+    # they're VARCHAR(300) NOT NULL columns (server/dev-scripts/init_db.py).
+    ic.is_psic = False
+    ic.psic_reasons = []
+    ic.psic_moc_number = ''
+    ic.psic_system_description = ''
+    ic.psic_isolation_method = ''
+    ic.psic_control_measures = ''
     if not ic.execution_department:
         log.warning("POST /ics: missing execution_department (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Execution department is required"}), 400
@@ -322,13 +335,6 @@ def addICRequest():
             ic.execution_department, ic.requestor_department, user.getUsername(),
         )
         return jsonify({"success": False, "error": "Self-isolation must be executed by the requestor's own department"}), 400
-    if ic.is_psic:
-        if not ic.psic_reasons:
-            log.warning("POST /ics: PSIC with no reason selected (user='%s')", user.getUsername())
-            return jsonify({"success": False, "error": "At least one PSIC reason is required"}), 400
-        if not (ic.psic_system_description or '').strip() or not (ic.psic_isolation_method or '').strip() or not (ic.psic_control_measures or '').strip():
-            log.warning("POST /ics: PSIC missing system description / isolation method / control measures (user='%s')", user.getUsername())
-            return jsonify({"success": False, "error": "PSIC system description, isolation method, and control measures are all required"}), 400
     try:
         ic.requestor = user.getUsername()
         ic.requestor_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
@@ -352,10 +358,22 @@ def updateICApprovals():
     POST /ics/approvals. Requires an authenticated non-guest user whose
     ``getApprovalStatus(role, department)`` is currently ``Requested`` for
     this IC (403 otherwise), i.e. it must be their turn. Body:
-    ``{"ic-id": <int>, "approval": {...}}``. If this approval completes the
-    chain and ``isolate_asap`` is set, also auto-stamps
-    ``isolate_requestor``/``isolate_requestor_timestamp``. Broadcasts an IC
-    APPROVED/RETURNED SSE event. Responds with ``{"success": True}``.
+    ``{"ic-id": <int>, "approval": {...}, "mark_psic": <bool>, "psic_terms":
+    {...} | null}``. ``mark_psic`` only has any effect for an ``ISSUING``
+    approval that isn't already ``is_psic`` - Issuing is the only role
+    allowed to flag an IC as PSIC, and only as part of approving their own
+    stage. ``psic_terms`` (``psic_reasons``/``psic_moc_number``/
+    ``psic_system_description``/``psic_isolation_method``/
+    ``psic_control_measures``) only has any effect for a ``COORDINATOR``
+    approval of a PSIC - Coordinator is a required stage on a PSIC's chain
+    (right after Issuing, before PDH/PGM/SOD/DFGM - see
+    ``IC.requiredApprovers()``), and approving it is what supplies its
+    terms; 400s if ``psic_reasons`` is empty or any of the three
+    description fields is blank, before recording anything. If this
+    approval completes the chain and ``isolate_asap`` is set, also
+    auto-stamps ``isolate_requestor``/``isolate_requestor_timestamp``.
+    Broadcasts an IC APPROVED/RETURNED SSE event. Responds with
+    ``{"success": True}``.
     """
     user = getVerifiedUser(request.authorization)
     if user is None:
@@ -382,8 +400,46 @@ def updateICApprovals():
         )
         return jsonify({"success": False, "error": "You are not an eligible approver for this IC at its current stage"}), 403
     approval = IC.Approval(**approvalData)
+
+    # Coordinator's approval of a PSIC doubles as writing its terms - validate before
+    # recording anything, so an incomplete submission is never recorded as an approval.
+    psicTermsToWrite = None
+    if user.getRole() == UserRoles.COORDINATOR and ic.is_psic and approval.action == IC.ApprovalActions.APPROVED:
+        terms = payload.get('psic_terms') or {}
+        reasons = terms.get('psic_reasons') or []
+        sysDesc = (terms.get('psic_system_description') or '').strip()
+        isoMethod = (terms.get('psic_isolation_method') or '').strip()
+        controlMeasures = (terms.get('psic_control_measures') or '').strip()
+        if not reasons:
+            log.warning("POST /ics/approvals: Coordinator PSIC approval with no reason selected (IC #%s, user='%s')", icId, user.getUsername())
+            return jsonify({"success": False, "error": "At least one PSIC reason is required"}), 400
+        if not sysDesc or not isoMethod or not controlMeasures:
+            log.warning("POST /ics/approvals: Coordinator PSIC approval missing system description / isolation method / control measures (IC #%s, user='%s')", icId, user.getUsername())
+            return jsonify({"success": False, "error": "PSIC system description, isolation method, and control measures are all required"}), 400
+        psicTermsToWrite = {
+            'id': icId,
+            'psic_reasons': reasons,
+            'psic_moc_number': (terms.get('psic_moc_number') or '').strip(),
+            'psic_system_description': sysDesc,
+            'psic_isolation_method': isoMethod,
+            'psic_control_measures': controlMeasures,
+        }
+
+    # Issuing is the only role allowed to flag an IC as PSIC, and only while approving
+    # their own stage - never re-flaggable once set.
+    markPsic = bool(payload.get('mark_psic')) and user.getRole() == UserRoles.ISSUING and approval.action == IC.ApprovalActions.APPROVED and not ic.is_psic
+
     try:
         icDB.updateICApprovals(icId, approval)
+        # mark_psic must land before the isolate_asap check below re-fetches `updated` -
+        # otherwise that check would evaluate isolate_asap against the IC's old, single-stage
+        # requiredApprovers() and could wrongly treat Issuing's own approval as completing
+        # the whole chain, auto-requesting isolation before Coordinator/PDH/PGM/SOD/DFGM ever
+        # get their stages. Do not reorder this ahead of the refetch.
+        if markPsic:
+            icDB.updateICFromDict({'id': icId, 'is_psic': True})
+        if psicTermsToWrite:
+            icDB.updateICFromDict(psicTermsToWrite)
         updated = icDB.getICById(icId)
         if updated and updated.isolate_asap and not updated.isolate_requestor and updated.getApprovalStatus() == IC.Status.APPROVED:
             # Isolate ASAP skips the manual "Request Isolate" step the moment full approval

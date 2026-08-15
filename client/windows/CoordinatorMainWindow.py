@@ -13,8 +13,12 @@ from helper.i18n import t
 class CoordinatorMainWindow(MainWindow):
     """Coordinator role window: PTW tabs cover Under Review through Archived. Has
     view-only visibility across every IC tab Issuing has - same breadth, without
-    Issuing's accept/request-edits/confirm/return/execute privileges - plus the
-    Link-to-PTW action it already has on the PTW side. The FAB (and Ctrl+P) prints
+    Issuing's confirm/return/execute privileges - plus the Link-to-PTW action it already
+    has on the PTW side. The one exception: Under Review also gets Accept/Request Edits,
+    since Coordinator is a real required approver there for a PSIC (the stage right after
+    Issuing) - accepting doubles as defining the PSIC's terms (see
+    MainWindow.acceptIC/DialogDefinePsicTerms). A non-PSIC IC never reaches Coordinator at
+    all, so this tab stays empty for those, same as before. The FAB (and Ctrl+P) prints
     the PTWs in whichever tab is currently open."""
 
     def __init__(self, loggedUser: User):
@@ -36,9 +40,14 @@ class CoordinatorMainWindow(MainWindow):
         self.tabArchivedPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestPTW, self.optionPrintPTW, self.optionExportPTW])
 
         # View-only across every IC tab Issuing has (same breadth of visibility, less
-        # privilege — no Accept/Request Edits/Confirm/Return/Execute actions), plus the
-        # Link to PTW action Coordinator already has via the PTW side.
-        self.tabUnderReviewICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionLinkPTWToIC])
+        # privilege — no Confirm/Return/Execute actions), plus the Link to PTW action
+        # Coordinator already has via the PTW side. Under Review is the one exception:
+        # Coordinator is a real requiredApprovers() stage for a PSIC (right after Issuing),
+        # so Accept/Request Edits are wired here too - Accept opens DialogDefinePsicTerms
+        # instead of a plain confirm (see MainWindow.acceptIC), since approving this stage
+        # is what supplies the PSIC's terms. A non-PSIC IC never reaches this stage, so
+        # this tab still shows nothing for those, same as before.
+        self.tabUnderReviewICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionAcceptIC, self.optionRequestEditsIC, self.optionLinkPTWToIC])
         self.tabApprovedICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionLinkPTWToIC])
         self.tabIsolateConfirmingICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionLinkPTWToIC])
         self.tabPendingICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionLinkPTWToIC])

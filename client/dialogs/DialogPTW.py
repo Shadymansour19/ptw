@@ -122,6 +122,7 @@ class DialogPTW(TabbedDialog):
 
         self.setWindowTitle(lbl)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowMaximizeButtonHint & ~Qt.WindowType.WindowMinimizeButtonHint)
+        self.setMinimumSize(1000, 600)
         self.ptw = ptw
         self.referencePTW = referencePTW
         self.new = new
