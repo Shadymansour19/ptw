@@ -24,6 +24,7 @@ from tables.TablePTWs import TablePTWs
 from dialogs.DialogPTW import DialogPTW
 from dialogs.DialogUser import DialogUser
 from dialogs.DialogSelectHeldICs import DialogSelectHeldICs
+from dialogs.DialogConfirmRunRequest import DialogConfirmRunRequest
 from dialogs.DialogPtwAlarms import DialogPtwAlarms
 from tables.TableUsers import TableUsers
 from tables.TableRisks import TableRisks
@@ -984,11 +985,20 @@ class MainWindow(QMainWindow):
     
     def requestToRunPTW(self, row: int, ptw: PTW):
         """Send a run request for `ptw` as the current user acting as Performing
-        Authority, refusing if the user is already the PA on another PTW."""
+        Authority, refusing if the user is already the PA on another PTW.
+
+        Before sending, shows DialogConfirmRunRequest so the PA can review
+        `ptw`'s linked ICs and catch a missed isolation (requesting one there
+        cancels this run request - the PA must click Run again once its
+        status has updated)."""
         for p in globalData.allPTWs.values():
             if p.getPerforming() == self.loggedUser.getUsername():
                 QMessageBox.warning(self, t('Not Allowed'), t("You are already the PA for PTW# {0}.").format(p.id))
                 return
+
+        dlg = DialogConfirmRunRequest(self, self.loggedUser, ptw, self._linkedICsFor(ptw))
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
 
         pa = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
