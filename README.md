@@ -7,7 +7,7 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 ## Screenshots
 
 **Home Dashboard:**
-![Home](screenshots/home.png) 
+![Home](screenshots/home.png)
 
 **PTW List:**
 ![PTW List](screenshots/ptw-list.png)
@@ -16,13 +16,13 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 ![PTW List Filtered](screenshots/ptw-list-filtered.png)
 
 **Isolations:**
-![Isolations](screenshots/isolations.png) 
+![Isolations](screenshots/isolations.png)
 
 **New PTW Form:**
 ![New PTW](screenshots/new-ptw.png)
 
 **Server Logs:**
-![Server Logs](screenshots/server-logs.png) 
+![Server Logs](screenshots/server-logs.png)
 
 ---
 
@@ -87,7 +87,7 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 ## User Roles
 
 | Role | Responsibilities |
-|---|---|
+| --- | --- |
 | **User** | Creates PTWs; requests run, hold, and close |
 | **Coordinator** | Reviews and approves PTWs in the coordination stage |
 | **Issuing** | Authorizes execution; accepts/rejects run, hold, close confirmations |
@@ -106,10 +106,9 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 
 ### Approval Cycle
 
-```
+```text
 Coordinator → Issuing → Safety → [PDH → PGM → SOD → DFGM]
 ```
-
 
 **Statuses:** `UNDER_REVIEW` → `APPROVED` / `RETURNED` / `REJECTED`
 
@@ -117,7 +116,7 @@ Coordinator → Issuing → Safety → [PDH → PGM → SOD → DFGM]
 
 Once approved, the permit enters a state machine driven by the Performing Authority (PA) and Issuing Authority (IA):
 
-```
+```text
 NOT_RUNNING
     │
     │ [Performing Authority (PA) sends run request]
@@ -193,7 +192,7 @@ A separate, formal request workflow for isolation work — an IC's `items` are i
 
 ## Project Structure
 
-```
+```text
 ptw/
 ├── .github/workflows/build.yml  # CI/CD — builds Windows + Linux binaries via Nuitka
 ├── dev-scripts/                 # One-off dev/maintenance scripts (DB migrations, etc.) — gitignored, not part of the app
@@ -320,11 +319,12 @@ MAIL_PASSWORD=your_app_password
 ```
 
 > **First deployment:** On first boot with an empty database, a random admin password is generated and printed once to the server log at `WARNING` level. Look for the line:
-> ```
+>
+> ```text
 > INITIAL ADMIN PASSWORD: <generated-password>
 > ```
+>
 > Change it immediately after first login.
-
 
 ### Client
 
@@ -341,7 +341,7 @@ On first launch, open **Settings** and point the client at your server URL.
 ## API Overview
 
 | Category | Endpoints |
-|---|---|
+| --- | --- |
 | Auth | `POST /login` · `POST /reset-password-request` · `POST /reset-password` |
 | Users | `GET/POST/PUT/DELETE /users` |
 | PTWs | `GET/POST/DELETE /ptws` |
@@ -381,4 +381,3 @@ Builds use **Nuitka** (`--onedir`) for native compilation — the app folder is 
 ## Known Limitations
 
 See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for the full security and bug backlog with fix guidance.
-

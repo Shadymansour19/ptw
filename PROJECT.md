@@ -85,7 +85,7 @@ After a PTW is created, it enters an approval cycle defined by `PTW.requiredAppr
 
 Typical stages, in order:
 
-```
+```text
 [Coordinator (Prod)]
     → [User (Turbo) ∥ User (Mech) ∥ User (Instrumentation) ∥ User (Telecom)
        ∥ User (Project) ∥ User (Civil) ∥ User (Cathodic Protection)]   — EX-type only
@@ -114,7 +114,7 @@ A required `Approver` with a department different from the PTW's own `department
 
 Once `approval_status = APPROVED`, the permit enters the running cycle. This is a state machine with the following states and transitions:
 
-```
+```text
 NOT_RUNNING
     │
     │ [Performing Authority (PA) sends run request]
@@ -257,6 +257,7 @@ A formal, independently-approved isolation-request document — class `IC` (`cli
 **Approval chain — implemented, mirrors `PTW`'s `Approval`/`Approver`/`requiredApprovers()`/`pendingApprovers()` pattern exactly** (`IC.Approval`/`Approver`/`ApprovalActions`, `requiredApprovers()`/`_stageSatisfied()`/`_pendingStageIndex()`/`pendingApprovers()`/`getApprovalStatus()`, all in `client`/`server` `models/Isolation.py`, kept in sync). `requiredApprovers()` returns `[[Issuing]]` for a normal IC, or `[[Issuing], [Coordinator], [PDH], [PGM], [SOD], [DFGM]]` for a PSIC (`is_psic == True`, see [Isolation Management](#isolation-management) above — this branch was on `type == Protective System` before 2026-07-31, and gained the `Coordinator` stage 2026-08-14, when PSIC ownership moved from the requestor to Issuing-flags/Coordinator-defines). **Note this manager-approval requirement lives only here, on the IC's own chain** — as of 2026-07-25, a PTW's own `requiredApprovers()` no longer adds PDH/PGM/SOD/DFGM for a protective isolation (see [Approval Cycle](#1-approval-cycle)); linking a PSIC to a PTW is now the only place that approval is collected, rather than being required twice. `getApprovalStatus(role=None)` gives the overall chain status (`Requested`/`Returned`/`Approved`); `getApprovalStatus(role, department)` gives one viewer's status: the action they already took, `Requested` if it's their turn right now, or `None` if they're not an approver at all. `POST /ics/approvals` (mirrors `/ptws/approvals`) appends an `Approval` and re-authorizes on every call — the caller's `getApprovalStatus(role, department)` must currently be `Requested`, otherwise 403. Like PTW, there is no permanent "Rejected" outcome — `ApprovalActions`/`Status` are `Approved`/`Returned` only (no `Rejected`), exactly matching `PTW.ApprovalActions`/`ApprovalStatus`. Approved or returned-for-edits via `MainWindow.acceptIC`/`requestEditsIC` (menu options "Accept"/"Request Edits", mirroring PTW's own `optionAcceptPTW`/`optionRequestEditsPTW`) → `ClientRequests.updateApprovalIC` → server; broadcasts an unrestricted (no role filter) `ic_approval` SSE event, same as PTW's `ptw_approval`, so whichever role is up next gets notified regardless of which one that is.
 
 **The isolate cycle (request → IA confirm → isolator execute) is fully implemented**, three roles in sequence:
+
 1. **Request** — a `User`, from the **Approved** tab, clicks **Request Isolate** (`optionRequestIsolateIC`) → `MainWindow.requestIsolateIC` → `POST /ics/isolate-request` (guarded to `getStatus() == Approved`). Stamps `isolate_requestor`/`isolate_requestor_timestamp`, and — defensively — resets `isolate_issuing`/`isolate_issuing_timestamp`/`isolate_issuing_action` to blank, so a re-request after a prior Return can't leave a stale decision lying around to mask the fresh request.
 2. **IA confirm** — `Issuing`, from the **Isolate Confirming** tab, clicks **Confirm Isolate** or **Return Isolate Request** (`optionConfirmIsolateIC`/`optionReturnIsolateIC`) → `MainWindow.confirmIsolateIC`/`returnIsolateIC` → `ClientRequests.confirmIsolateIC(..., response: bool)` → `POST /ics/isolate-confirm` (guarded to `getStatus() == Isolate Confirming`, role must be `ISSUING`). Stamps `isolate_issuing`/`isolate_issuing_timestamp`/`isolate_issuing_action` (`Approved` or `Returned`). No comment field — accept/return is a plain decision, unlike the main approval chain's `Approval.comment`.
 3. **Isolator execute** — `Isolator`, from the **Pending** tab, clicks **Complete Isolation** (`optionExecuteIsolateIC`) → `MainWindow.executeIsolateIC`. If the IC has items, this opens `DialogCompleteIsolation` first — a table of all items (Tag/Description/State read-only, **Lock #**/**Lock Box #** editable, both optional/blank-is-fine) — otherwise it's a plain Yes/No confirm. → `POST /ics/isolate-execute` (guarded to `getStatus() == Pending`, role must be `ISOLATOR`), with an optional `items` payload. The server merges `lock_num`/`lock_box_num` into `ic.items` **by tag** (`tag`/`description`/`state` stay server-authoritative — an unrecognized tag in the payload is silently dropped, never inserted as a new item). Stamps `isolate_isolator`/`isolate_isolator_timestamp` → IC becomes `Active`.
@@ -264,6 +265,7 @@ A formal, independently-approved isolation-request document — class `IC` (`cli
 A **Return** at step 2 does **not** clear `isolate_requestor` — it's kept as a permanent record of who originally asked, alongside `isolate_issuing`/`action='Returned'` recording who declined it and when. `getStatus()` treats a `Returned` isolate confirmation as reverting the IC to `Approved` (ready for a fresh Request Isolate), which is why step 1 above resets the stale `isolate_issuing*` fields on every new request — otherwise the leftover `Returned` decision would keep masking the new request's status.
 
 **The de-isolate cycle (request → IA confirm → isolator execute) is implemented too, an exact mirror of the isolate cycle above**, three roles in sequence, but starting from `Active` instead of `Approved`:
+
 1. **Request** — a `User`, from the **Active** tab, clicks **Request De-isolate** (`optionRequestDeisolateIC`) → `POST /ics/deisolate-request` (guarded to `getStatus() == Active`). Stamps `deisolate_requestor`/`deisolate_requestor_timestamp`, and resets `deisolate_issuing`/`deisolate_issuing_timestamp`/`deisolate_issuing_action` — same defensive reset as isolate-request, for the same reason (a re-request after a prior Return must not leave a stale decision behind).
 2. **IA confirm** — `Issuing`, from the **Deisolate Confirming** tab, clicks **Confirm De-isolate** or **Return De-isolate Request** (`optionConfirmDeisolateIC`/`optionReturnDeisolateIC`) → `POST /ics/deisolate-confirm` (guarded to `getStatus() == Deisolate Confirming`, role must be `ISSUING`). Stamps `deisolate_issuing`/`deisolate_issuing_timestamp`/`deisolate_issuing_action`.
 3. **Isolator execute** — `Isolator`, from the **Closing** tab, clicks **Complete De-isolation** (`optionExecuteDeisolateIC`) → `POST /ics/deisolate-execute` (guarded to `getStatus() == Closing`, role must be `ISOLATOR`). Stamps `deisolate_isolator`/`deisolate_isolator_timestamp` → IC becomes `Closed` — this is the *only* path to `Closed`. Unlike `isolate-execute`, this endpoint doesn't take an `items` payload — no lock-clearing UI yet, just the plain confirm.
@@ -275,6 +277,7 @@ A **Return** at step 2 does **not** clear `isolate_requestor` — it's kept as a
 Per-row menu visibility uses a `TablePTWs.MenuOption(..., visibleFor=lambda ic: ...)` predicate (default `None` = always visible), checked in `TableICs.showContextMenu` only — `TablePTWs`'s own context menu is untouched, so this doesn't affect PTW menus. Used defensively on both cycles' actions (e.g. `optionConfirmDeisolateIC.visibleFor` checks `getStatus() == Deisolate Confirming`) even though tab routing alone already guarantees the right rows end up in the right tab — belt-and-suspenders against a stale row lingering between an action and the next refresh.
 
 **Roles wired:**
+
 - `UserMainWindow` — Requested / Approved (+ Request Isolate) / Isolate Confirming (view-only) / Pending / Active (+ Request De-isolate) / Deisolate Confirming (view-only) / Closing (view-only) / Sanctioned / Closed tabs; FAB on the Requested tab creates a new IC (`TableICs.addNewICDialog()`), submitting via `POST /ics`.
 - `IssuingMainWindow` — Under Review (with Accept/Request Edits) / Approved (view-only) / Isolate Confirming (+ Confirm Isolate/Return Isolate Request) / Pending (view-only) / Active (view-only) / Deisolate Confirming (+ Confirm De-isolate/Return De-isolate Request) / Closing (view-only) / Sanctioned / Closed tabs.
 - `ManagerMainWindow` (PDH/PGM/SOD/DFGM) — Under Review tab only (with Accept/Request Edits) — Managers are only ever pulled into a PSIC's chain, after Issuing.
@@ -283,6 +286,7 @@ Per-row menu visibility uses a `TablePTWs.MenuOption(..., visibleFor=lambda ic: 
 - Safety/Admin/Guest are untouched.
 
 **`DialogIC` is tabbed, mirroring `DialogPTW`'s pattern** — both now subclass `dialogs/TabbedDialog.py` (added 2026-08-06), which owns the shared mechanics: the tab bar (`addTab()` registers a page + its `TabButton`), the `QStackedWidget`, the Back/Next/Finish/Cancel button row (`bottomButtonsLayout()` — Back/Next page the stack, Finish/Cancel accept/reject the dialog), and `setTabBarColor(bgColor)`, which recolors the bar and automatically picks a readable black/white text/icon color for both the selected and unselected `TabButton`s via `bestForegroundColor()` (perceived luminance, `widgets/UiUtils.py`) rather than each dialog supplying its own foreground color. `DialogIC._certTypeChanged()` (also reacting live to the PSIC checkbox toggling, not just the type combo) and `DialogPTW.ptwTypeChanged()` each just compute their own background color from their model (`IC`/`PTW` `backgroundColorForType()`) and call `self.setTabBarColor(color)` — same palette as the row coloring above, but no longer consulting `foregroundColorForType()` for the tab bar (that model-level method is still used for row/report coloring elsewhere, see `getStatus()` above).
+
 - **Basic Info** — IC #, Type, Requestor Department, Execution Department, Requestor, Request Time, Location, Equipment, Reason, Isolate ASAP, Long Term (+ reason).
 - **Isolation Items** — the embedded `TableIsolationItems` list. Lock #/Lock Box # are always read-only here regardless of mode, never editable by the requestor — they're filled in by the isolator instead, via a separate dialog (`DialogCompleteIsolation`) shown when completing isolation (see below), not inline in this tab. Double-clicking a row opens `DialogIsolationItem` in edit mode (if the IC dialog itself is editable) or view-only (if not).
 - **P&ID / Wiring** — the embedded `WidgetPidWiring` — see [P&ID / Wiring Highlighting](#pid--wiring-highlighting) below.
@@ -294,6 +298,7 @@ Per-row menu visibility uses a `TablePTWs.MenuOption(..., visibleFor=lambda ic: 
 **Fully implemented as of 2026-07-25: link and unlink, both directions, symmetric on both sides.** Either a PTW or an IC can initiate the link/unlink; the server keeps `IC.linked_ptws`/`held_by` and `PTW.linked_ics` in sync in the same request.
 
 **Role-restricted to `USER`/`ISSUING`/`COORDINATOR` only (tightened 2026-07-26 — previously any non-Guest role could reach these)**, enforced on both sides:
+
 - Client: the Unlink button (both dialogs) and the Link New IC / Link to PTW buttons check `self.loggedUser.getRole() in (UserRoles.USER, UserRoles.ISSUING, UserRoles.COORDINATOR)` before showing at all (an Isolator, PDH, Safety, etc. viewing either dialog sees no linking controls whatsoever). `CoordinatorMainWindow`'s `tabApprovedPTWs` gained `optionLinkICToPTW` in its menu to match — it previously had no menu-based linking at all.
 - Server: `POST /ics/link-ptw` and `POST /ics/unlink-ptw` independently re-check the same three-role allowlist (403 otherwise) — the old check only rejected `GUEST`, so a non-Guest role outside the three could still hit the endpoint directly even with no UI path to it.
 
@@ -306,6 +311,7 @@ Both tabs were redesigned 2026-07-26 from a `QFormLayout` (grouped by IC type / 
 Each row on the PTW side ("Linked ICs") also has a **Request Isolate** button (`_requestIsolateIC`, `UserRoles.USER` only — narrower than even the link/unlink allowlist above, matching `optionRequestIsolateIC`'s own `UserMainWindow`-only scope in `MainWindow.py`; same confirm-dialog wording and `ClientRequests.requestIsolateIC` call as `MainWindow.requestIsolateIC`) — lets the PA request isolation on a linked IC without leaving the PTW dialog. Unlike the Link/View/Unlink buttons, this one stays **visible but disabled** rather than hidden: `setEnabled(bool(ic) and ic.getStatus() == IC.Status.APPROVED)`, so a row for an IC that isn't found or isn't yet `Approved` shows the button grayed out instead of missing.
 
 Two gates on linking, both expressed on the model so they're checked identically whether called from a menu predicate, a dialog button, or the endpoint:
+
 - `IC.isWindingDown()` — `True` once `Sanctioned`/`Deisolate Confirming`/`Closing`/`Closed`, i.e. the IC is past the point where a new PTW should be attached. Drives both `optionLinkPTWToIC.visibleFor` and `DialogIC`'s **Link to PTW** button directly (neither has a specific PTW in hand yet, so this is the IC-only half of the check).
 - `PTW.canLinkIC()` — the PTW-only half, symmetric to the above: `approval_status == Approved` and `running_status == Not Running` (the window between a PTW being approved and it actually starting work). Drives both `optionLinkICToPTW.visibleFor` and `DialogPTW`'s **Link New IC** button.
 - `IC.canLinkPTW(ptw)` — the full check once an actual PTW is known: `isWindingDown()` **and** the target PTW's own `canLinkIC()`. Not linkable while the PTW is still under review/returned, nor once run/hold/close has been requested or done. Used server-side only, after `ptwDB.getPTWById(ptwId)` — by design, neither client-side button/menu predicate can check this half up front, since they only ever have one side of the pair (the IC or the PTW, never both) until the id is typed in.
@@ -347,12 +353,14 @@ Server-side: `GET /ics` (list, department-scoped for `UserRoles.USER` only, matc
 Safety department creates and maintains a **generic risk assessment library** — reusable documents that can be selected while requesting a PTW.
 
 Each `RiskAssessment` contains:
+
 - `title`: assessment name (unique for generic entries; `str(ptw_id)` for a PTW-specific row set)
 - `date`: creation/last-update date
 - `ptw_id`: `NULL` for a generic library entry; set to a PTW's id for that PTW's own materialized risk table
 - `risks`: list of `RiskItem` entries
 
 Each `RiskItem` documents:
+
 - `hazard`: the identified hazard
 - `effect`: potential consequence
 - `free_analysis`: analysis prior to applying controls
@@ -393,7 +401,7 @@ Two importers share it: `RiskItemsTable._parseRiskItemsFile()` (risk items, with
 
 ### Core Fields
 
-```
+```text
 id              — Auto-incremented integer (primary key)
 type            — Permit type (CW, SP, HT, HC)
 date            — Creation date (DD/MM/YYYY)
@@ -408,7 +416,7 @@ fast_track      — Whether this permit is flagged for fast-track processing (bo
 
 ### Running Cycle History
 
-```
+```text
 run_cycles  — Ordered list of RunCycle records, one per pass through the running state
               machine (run request/response, then hold-or-close request/response); see
               RunCycle above. Replaces the old flat performing/issuing/hold_*/close_*/
@@ -419,7 +427,7 @@ run_cycles  — Ordered list of RunCycle records, one per pass through the runni
 
 ### Safety & Work Instructions
 
-```
+```text
 miwi        — Maintenance and Work Instructions,document (PDF)
 mos         — Method of Statement, manually typed as a text of steps.
 attachs     — List of uploaded attachment filenames
@@ -449,7 +457,7 @@ linked_ics  — List of linked IC ids — fully implemented (link+unlink, both d
 
 ### Status Fields
 
-```
+```text
 approval_status        — Current approval state (UNDER_REVIEW, APPROVED, RETURNED) — computed, not stored
 running_status         — Current execution state (NOT_RUNNING through HELD) — computed, not stored
 is_archived            — Archived after closure — the only one of these that IS a real column
@@ -502,6 +510,7 @@ New-user invitation email (`POST /users`) and the password-reset verification em
 ## API Reference
 
 ### Authentication
+
 | Method | Endpoint                  | Description                        |
 |--------|---------------------------|------------------------------------|
 | POST   | `/login`                  | Authenticate user                  |
@@ -509,6 +518,7 @@ New-user invitation email (`POST /users`) and the password-reset verification em
 | POST   | `/reset-password`         | Reset password with code           |
 
 ### Users
+
 | Method | Endpoint        | Description                                               | Auth Required |
 |--------|-----------------|-----------------------------------------------------------|---------------|
 | GET    | `/users`        | Get all users (secured view)                              | Any           |
@@ -520,6 +530,7 @@ New-user invitation email (`POST /users`) and the password-reset verification em
 | DELETE | `/users`        | Delete a user                                             | Admin only    |
 
 ### PTWs
+
 | Method | Endpoint                    | Description                                |
 |--------|-----------------------------|--------------------------------------------|
 | GET    | `/ptws`                     | Get all PTWs (filterable by dept/requestor)|
@@ -541,6 +552,7 @@ New-user invitation email (`POST /users`) and the password-reset verification em
 `/ptws/run`, `/ptws/hold`, `/ptws/close` (the IA's response) and `/ptws/hold-request`, `/ptws/close-request` (the PA's stop request) all accept an optional `comment` field in the JSON body, stored on the relevant `RunCycle` (`run_ia_comment`/`stop_pa_comment`/`stop_ia_comment` — see [Running Cycle](#2-running-cycle)); `/ptws/run-request` has no comment field, matching `RunCycle.run_pa`/`run_pa_timestamp` having none either.
 
 ### Real-Time Events (SSE)
+
 | Method | Endpoint   | Description                                              |
 |--------|------------|----------------------------------------------------------|
 | GET    | `/events`  | SSE stream; pushes PTW change events to the client       |
@@ -552,26 +564,27 @@ The server broadcasts role-filtered events over this stream. The client connects
 On receipt, the client does **not** do a full `globalData.refresh()` — `MainWindow._applyPTWEvent`/`_applyICEvent` fetch just the one touched record (`GET /ptws/<id>` / `GET /ics/<id>`, added specifically for this — see [PTWs](#ptws)/[ICs](#ics) above) and patch it into `GlobalData` (`upsertPTW`/`removePTW`/`upsertIC`/`removeIC`) and into whichever single tab it belongs in (`MainWindow._ptwTargetTab`/`_icTargetTab` — the same categorization the full-refresh loops use, extracted once so both paths agree; `TablePTWs.removePTWById`/`TableICs.removeICById` drop the row from wherever it currently sits first). A `404` from the lookup (not visible / no longer exists) removes the record locally instead of erroring. The manual Refresh button and the initial post-login load are unchanged — they still do a full `refreshGUI()`.
 
 | Object / action | Triggered by |
-|------------------|--------------|
-| `PTW created`                        | New PTW created (`new_ptw`) |
-| `PTW deleted`                        | PTW deleted |
-| `PTW updated`                        | Returned PTW edited and resubmitted |
-| `PTW approved` / `PTW returned`      | Approval action submitted |
-| `PTW archived`                       | PTW archived (one event per id, manual or automatic) |
-| `PTW run requested`                  | PA sends run request |
+| ------------------ | -------------- |
+| `PTW created` | New PTW created (`new_ptw`) |
+| `PTW deleted` | PTW deleted |
+| `PTW updated` | Returned PTW edited and resubmitted |
+| `PTW approved` / `PTW returned` | Approval action submitted |
+| `PTW archived` | PTW archived (one event per id, manual or automatic) |
+| `PTW run requested` | PA sends run request |
 | `PTW run accepted` / `PTW run rejected` | IA accepts/rejects run request |
-| `PTW hold requested`                 | PA sends hold request |
-| `PTW held` / `PTW hold rejected`     | IA accepts/rejects hold request |
-| `PTW close requested`                | PA sends close request |
-| `PTW closed` / `PTW close rejected`  | IA accepts/rejects close request |
-| `PTW linked` / `PTW unlinked`        | The PTW side of an IC link/unlink (see below) |
-| `IC created`                         | New IC created (broadcast to `ISSUING` only — the creator's own view updates via a local optimistic add instead, see [Isolation Management](#isolation-management)) |
-| `IC approved` / `IC returned`        | Approve/reject action recorded on an IC's approval chain (unrestricted broadcast, like `PTW approved`/`returned`) |
+| `PTW hold requested` | PA sends hold request |
+| `PTW held` / `PTW hold rejected` | IA accepts/rejects hold request |
+| `PTW close requested` | PA sends close request |
+| `PTW closed` / `PTW close rejected` | IA accepts/rejects close request |
+| `PTW linked` / `PTW unlinked` | The PTW side of an IC link/unlink (see below) |
+| `IC created` | New IC created (broadcast to `ISSUING` only — the creator's own view updates via a local optimistic add instead, see [Isolation Management](#isolation-management)) |
+| `IC approved` / `IC returned` | Approve/reject action recorded on an IC's approval chain (unrestricted broadcast, like `PTW approved`/`returned`) |
 | `IC isolate requested` / `IC isolate confirmed` / `IC isolate rejected` / `IC isolated` | Isolate cycle: request / IA confirm / IA return / isolator execute |
 | `IC deisolate requested` / `IC deisolate confirmed` / `IC deisolate rejected` / `IC deisolated` | De-isolate cycle: request / IA confirm / IA return / isolator execute |
-| `IC linked` / `IC unlinked`          | A PTW was linked to / unlinked from an IC (either side can have initiated it; also broadcasts the `PTW linked`/`unlinked` counterpart above) |
+| `IC linked` / `IC unlinked` | A PTW was linked to / unlinked from an IC (either side can have initiated it; also broadcasts the `PTW linked`/`unlinked` counterpart above) |
 
 ### Attachments
+
 | Method | Endpoint                    | Description                          |
 |--------|-----------------------------|--------------------------------------|
 | POST   | `/ptws/attachments`         | Upload files to a PTW                |
@@ -580,6 +593,7 @@ On receipt, the client does **not** do a full `globalData.refresh()` — `MainWi
 | POST   | `/ptws/attachments/copy`    | Copy attachments from one PTW to another (also additively copies the source PTW's risk assessment onto the target) |
 
 ### ICs
+
 | Method | Endpoint                | Description                                                              | Auth Required   |
 |--------|-------------------------|---------------------------------------------------------------------------|-----------------|
 | GET    | `/ics`                  | Get all ICs (department-scoped for `USER` role against `requestor_department`, unrestricted for others) | Any authenticated user |
@@ -601,6 +615,7 @@ On receipt, the client does **not** do a full `globalData.refresh()` — `MainWi
 Hold/sanction-for-test and re-isolate routes don't exist yet (see [Isolation Management](#isolation-management)). No `/ics/attachments/copy` — there's no "re-request IC" flow to mirror `/ptws/attachments/copy` for.
 
 ### Risk Assessments
+
 | Method | Endpoint     | Description                                                      | Auth Required |
 |--------|--------------|-------------------------------------------------------------------|---------------|
 | GET    | `/risks`     | Get all **generic** risk assessments (`ptw_id IS NULL`)          | Any           |
@@ -620,6 +635,7 @@ Hold/sanction-for-test and re-isolate routes don't exist yet (see [Isolation Man
 `department` is advisory only for both read endpoints — it narrows/prefers results but is never enforced against the caller's department; any authenticated user can read any department's MIWIs. Only `POST /miwi` (upload) is confined to the uploader's own department — see [MIWI Documents](#miwi-documents).
 
 ### Logs
+
 Admin-only. The request body is JSON (`{"filename": "<name>"}`) to fetch a specific file; omit the body to list all files.
 
 | Method | Endpoint | Description                                          | Auth Required |
@@ -647,6 +663,7 @@ Admin-only, backs `client/tables/TableBackups.py`. `GET`/`POST` bodies are JSON;
 Database name: `ptw_database` (PostgreSQL, localhost). `server/dev-scripts/init_db.py` is the one-time script that creates the database and every table below in this final shape — run it once before starting the server for the first time. The `*Db.py` classes (`db/usersDb.py`/`db/ptwDb.py`/`db/risksDb.py`/`db/ICDb.py`) assume their table already exists; they no longer `CREATE TABLE`/`ALTER TABLE` on every server startup the way they used to while the schema was still evolving (table/column renames, drops, splits — that churn is done, so a fresh database now gets the end result directly instead of walking through it). `UsersDb` is the one exception: its constructor still seeds the initial `admin` account if `users` is empty, since that's data seeding rather than schema.
 
 ### `users`
+
 ```sql
 username    VARCHAR(50)  PRIMARY KEY
 password    VARCHAR(100) NOT NULL
@@ -660,6 +677,7 @@ is_active   BOOLEAN      NOT NULL DEFAULT TRUE
 ```
 
 ### `ptws`
+
 ```sql
 id                          SERIAL PRIMARY KEY
 type                        VARCHAR(100)
@@ -751,6 +769,7 @@ held_by                         TEXT[]
 `linked_ptws`/`held_by` are the IC's own runtime linkage state — fully implemented (link+unlink, symmetric with `PTW.linked_ics`), see [Isolation Management](#isolation-management). `primary_ptw`/`latest_ptw`/`is_physically_isolated` columns existed at one point but were removed 2026-07-25 (`latest_ptw` was always derivable as `linked_ptws[-1]`, `is_physically_isolated` as `bool(linked_ptws or held_by)`, and `primary_ptw` had no clean replacement and wasn't worth keeping) — they're absent from the schema above and from any already-migrated install; a fresh database created by `init_db.py` never has them at all.
 
 ### `risks`
+
 ```sql
 hazard         VARCHAR(300)  NOT NULL
 effect         VARCHAR(300)  NOT NULL
@@ -774,6 +793,7 @@ The desktop client is structured around role-based main windows. After login, `m
 ### Global Data Cache
 
 `GlobalData` maintains an in-memory cache of:
+
 - `allUsers` — dict of username → SecuredUser
 - `allPTWs` — list of PTW objects (non-archived)
 - `archivedPTWs` — list of PTW objects (archived permits)
@@ -785,48 +805,48 @@ The desktop client is structured around role-based main windows. After login, `m
 
 ### Key Client Modules
 
-| Module                      | Purpose                                                          |
-|-----------------------------|------------------------------------------------------------------|
-| `main.py`                   | Entry point; launches QApplication                               |
-| `Login.py`                  | Login screen; handles password reset flow                        |
-| `windows/MainWindow.py`     | Base main-window class — chrome, PTW/IC action handlers, SSE sync; role-specific subclasses live alongside it in `windows/` |
-| `network/clientRequests.py`         | HTTP wrapper; all server calls return `(err, data)`              |
-| `network/RequestWorker.py`          | `@async_request` decorator — moves any request off the GUI thread via `QThread`; marshals result back via queued signal |
-| `widgets/RefreshOverlay.py`         | `RefreshOverlay` — dims a window/dialog and blocks input while a refresh is in flight; refcounted `showBusy()`/`hideBusy()`, auto-tracks its parent's size via an event filter, plays an animated bouncing-logo sprite (baked offline by `dev-scripts/generate_refresh_overlay_frames.py` into `assets/sh-logo-bounce-frames.png`) |
-| `GlobalData.py`             | Client-side data cache                                           |
-| `network/SSEListener.py`            | QThread that connects to `/events` and emits real-time PTW events|
-| `models/PTW.py`                | Mirrored data model classes (client-side copy)                   |
-| `models/Isolation.py`              | Client-side model: `Isolation` (declarative type/tag/description only, no runtime state — used inside a PTW's own required-isolations list) + `IC` (renamed from `IsolationCertificate` 2026-07-25; the formal request document — approval chain, `getStatus()`, type coloring, and all runtime PTW-linkage state: `linked_ptws`/`held_by`) |
-| `helper/utils.py`                  | Shared helpers: `resource_path`, `objToDict`, `dictToObj`, `parseTabularFile` |
-| `models/User.py`                   | User model                                                       |
-| `dialogs/TabbedDialog.py`           | *(added 2026-08-06)* Base class for `DialogPTW`/`DialogIC` — owns `tabsContainer`/`stack`/`tabsBtnsMap`, `addTab()`, `setTabBarColor()` (recolors the bar and auto-picks readable selected/unselected `TabButton` text+icon colors via `bestForegroundColor()`), the shared `btnBack`/`btnNext`/`btnFinish`/`btnCancel` row (`bottomButtonsLayout()`), and `stackTabChanged()` (keeps tab-button selection state and Back/Next enabled-state in sync with the stack) |
-| `dialogs/DialogPTW.py`              | Full PTW form (create/view/edit); `DialogPTW` is tabbed (Basic Info / Tools / Hazards / Controls / Risks / Isolation / MIWI-MOS / Attachments / **History** / **IC Linkage** — the last two only in readonly mode, mirroring `DialogIC`'s History/PTW Linkage split). History renders the approval log and the running cycle as two side-by-side `Timeline` panes — a vertical rail of colored dots (green=approved, orange=returned/rejected, gray=pending) connected by a continuous line, each dot's row scrollable via `QScrollArea`. The Approval Timeline reads `ptw.approvals`; the Running Timeline (`_buildRunningTimelinePane`/`_runCycleRequestEntry`/`_runCycleResponseEntry`) reads `ptw.run_cycles`, rendering each `RunCycle` as a "Run Cycle #N" header followed by its Run Requested/Run Approved-or-Rejected rows, and — once a hold or close has actually been requested on that cycle — its Hold/Close Requested and Hold/Close Approved-or-Rejected rows (gray "Pending" only for whichever step the *current*, still-open cycle hasn't reached yet; earlier, already-finished cycles never show a pending row). IC Linkage groups `ptw.linked_ics` by looking up each id's type in `globalData.ics`, one row per `IC.Types` value, each row with **View** and (non-Guest) **Unlink** buttons. |
-| `widgets/UiUtils.py`                 | Reusable UI helpers shared across dialogs: `TabButton` (colored tab-bar button — text/icon color is picked per-state by whoever calls `setHighlightColor()`, see `TabbedDialog.setTabBarColor()`), `lightenColor` (accent-color helper), `bestForegroundColor` (picks black/white by perceived luminance for readable text/icons against an arbitrary background), `Timeline`/`TimelineEntry` (vertical rail of colored dots + content, used for approval/isolation history panes) — extracted here since both `dialogs/DialogPTW.py` and `dialogs/DialogIC.py` (via `dialogs/TabbedDialog.py`) import them |
-| `tables/TablePTWs.py`              | Table listing all PTWs with filters; supports Excel export; `filterColumn(label, values)` sets a specific column filter programmatically (used by the home dashboard's location segments) |
-| `tables/TableUsers.py`             | Admin user management table; supports bulk user import from Excel; also has `filterColumn(label, values)` (used by the Admin dashboard's department segments) |
-| `widgets/DonutChart.py`             | Reusable donut-chart widget (`DonutChart`/`DonutSegment`) for the home-page dashboard — clickable/hoverable ring + legend, fixed categorical palette |
-| `reports/ImportUsersExcel.py`       | Parses bulk-user Excel/CSV imports + DialogUsersPreview dialog   |
-| `tables/TableRisks.py`             | Generic risk assessment CRUD list (Safety admin tab); also embedded read-only+checkboxes inside `DialogSelectGenericRisks` |
-| `widgets/RiskPreview.py`            | `DialogRiskItem` (single-item editor), `RiskItemsTable` (the flat table used for a PTW's risk assessment in all modes — add/delete/import/generic-pick, with dedup), `DialogSelectGenericRisks`, `RiskAssessmentPreview()` popup/embedded factory |
-| `tables/TableIsolations.py`        | Embedded editable required-isolations list for a PTW form (`TablePTWIsolations`) — type/tag/description only. The old global all-isolation-points browser (`TableIsolationsBrowser`) was removed 2026-07-25 along with the registry it displayed. |
-| `tables/TableICs.py`               | (renamed from `TableIsolationCertificates.py` 2026-07-25) IC list, one instance per tab (Requested/Under Review/Pending/Active/Sanctioned/Closed), mirrors `TablePTWs`; IC#/Status/Type/L.T./Requestor/Request Time/Requestor Dept./Execution Dept./Location/Equipment/Reason columns, L.T. rendered as an icon badge like Fast Track |
-| `dialogs/DialogIC.py`               | (renamed from `DialogIsolationCertificate.py` 2026-07-25) IC create/view dialog, tabbed like `DialogPTW` (Basic Info / Isolation Items / P&ID / Wiring / PSIC / History / PTW Linkage — the last two only in readonly mode); `new`/`readOnly` flags mirror `DialogPTW`. The PSIC tab holds `is_psic`, `psic_reasons` (multi-select), `psic_moc_number`, and the three PSIC description fields, plus the "Autofill from Tag" button — all view-only content in readonly mode; in new-mode (creating an IC) it's just an info note instead, since none of it is settable there any more (see [Isolation Management](#isolation-management) and `dialogs/DialogDefinePsicTerms.py` below). PTW Linkage rows have **View** and (non-Guest) **Unlink** buttons. |
-| `dialogs/DialogDefinePsicTerms.py`  | *(added 2026-08-14)* Plain (non-tabbed) dialog for Coordinator's approval of a PSIC's own stage — same PSIC fields `DialogIC`'s PSIC tab used to let the requestor fill in, now filled in here instead, opened from `MainWindow.acceptIC`'s Coordinator branch rather than a standalone "define terms" action. `getTerms()` returns the collected fields for `ClientRequests.updateApprovalIC`'s `psic_terms` argument. |
-| `tables/TableIsolationItems.py`    | Embedded editable isolation-item list inside the IC dialog, mirrors `TablePTWIsolations`; Description column stretches to fill remaining width; `itemsChanged` signal (add/edit/bulk-delete) drives the P&ID resync prompt; double-click opens `DialogIsolationItem` in edit or view mode |
-| `dialogs/DialogIsolationItem.py`    | Isolation-item add/edit/view dialog (tag/description/state/lock #/lock box #); lock fields are always read-only — set by the isolator on confirmation, not the requestor; `item=`/`readonly=` params drive edit-existing vs. view-only |
-| `widgets/WidgetPidWiring.py`        | P&ID/Wiring tab embedded inside the IC dialog — document picker, zoom/pan preview, live manual highlight editing. See [P&ID / Wiring Highlighting](#pid--wiring-highlighting) |
-| `widgets/PidWiringHighlighter.py`   | Pure logic (no UI): `computeHighlights()` (native text search + OCR fallback), `burnInHighlights()` (physically draws highlights into a new copy of the file), shared PDF render/load helpers |
-| `helper/OcrConfig.py`              | Points `pytesseract` at the Tesseract binary bundled into the Nuitka build (`client/tesseract-bin/`, staged in `.github/workflows/build.yml`) when running frozen; no-op in dev |
-| `tables/TableAttachments.py`       | PTW attachment management                                        |
-| `widgets/TabServerLogs.py`          | Admin-only log viewer: collapsible file panels, lazy load, level filter, color-coded lines |
-| `widgets/CheckableComboBox.py`      | Reusable multi-select checkbox combo box with `filterChanged` signal |
-| `widgets/SearchableComboBox.py`     | Reusable editable combo box with fuzzy-match autocomplete; accepts free text not in its list |
-| `dialogs/DialogUser.py`             | Create/edit user dialog                                          |
-| `dialogs/DialogIsolation.py`        | Create/edit isolation dialog                                     |
+| Module | Purpose |
+| ----------------------------- | ------------------------------------------------------------------ |
+| `main.py` | Entry point; launches QApplication |
+| `Login.py` | Login screen; handles password reset flow |
+| `windows/MainWindow.py` | Base main-window class — chrome, PTW/IC action handlers, SSE sync; role-specific subclasses live alongside it in `windows/` |
+| `network/clientRequests.py` | HTTP wrapper; all server calls return `(err, data)` |
+| `network/RequestWorker.py` | `@async_request` decorator — moves any request off the GUI thread via `QThread`; marshals result back via queued signal |
+| `widgets/RefreshOverlay.py` | `RefreshOverlay` — dims a window/dialog and blocks input while a refresh is in flight; refcounted `showBusy()`/`hideBusy()`, auto-tracks its parent's size via an event filter, plays an animated bouncing-logo sprite (baked offline by `dev-scripts/generate_refresh_overlay_frames.py` into `assets/sh-logo-bounce-frames.png`) |
+| `GlobalData.py` | Client-side data cache |
+| `network/SSEListener.py` | QThread that connects to `/events` and emits real-time PTW events |
+| `models/PTW.py` | Mirrored data model classes (client-side copy) |
+| `models/Isolation.py` | Client-side model: `Isolation` (declarative type/tag/description only, no runtime state — used inside a PTW's own required-isolations list) + `IC` (renamed from `IsolationCertificate` 2026-07-25; the formal request document — approval chain, `getStatus()`, type coloring, and all runtime PTW-linkage state: `linked_ptws`/`held_by`) |
+| `helper/utils.py` | Shared helpers: `resource_path`, `objToDict`, `dictToObj`, `parseTabularFile` |
+| `models/User.py` | User model |
+| `dialogs/TabbedDialog.py` | *(added 2026-08-06)* Base class for `DialogPTW`/`DialogIC` — owns `tabsContainer`/`stack`/`tabsBtnsMap`, `addTab()`, `setTabBarColor()` (recolors the bar and auto-picks readable selected/unselected `TabButton` text+icon colors via `bestForegroundColor()`), the shared `btnBack`/`btnNext`/`btnFinish`/`btnCancel` row (`bottomButtonsLayout()`), and `stackTabChanged()` (keeps tab-button selection state and Back/Next enabled-state in sync with the stack) |
+| `dialogs/DialogPTW.py` | Full PTW form (create/view/edit); `DialogPTW` is tabbed (Basic Info / Tools / Hazards / Controls / Risks / Isolation / MIWI-MOS / Attachments / **History** / **IC Linkage** — the last two only in readonly mode, mirroring `DialogIC`'s History/PTW Linkage split). History renders the approval log and the running cycle as two side-by-side `Timeline` panes — a vertical rail of colored dots (green=approved, orange=returned/rejected, gray=pending) connected by a continuous line, each dot's row scrollable via `QScrollArea`. The Approval Timeline reads `ptw.approvals`; the Running Timeline (`_buildRunningTimelinePane`/`_runCycleRequestEntry`/`_runCycleResponseEntry`) reads `ptw.run_cycles`, rendering each `RunCycle` as a "Run Cycle #N" header followed by its Run Requested/Run Approved-or-Rejected rows, and — once a hold or close has actually been requested on that cycle — its Hold/Close Requested and Hold/Close Approved-or-Rejected rows (gray "Pending" only for whichever step the *current*, still-open cycle hasn't reached yet; earlier, already-finished cycles never show a pending row). IC Linkage groups `ptw.linked_ics` by looking up each id's type in `globalData.ics`, one row per `IC.Types` value, each row with **View** and (non-Guest) **Unlink** buttons. |
+| `widgets/UiUtils.py` | Reusable UI helpers shared across dialogs: `TabButton` (colored tab-bar button — text/icon color is picked per-state by whoever calls `setHighlightColor()`, see `TabbedDialog.setTabBarColor()`), `lightenColor` (accent-color helper), `bestForegroundColor` (picks black/white by perceived luminance for readable text/icons against an arbitrary background), `Timeline`/`TimelineEntry` (vertical rail of colored dots + content, used for approval/isolation history panes) — extracted here since both `dialogs/DialogPTW.py` and `dialogs/DialogIC.py` (via `dialogs/TabbedDialog.py`) import them |
+| `tables/TablePTWs.py` | Table listing all PTWs with filters; supports Excel export; `filterColumn(label, values)` sets a specific column filter programmatically (used by the home dashboard's location segments) |
+| `tables/TableUsers.py` | Admin user management table; supports bulk user import from Excel; also has `filterColumn(label, values)` (used by the Admin dashboard's department segments) |
+| `widgets/DonutChart.py` | Reusable donut-chart widget (`DonutChart`/`DonutSegment`) for the home-page dashboard — clickable/hoverable ring + legend, fixed categorical palette |
+| `reports/ImportUsersExcel.py` | Parses bulk-user Excel/CSV imports + DialogUsersPreview dialog |
+| `tables/TableRisks.py` | Generic risk assessment CRUD list (Safety admin tab); also embedded read-only+checkboxes inside `DialogSelectGenericRisks` |
+| `widgets/RiskPreview.py` | `DialogRiskItem` (single-item editor), `RiskItemsTable` (the flat table used for a PTW's risk assessment in all modes — add/delete/import/generic-pick, with dedup), `DialogSelectGenericRisks`, `RiskAssessmentPreview()` popup/embedded factory |
+| `tables/TableIsolations.py` | Embedded editable required-isolations list for a PTW form (`TablePTWIsolations`) — type/tag/description only. The old global all-isolation-points browser (`TableIsolationsBrowser`) was removed 2026-07-25 along with the registry it displayed. |
+| `tables/TableICs.py` | (renamed from `TableIsolationCertificates.py` 2026-07-25) IC list, one instance per tab (Requested/Under Review/Pending/Active/Sanctioned/Closed), mirrors `TablePTWs`; IC#/Status/Type/L.T./Requestor/Request Time/Requestor Dept./Execution Dept./Location/Equipment/Reason columns, L.T. rendered as an icon badge like Fast Track |
+| `dialogs/DialogIC.py` | (renamed from `DialogIsolationCertificate.py` 2026-07-25) IC create/view dialog, tabbed like `DialogPTW` (Basic Info / Isolation Items / P&ID / Wiring / PSIC / History / PTW Linkage — the last two only in readonly mode); `new`/`readOnly` flags mirror `DialogPTW`. The PSIC tab holds `is_psic`, `psic_reasons` (multi-select), `psic_moc_number`, and the three PSIC description fields, plus the "Autofill from Tag" button — all view-only content in readonly mode; in new-mode (creating an IC) it's just an info note instead, since none of it is settable there any more (see [Isolation Management](#isolation-management) and `dialogs/DialogDefinePsicTerms.py` below). PTW Linkage rows have **View** and (non-Guest) **Unlink** buttons. |
+| `dialogs/DialogDefinePsicTerms.py` | *(added 2026-08-14)* Plain (non-tabbed) dialog for Coordinator's approval of a PSIC's own stage — same PSIC fields `DialogIC`'s PSIC tab used to let the requestor fill in, now filled in here instead, opened from `MainWindow.acceptIC`'s Coordinator branch rather than a standalone "define terms" action. `getTerms()` returns the collected fields for `ClientRequests.updateApprovalIC`'s `psic_terms` argument. |
+| `tables/TableIsolationItems.py` | Embedded editable isolation-item list inside the IC dialog, mirrors `TablePTWIsolations`; Description column stretches to fill remaining width; `itemsChanged` signal (add/edit/bulk-delete) drives the P&ID resync prompt; double-click opens `DialogIsolationItem` in edit or view mode |
+| `dialogs/DialogIsolationItem.py` | Isolation-item add/edit/view dialog (tag/description/state/lock #/lock box #); lock fields are always read-only — set by the isolator on confirmation, not the requestor; `item=`/`readonly=` params drive edit-existing vs. view-only |
+| `widgets/WidgetPidWiring.py` | P&ID/Wiring tab embedded inside the IC dialog — document picker, zoom/pan preview, live manual highlight editing. See [P&ID / Wiring Highlighting](#pid--wiring-highlighting) |
+| `widgets/PidWiringHighlighter.py` | Pure logic (no UI): `computeHighlights()` (native text search + OCR fallback), `burnInHighlights()` (physically draws highlights into a new copy of the file), shared PDF render/load helpers |
+| `helper/OcrConfig.py` | Points `pytesseract` at the Tesseract binary bundled into the Nuitka build (`client/tesseract-bin/`, staged in `.github/workflows/build.yml`) when running frozen; no-op in dev |
+| `tables/TableAttachments.py` | PTW attachment management |
+| `widgets/TabServerLogs.py` | Admin-only log viewer: collapsible file panels, lazy load, level filter, color-coded lines |
+| `widgets/CheckableComboBox.py` | Reusable multi-select checkbox combo box with `filterChanged` signal |
+| `widgets/SearchableComboBox.py` | Reusable editable combo box with fuzzy-match autocomplete; accepts free text not in its list |
+| `dialogs/DialogUser.py` | Create/edit user dialog |
+| `dialogs/DialogIsolation.py` | Create/edit isolation dialog |
 | `dialogs/DialogSelectHeldICs.py` | Dual-mode linked-IC dialog for the PTW hold flow — PA selects which linked ICs stay held (`getHeldICIds()`), or a plain review of which ICs were kept |
-| `dialogs/DialogPtwAlarms.py`        | Two-section, individually collapsible grouped popup for `MainWindow._checkPtwAlarms()` — 14-shift-validity-expired PTWs (View/Close/Close All) and run-cycle-shift-ended PTWs (View/Hold/Close), each row disabling its own acted-on button(s) in place on success; View opens its own `DialogPTW` with the busy overlay on this dialog rather than delegating to `MainWindow.viewPTW` |
-| `dialogs/DialogSettings.py`         | App/session settings — profile fields, theme, and the close-behavior preference (below) |
-| `reports/ReportGenerator.py`        | Generates printable PDF permit reports and Excel exports         |
+| `dialogs/DialogPtwAlarms.py` | Two-section, individually collapsible grouped popup for `MainWindow._checkPtwAlarms()` — 14-shift-validity-expired PTWs (View/Close/Close All) and run-cycle-shift-ended PTWs (View/Hold/Close), each row disabling its own acted-on button(s) in place on success; View opens its own `DialogPTW` with the busy overlay on this dialog rather than delegating to `MainWindow.viewPTW` |
+| `dialogs/DialogSettings.py` | App/session settings — profile fields, theme, and the close-behavior preference (below) |
+| `reports/ReportGenerator.py` | Generates printable PDF permit reports and Excel exports |
 
 ### System Tray & Background Notifications
 

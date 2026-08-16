@@ -1,0 +1,22 @@
+{
+  // Project docs (README.md, PROJECT.md, KNOWN_ISSUES.md) use long,
+  // single-line paragraphs per entry by convention (especially the
+  // audit/changelog entries in KNOWN_ISSUES.md) — wrapping them would
+  // hurt diff-ability and readability more than it helps, so MD013 is off.
+  "config": {
+    "default": true,
+    "MD013": false,
+    // Section headers like "High"/"Medium" or "Attachments"/"Risk
+    // Assessments" are intentionally reused across unrelated top-level
+    // sections (e.g. a feature-overview section vs its API Reference
+    // subsection). Only flag duplicates that are true siblings.
+    "MD024": { "siblings_only": true },
+    // Several reference tables (esp. the API Reference in PROJECT.md)
+    // have a few cells with long descriptive text alongside short ones,
+    // the same long-form-content style as the rest of these docs — hand-
+    // aligning every pipe to match would be high-maintenance busywork
+    // that breaks on the next edit, for a purely cosmetic win (GFM
+    // renders unaligned tables identically).
+    "MD060": false
+  }
+}
