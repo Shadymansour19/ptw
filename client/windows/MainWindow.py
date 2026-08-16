@@ -1406,11 +1406,24 @@ class MainWindow(QMainWindow):
         else:
             ClientRequests.updateLanguage(self.loggedUser, new_language, callback=on_done)
 
+    def _restartSSEListener(self):
+        """Stop the current SSE listener and start a fresh one authenticated as the
+        current `loggedUser`. `SSEListener` captures its username/password as plain
+        strings at construction time rather than holding a reference to `loggedUser`,
+        so an in-session password change leaves it silently 401ing forever inside its
+        own reconnect loop unless it's explicitly rebuilt like this."""
+        self._sseListener.stop()
+        self._sseListener.wait(1000)
+        self._sseListener = SSEListener(SERVER_URL, self.loggedUser.getUsername(), self.loggedUser.getPassword())
+        self._sseListener.eventReceived.connect(self._onSSEEvent)
+        self._sseListener.start()
+
     def dlgSettings(self):
         """Open the Settings dialog, invoked from the settings button or the welcome
         banner's name link; blocks Guest users. On acceptance, save the updated user
-        profile to the server, refresh the welcome banner's name/role text, and
-        prompt to apply a theme and/or language change if either was changed."""
+        profile to the server, refresh the welcome banner's name/role text, restart
+        the SSE listener if the password changed, and prompt to apply a theme and/or
+        language change if either was changed."""
         if self.loggedUser.getRole() == UserRoles.GUEST:
             QMessageBox.warning(self, t("Access Denied"), t("Guest users cannot access settings."))
             return
@@ -1427,8 +1440,14 @@ class MainWindow(QMainWindow):
                 return
             if not user.getPassword():
                 user.setPassword(self.loggedUser.getPassword())
-            self.loggedUser = user
+            passwordChanged = user.getPassword() != self.loggedUser.getPassword()
+            # Mutate the shared loggedUser in place (rather than rebinding self.loggedUser
+            # to this new object) so every table/dialog already holding a reference to the
+            # old object - captured at their own construction time - sees the update too.
+            self.loggedUser.setAll(user.__dict__)
             MainWindow.refreshWelcomePage(self)
+            if passwordChanged:
+                self._restartSSEListener()
             if dlg.new_theme != old_theme:
                 self._applyThemeChange(dlg.new_theme)
             if dlg.new_language != old_language:

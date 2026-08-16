@@ -120,14 +120,6 @@ The error path does `response.json().get("error", response.text)` inside the `ex
 
 **Fix:** One shared helper that tries `response.json()` and falls back to `response.text`; never call `.json()` in a binary-download error path.
 
-#### M25 — Password change leaves tables and the SSE listener on the old credentials
-
-**File:** `client/windows/MainWindow.py` — `dlgSettings` (`self.loggedUser = user`); tables capture the login-time `User`; `client/network/SSEListener.py` (built with credential strings)
-
-`dlgSettings` replaces `MainWindow.loggedUser` with a new object rather than mutating the shared one, but every table captured the original `User` at construction, and `SSEListener` holds the old password strings. After an in-session password change, table-initiated actions authenticate with the old password (401), and the SSE listener 401s forever inside its silent reconnect loop — real-time updates die with no error shown until re-login.
-
-**Fix:** Mutate the shared `loggedUser` in place (or propagate the new object to tables), and restart the SSE listener with the new credentials (the historical M4 fix did this for the password-reset path — extend it here).
-
 #### M26 — Sortable isolation tables delete by row index without resync: wrong item removed after a sort
 
 **File:** `client/tables/TableIsolations.py:40,92-106`; `client/tables/TableIsolationItems.py:44,135-150`
@@ -171,14 +163,11 @@ The server authorizes against the authenticated user but records the actor from 
 ### Low
 
 - **L5 — `optionDoForAllSelected` iterates an unordered `set` then reverses it.** `client/tables/TablePTWs.py:426-431` (and `TableICs.py:363-368`): `list(set(rows))[::-1]` is not guaranteed descending, so a multi-row delete can remove wrong rows (compounded by the H13 index race). Fix: `sorted(rows, reverse=True)` + id-based removal.
-- **L6 — PTW#/IC# columns sort lexicographically.** `client/tables/TablePTWs.py:261,402-407`, `TableICs.py:230-243`: id stored as display text, so ordering goes 1, 10, 11, 2 … once ids exceed 9. Fix: numeric sort key in `UserRole` (same pattern as the Fast-Track/Long-Term columns).
 - **L7 — Path containment uses `startswith` without a trailing separator.** `server/routes/ptws.py`/`ics.py` attachment handlers, `server/paths.py:74` (`resolveMiwiPath`), `server/routes/admin.py:33` (`getLogs`): `abspath(fp).startswith(abspath(dir))` would accept a sibling dir sharing the prefix (e.g. `miwi` vs `miwi_x`). Not attacker-creatable here, so hardening-level; `backupService` is already safe via a strict regex. Fix: `os.path.commonpath([...])` or append `os.sep`.
 - **L8 — `resetCodes` mutated without a lock.** `server/routes/auth.py:265-275`: the pruner does `del resetCodes[u]` while `resetPassword` may delete the same key concurrently → `KeyError` kills the pruner thread. Fix: guard with a lock or use `resetCodes.pop(u, None)`.
 - **L9 — Cache refresh fails silently / partially.** `server/GlobalData.py:refresh` returns an error string instead of raising and commits `allUsers` before fetching PTWs/ICs; `server/core.py:_periodic_refresh` ignores the return and logs "completed" even on failure. Fix: check the return; make the refresh atomic.
 - **L10 — Temp files are never cleaned up.** Reports/QR/attachment/export/burn-in all use `delete=False`/`mkstemp` with no removal (`ReportGenerator.py:98,491,854,973,1074,1266`, `ptwRequests.py:236`, `icRequests.py:190`, `documentRequests.py:40`, `PidWiringHighlighter.py:315,356,410`). Unbounded temp growth on operator machines; `ptwRequests.py:236` also forces a `.pdf` suffix on every attachment and embeds the server filename in the temp name unsanitized. Fix: clean up after use / open with `delete=True` where possible.
 - **L11 — Context-menu `QMenu`/`QAction` objects leak per right-click.** `TablePTWs.py:443`, `TableICs.py:379`, `TableUsers.py:299`, `TableBackups.py:209`, `TableIsolations.py:115`, `TableIsolationItems.py:160`: parented to the table, never deleted. Slow session-long growth.
-- **L12 — `TablePTWs.showContextMenu` ignores `MenuOption.visibleFor`.** `TablePTWs.py:445-448` (contrast `TableICs.py:380-382`). Currently masked because the only predicate-guarded PTW option is wired to tabs where it's always true, but any future wiring to a mixed tab silently shows forbidden actions. Also `TableICs.showContextMenu` gates on the right-clicked row but then runs the action over all selected rows.
-- **L13 — `isInMeeting()` includes RETURNED permits in the "PTW in Meeting" overlay.** `client/models/PTW.py:2260-2263`: the per-role `getApprovalStatus` check ignores the overall RETURNED state, so a permit returned at the parallel Issuing/Safety stage still shows in the Meeting tab. Fix: add an `approval_status != RETURNED` conjunct.
 - **L14 — `PTW.Approval.__str__` diverged between copies.** `client/models/PTW.py:1565-1566` shows the USER approver's department; `server/models/PTW.py:545-552` doesn't (yet `IC.Approval.__str__` has it on both sides). Latent until a server-side report/log stringifies an approval.
 - **L15 — Login `SSEListener.stop()` can't interrupt a blocked read.** `client/network/SSEListener.py` + `MainWindow.py` `stop(); wait(1000)`: after logout the old thread can linger up to 30 s (next heartbeat) still authenticated as the previous user, and can be torn down while running on quit. Fix: keep a reference to the `requests` response and `.close()` it in `stop()` (the H6 read timeout, fixed 2026-08-15, already caps the lingering window at 65 s).
 - **L16 — Async callbacks can fire into deleted/closed dialogs.** `client/network/RequestWorker.py:45-47` calls `cb(err, result)` with no guard; a callback bound to a dialog deleted before delivery raises `RuntimeError: wrapped C/C++ object has been deleted`. Fix: guard with `sip.isdeleted(cb.__self__)` / try-except.
@@ -226,6 +215,27 @@ The server binds to plain HTTP on port 5000. Every request sends the username an
 
 ## Fixed
 
+### ~~L6 — PTW#/IC# columns sort lexicographically~~ ✓
+**File:** `client/tables/TablePTWs.py`, `client/tables/TableICs.py` — `_makeCell`
+
+Both tables stored the id column's sort key as its display text, so ordering went 1, 10, 11, 2 … once ids exceeded 9. Fixed (2026-08-16) by adding a `_NumericItem` (`QTableWidgetItem` subclass) to each file, matching the existing `_FastTrackItem`/`_LongTermItem` pattern: the cell still displays the id as text, but `__lt__` compares the real integer stashed in `UserRole` instead.
+
+---
+
+### ~~L12 — `TablePTWs.showContextMenu` ignores `MenuOption.visibleFor`~~ ✓
+**File:** `client/tables/TablePTWs.py`, `client/tables/TableICs.py` — `showContextMenu`, `optionDoForAllSelected`
+
+`TablePTWs.showContextMenu` built its right-click menu without ever checking `option.visibleFor`, unlike `TableICs`'s equivalent — masked only because the one predicate-guarded PTW option happened to be wired to tabs where the predicate was always true. Separately, both tables' `showContextMenu` gated menu visibility on the single right-clicked row, but then `optionDoForAllSelected` ran the action over every selected row regardless of whether each one actually passed that predicate. Fixed (2026-08-16): `TablePTWs.showContextMenu` now skips options whose `visibleFor` fails for the right-clicked PTW, mirroring `TableICs`. In both files, `optionDoForAllSelected` now also takes the triggered option's `visibleFor` and filters the selected rows down to the ones that pass it before running the handler, so a multi-selection spanning rows the predicate would forbid no longer runs the action on those rows.
+
+---
+
+### ~~L13 — `isInMeeting()` includes RETURNED permits in the "PTW in Meeting" overlay~~ ✓
+**File:** `client/models/PTW.py` — `isInMeeting`
+
+The per-role `getApprovalStatus` check ignored the overall `approval_status`, so a permit returned at the parallel Issuing/Safety stage (Safety returned it, but Issuing's own slot still read `UNDER_REVIEW`) still showed in the Meeting tab. Fixed (2026-08-16) by adding an `approval_status != PTW.ApprovalStatus.RETURNED` conjunct.
+
+---
+
 ### ~~H9 — DialogPTW never selects the PTW's saved MIWI: wrong safety document shown, silently overwritten on edit~~ ✓
 
 **File:** `client/dialogs/DialogPTW.py` — combo construction, `newMIWI`'s `on_done`
@@ -247,6 +257,13 @@ The only consumer of `attachsToBeUploaded`/attachment deletions was `addPTWDialo
 **File:** `client/windows/MainWindow.py` — `addPTWDialog`
 
 `copyPtwAttachments` ran only inside `on_attachments_uploaded`, which only fired under `if dlg.attachsToBeUploaded:`. Re-requesting a permit without adding a new file left that list empty, so the copy never happened — the new permit was created with **zero attachments**, and the server-side risk-row copy that rides on the same endpoint was skipped too, even though the dialog displayed all the originals. Fixed (2026-08-16) by decoupling the two calls: `copyPtwAttachments` now runs unconditionally whenever a reference `ptw` exists, independent of whether `dlg.attachsToBeUploaded` has anything staged.
+
+---
+
+### ~~M25 — Password change leaves tables and the SSE listener on the old credentials~~ ✓
+**File:** `client/windows/MainWindow.py` — `dlgSettings`, new `_restartSSEListener`
+
+`dlgSettings` replaced `MainWindow.loggedUser` with a new object rather than mutating the shared one, but every table captured the original `User` at construction (and any already-open dialog held the same reference), so they kept authenticating with the old password after an in-session change. `SSEListener` also captures username/password as plain strings at construction, so it doesn't see any change to the `User` object at all — it 401s forever inside its own silent reconnect loop, killing real-time updates with no visible error until re-login. Fixed (2026-08-16): `dlgSettings` now calls `self.loggedUser.setAll(user.__dict__)` to mutate the shared object's fields in place — every table/dialog holding that same reference sees the update immediately, with no separate propagation step needed (the same in-place-mutation pattern the theme-toggle button already used, just not previously applied here). A new `_restartSSEListener()` helper stops and rebuilds `_sseListener` with the current credentials, called whenever the password actually changed (compared before the mutation, since blanking the password field in Settings is a no-op per the existing M15 fix).
 
 ---
 
@@ -416,7 +433,7 @@ Seed password is now generated with `secrets.token_urlsafe(12)` on first boot   
 
 **File:** `client/windows/MainWindow.py` — `dlgSettings`
 
-`dlgSettings` now detects a password change, then stops and recreates `_sseListener` with the new credential before resuming.
+`dlgSettings` now detects a password change, then stops and recreates `_sseListener` with the new credential before resuming. **Regression note:** a later rewrite of `dlgSettings` (replacing `self.loggedUser` outright rather than mutating it, per M25) silently dropped this restart call again; M25's fix (2026-08-16) restored it via a dedicated `_restartSSEListener()` helper, gated on whether the password actually changed.
 
 ---
 

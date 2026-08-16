@@ -38,6 +38,21 @@ class _FastTrackItem(QTableWidgetItem):
         return super().__lt__(other)
 
 
+class _NumericItem(QTableWidgetItem):
+    """PTW# column cell: displays the id as text, but sorts by the real integer
+    stashed in UserRole instead of the default lexicographic text compare
+    (which would order 1, 10, 11, 2, ... once ids exceed 9)."""
+
+    def __lt__(self, other):
+        """Compare by the stashed integer id instead of the display text."""
+        if isinstance(other, QTableWidgetItem):
+            selfId = self.data(Qt.ItemDataRole.UserRole)
+            otherId = other.data(Qt.ItemDataRole.UserRole)
+            if selfId is not None and otherId is not None:
+                return selfId < otherId
+        return super().__lt__(other)
+
+
 class TablePTWs(QWidget):
     """PTW list table for a single status tab: filterable columns, a
     role-configurable right-click context menu, and double-click drill-down.
@@ -73,6 +88,7 @@ class TablePTWs(QWidget):
         self.summeryLabels = [t('PTW#'), t('F.T.'), t('Type'), t('Request Time'), t('Department'), t('Requestor'), t('Location'), t('Equipment'), t('Description')]
         self.summeryFields = ['id',       'fast_track', 'type', 'request_date',  'department',    'requestor',    'location',    'equipment',    'description']
         self._ftCol = self.summeryFields.index('fast_track')
+        self._idCol = self.summeryFields.index('id')
 
         lblLyt = QHBoxLayout()
         lblLyt.setContentsMargins(10, 0, 10, 0)
@@ -247,12 +263,20 @@ class TablePTWs(QWidget):
 
     def _makeCell(self, col: int, value: str) -> QTableWidgetItem:
         """Build the QTableWidgetItem for one cell, using `_FastTrackItem`
-        (empty text, real value in UserRole) for the F.T. column, and translated
+        (empty text, real value in UserRole) for the F.T. column, `_NumericItem`
+        (real integer id in UserRole) for the PTW# column, and translated
         display text (real value still in UserRole) for the other fixed-vocabulary
         columns in `_TRANSLATABLE_FIELDS` (type/department/location)."""
         if col == self._ftCol:
             cell = _FastTrackItem("")
             cell.setData(Qt.ItemDataRole.UserRole, value)
+            return cell
+        if col == self._idCol:
+            cell = _NumericItem(value)
+            try:
+                cell.setData(Qt.ItemDataRole.UserRole, int(value))
+            except (TypeError, ValueError):
+                pass
             return cell
         if self.summeryFields[col] in _TRANSLATABLE_FIELDS:
             cell = QTableWidgetItem(t(value))
@@ -418,12 +442,16 @@ class TablePTWs(QWidget):
         if len(self.options) > 0:
             self.options[0].fun(row, self.ptwsData[row])
 
-    def optionDoForAllSelected(self, fun, allAtOnce: bool):
+    def optionDoForAllSelected(self, fun, allAtOnce: bool, visibleFor=None):
         """Run a context-menu option's handler over the current selection:
         once with all selected rows/PTWs together if `allAtOnce`, otherwise
         once per row (in reverse order, so row indices stay valid as rows are
-        removed)."""
+        removed). If `visibleFor` is given, rows whose PTW fails the predicate
+        are excluded first - the menu is only built for the right-clicked row,
+        but the action can still run over a wider multi-selection."""
         selectedRows = list(set(row.row() for row in self.tbl.selectedIndexes() if row.isValid()))
+        if visibleFor is not None:
+            selectedRows = [row for row in selectedRows if visibleFor(self.ptwsData[row])]
         if allAtOnce:
             fun(selectedRows, [self.ptwsData[row] for row in selectedRows])
         else:
@@ -432,19 +460,22 @@ class TablePTWs(QWidget):
 
     def showContextMenu(self, pos: QPoint):
         """Slot for customContextMenuRequested: build and show a right-click
-        menu of the registered options at `pos`, wired to run each option's
-        handler over the selected rows on trigger."""
+        menu of the registered options that pass their `visibleFor` check for
+        this row's PTW (if any), wired to run each option's handler over the
+        selected rows (also filtered by `visibleFor`) on trigger."""
         row = self.tbl.indexAt(pos)
 
         if not row.isValid():
             return
 
-        row = row.row()
+        ptw = self.ptwsData[row.row()]
         menu = QMenu(self.tbl)
 
         for option in self.options:
+            if option.visibleFor is not None and not option.visibleFor(ptw):
+                continue
             action = QAction(option.icn, option.lbl, self.tbl)
             menu.addAction(action)
-            action.triggered.connect(partial(self.optionDoForAllSelected, option.fun, option.allAtOnce))
+            action.triggered.connect(partial(self.optionDoForAllSelected, option.fun, option.allAtOnce, option.visibleFor))
 
         menu.exec(self.tbl.mapToGlobal(pos))

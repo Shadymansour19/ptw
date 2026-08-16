@@ -2305,10 +2305,14 @@ class PTW:
         at the Issuing approver's stage, still waiting on Issuing specifically (regardless
         of Safety's status in that same stage, and regardless of who is viewing) — i.e.
         getApprovalStatus() for the fixed Issuing/Prod approver still reads UNDER_REVIEW.
+        Excludes RETURNED permits: the per-role check above ignores the overall status, so
+        without this a permit returned at the parallel Issuing/Safety stage (Safety returned
+        it, but Issuing's own slot still reads UNDER_REVIEW) would still show here.
         This is additive, not a routing target: a PTW meeting this condition still lives in
         whichever tab _ptwTargetTab() puts it in (Under Review) AND shows up here too."""
         return (
             not self.fast_track
+            and self.approval_status != PTW.ApprovalStatus.RETURNED
             and self.getApprovalStatus(role=UserRoles.ISSUING, department=UserDepartments.PROD) == PTW.ApprovalStatus.UNDER_REVIEW
         )
 

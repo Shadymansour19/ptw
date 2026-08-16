@@ -38,6 +38,21 @@ class _LongTermItem(QTableWidgetItem):
         return super().__lt__(other)
 
 
+class _NumericItem(QTableWidgetItem):
+    """IC# column cell: displays the id as text, but sorts by the real integer
+    stashed in UserRole instead of the default lexicographic text compare
+    (which would order 1, 10, 11, 2, ... once ids exceed 9)."""
+
+    def __lt__(self, other):
+        """Compare by the stashed integer id instead of the display text."""
+        if isinstance(other, QTableWidgetItem):
+            selfId = self.data(Qt.ItemDataRole.UserRole)
+            otherId = other.data(Qt.ItemDataRole.UserRole)
+            if selfId is not None and otherId is not None:
+                return selfId < otherId
+        return super().__lt__(other)
+
+
 class TableICs(QWidget):
     """Reusable per-tab browsing widget for ICs, mirroring TablePTWs."""
 
@@ -56,6 +71,7 @@ class TableICs(QWidget):
         self.summeryLabels = [t('IC#'), t('Status'), t('Type'), t('L.T.'), t('Requestor'), t('Request Time'), t('Requestor Dept.'), t('Execution Dept.'), t('Location'), t('Equipment'), t('Reason')]
         self.summeryFields = ['id',  'status', 'type', 'long_term', 'requestor', 'requestor_timestamp', 'requestor_department', 'execution_department', 'location', 'equipment', 'reason']
         self._ltCol = self.summeryFields.index('long_term')
+        self._idCol = self.summeryFields.index('id')
 
         lblLyt = QHBoxLayout()
         lblLyt.setContentsMargins(10, 0, 10, 0)
@@ -229,12 +245,20 @@ class TableICs(QWidget):
 
     def _makeCell(self, col: int, value: str) -> QTableWidgetItem:
         """Build the QTableWidgetItem for one cell, using `_LongTermItem`
-        (empty text, real value in UserRole) for the L.T. column, and translated
+        (empty text, real value in UserRole) for the L.T. column, `_NumericItem`
+        (real integer id in UserRole) for the IC# column, and translated
         display text (real value still in UserRole) for the other fixed-vocabulary
         columns in `_TRANSLATABLE_FIELDS`."""
         if col == self._ltCol:
             cell = _LongTermItem("")
             cell.setData(Qt.ItemDataRole.UserRole, value)
+            return cell
+        if col == self._idCol:
+            cell = _NumericItem(value)
+            try:
+                cell.setData(Qt.ItemDataRole.UserRole, int(value))
+            except (TypeError, ValueError):
+                pass
             return cell
         if self.summeryFields[col] in _TRANSLATABLE_FIELDS:
             cell = QTableWidgetItem(t(value))
@@ -355,12 +379,16 @@ class TableICs(QWidget):
         if len(self.options) > 0:
             self.options[0].fun(row, self.icsData[row])
 
-    def optionDoForAllSelected(self, fun, allAtOnce: bool):
+    def optionDoForAllSelected(self, fun, allAtOnce: bool, visibleFor=None):
         """Run a context-menu option's handler over the current selection:
         once with all selected rows/ICs together if `allAtOnce`, otherwise
         once per row (in reverse order, so row indices stay valid as rows are
-        removed)."""
+        removed). If `visibleFor` is given, rows whose IC fails the predicate
+        are excluded first - the menu is only built for the right-clicked row,
+        but the action can still run over a wider multi-selection."""
         selectedRows = list(set(row.row() for row in self.tbl.selectedIndexes() if row.isValid()))
+        if visibleFor is not None:
+            selectedRows = [row for row in selectedRows if visibleFor(self.icsData[row])]
         if allAtOnce:
             fun(selectedRows, [self.icsData[row] for row in selectedRows])
         else:
@@ -371,7 +399,7 @@ class TableICs(QWidget):
         """Slot for customContextMenuRequested: build and show a right-click
         menu of the registered options that pass their `visibleFor` check for
         this row's IC (if any), wired to run each option's handler over the
-        selected rows on trigger."""
+        selected rows (also filtered by `visibleFor`) on trigger."""
         row = self.tbl.indexAt(pos)
         if not row.isValid():
             return
@@ -382,7 +410,7 @@ class TableICs(QWidget):
                 continue
             action = QAction(option.icn, option.lbl, self.tbl)
             menu.addAction(action)
-            action.triggered.connect(partial(self.optionDoForAllSelected, option.fun, option.allAtOnce))
+            action.triggered.connect(partial(self.optionDoForAllSelected, option.fun, option.allAtOnce, option.visibleFor))
         menu.exec(self.tbl.mapToGlobal(pos))
 
     def addNewICDialog(self):
