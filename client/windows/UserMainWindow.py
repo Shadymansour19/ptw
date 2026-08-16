@@ -50,7 +50,7 @@ class UserMainWindow(MainWindow):
         self.setAvailableTabs(
             [   # sidebar: curated, most-used tabs for a requestor
                 [self.btnWelcome],
-                [self.btnRequestedPTWs, self.btnUnderReviewPTWs, self.btnMeetingPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
+                [self.btnRequestedPTWs, self.btnMeetingPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
                 [self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs],
                 [self.btnCertRequested, self.btnCertApproved, self.btnCertIsolateConfirming, self.btnCertPending,
                  self.btnCertActive, self.btnCertDeisolateConfirming, self.btnCertClosing, self.btnCertSanctioned, self.btnCertClosed],
