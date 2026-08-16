@@ -35,27 +35,6 @@ The most-recent user's keyring password is auto-filled on load, any selected use
 
 **Fix:** Never place a retrieved password into a revealable widget. Keep a sentinel and substitute the real credential only at submit time; at minimum disable the eye toggle for keyring-filled values.
 
-#### H9 — DialogPTW never selects the PTW's saved MIWI: wrong safety document shown, silently overwritten on edit
-**File:** `client/dialogs/DialogPTW.py:415-418` (combo populated, never set to `ptw.miwi`), `:883` (View MIWI reads `currentText()`), `:1022` (`collectData` writes `currentText()` back)
-
-`boxMiwi` is filled with all MIWIs but never set to the permit's own `ptw.miwi`, so it always displays the first alphabetical entry. Viewing a permit shows/opens the **wrong** work-instruction document; editing a returned permit and resubmitting overwrites `ptw.miwi` with that wrong value (silent data corruption).
-
-**Fix:** After populating the combo, `boxMiwi.setCurrentText(ptw.miwi)` (and handle the "MIWI not in list" case).
-
-#### H10 — Edit-PTW silently drops attachment additions/deletions
-**File:** `client/windows/MainWindow.py:904-924` (`editPTW`); `client/dialogs/DialogPTW.py:1064` (`collectData` fills `attachsToBeUploaded`)
-
-The only consumer of `attachsToBeUploaded`/attachment deletions is `addPTWDialog`. `editPTW`'s accepted branch saves the risk assessment and calls `updatePTW`, but never uploads or deletes attachments. A permit returned for a missing document, re-opened in Edit with the file attached, resubmits with the file never uploaded and no error — approvers see nothing. Deletes in edit mode are equally ignored.
-
-**Fix:** In `editPTW`'s accepted branch, call `addPtwAttachments` for pending uploads and the delete endpoint for removals, mirroring `addPTWDialog`.
-
-#### H11 — Re-request copies reference attachments (and risk rows) only if a NEW attachment was also added
-**File:** `client/windows/MainWindow.py:948-953, 970-971`
-
-`copyPtwAttachments` runs only inside `on_attachments_uploaded`, which only fires under `if dlg.attachsToBeUploaded:`. Re-requesting a permit without adding a new file leaves that list empty (the reference permit's attachments arrive marked `uploaded=True`), so the copy never happens — the new permit is created with **zero attachments**, and the server-side risk-row copy that rides on the same endpoint is skipped too, even though the dialog displayed all the originals.
-
-**Fix:** Call `copyPtwAttachments` unconditionally on re-request (independent of whether new files were staged).
-
 #### H12 — Closing the window (even Cancel or minimize-to-tray) permanently disables the safety-alarm polling
 **File:** `client/windows/MainWindow.py:808-809`
 
@@ -225,6 +204,27 @@ The server binds to plain HTTP on port 5000. Every request sends the username an
 
 
 ## Fixed
+
+### ~~H9 — DialogPTW never selects the PTW's saved MIWI: wrong safety document shown, silently overwritten on edit~~ ✓
+**File:** `client/dialogs/DialogPTW.py` — combo construction, `newMIWI`'s `on_done`
+
+`boxMiwi` was filled with all MIWIs but never set to the permit's own `ptw.miwi`, so it always displayed the first alphabetical entry. Viewing a permit showed/opened the **wrong** work-instruction document; editing a returned permit and resubmitting overwrote `ptw.miwi` with that wrong value (silent data corruption). Fixed (2026-08-16) by selecting `ptw.miwi` after populating the combo, adding it to the item list first if the server-side list no longer contains it (e.g. deleted MIWI) so the permit's own value is still shown rather than silently substituted. While in there, `boxMiwi` was also swapped from a plain `QComboBox` to the same `SearchableComboBox` widget already used for Login's username field and the isolation tag pickers (fuzzy-match autocomplete), for easier lookup in a long MIWI list; `newMIWI`'s "register and select the new upload" step now rebuilds via `setItems()` instead of `addItem()` so the completer's fuzzy-search model stays in sync with the dropdown.
+
+---
+
+### ~~H10 — Edit-PTW silently drops attachment additions/deletions~~ ✓
+**File:** `client/windows/MainWindow.py` — `editPTW`
+
+The only consumer of `attachsToBeUploaded`/attachment deletions was `addPTWDialog`. `editPTW`'s accepted branch saved the risk assessment and called `updatePTW`, but never uploaded or deleted attachments. A permit returned for a missing document, re-opened in Edit with the file attached, resubmitted with the file never uploaded and no error — approvers saw nothing; deletes in edit mode were equally ignored. Fixed (2026-08-16): `editPTW`'s accepted branch now calls `ClientRequests.addPtwAttachments` for `attachsToBeUploaded`, and unconditionally calls `ClientRequests.deleteAllPtwAttachments` with a `keepFilenames` list built from whatever the dialog still shows as uploaded — anything the user removed in-dialog is simply absent from that list, so the server call prunes it — mirroring `addPTWDialog`'s existing pattern.
+
+---
+
+### ~~H11 — Re-request copies reference attachments (and risk rows) only if a NEW attachment was also added~~ ✓
+**File:** `client/windows/MainWindow.py` — `addPTWDialog`
+
+`copyPtwAttachments` ran only inside `on_attachments_uploaded`, which only fired under `if dlg.attachsToBeUploaded:`. Re-requesting a permit without adding a new file left that list empty, so the copy never happened — the new permit was created with **zero attachments**, and the server-side risk-row copy that rides on the same endpoint was skipped too, even though the dialog displayed all the originals. Fixed (2026-08-16) by decoupling the two calls: `copyPtwAttachments` now runs unconditionally whenever a reference `ptw` exists, independent of whether `dlg.attachsToBeUploaded` has anything staged.
+
+---
 
 ### ~~C1 — Privilege escalation: any user can make themselves Admin via `PUT /users`~~ ✓
 **File:** `server/routes/users.py` — `updateUserRequest`

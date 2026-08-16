@@ -904,8 +904,8 @@ class MainWindow(QMainWindow):
 
     def editPTW(self, row: int, ptw: PTW):
         """Open `ptw` in an editable `DialogPTW`; on acceptance, clear its approval
-        history if it had been RETURNED, save its risk assessment, and update the
-        row in the current table."""
+        history if it had been RETURNED, save its risk assessment, upload/delete
+        any attachment changes, and update the row in the current table."""
         toEditPtw = copy.deepcopy(ptw)
         wasReturned = toEditPtw.approval_status == PTW.ApprovalStatus.RETURNED
         self._refreshOverlay.showBusy()
@@ -921,6 +921,20 @@ class MainWindow(QMainWindow):
                     QMessageBox.warning(self, t("Warning"), t("PTW saved but failed to save risk assessment:") + f" {err}")
             risk = RiskAssessment(title=ptw.description, date=datetime.now().strftime('%d %b %Y'), risks=editPTWDialog.riskAssessmentPreviewTable.getRiskItems(), ptw_id=ptw.id)
             self._savePTWRiskAssessment(ptw.id, risk, callback=on_risk_saved)
+
+            def on_attachments_deleted(err, _):
+                if err:
+                    QMessageBox.warning(self, t("Error"), t("Failed to remove deleted attachments:") + f" {err}")
+            # Anything the dialog still lists as uploaded is kept; anything removed in
+            # the dialog (or already gone) is dropped server-side by not being in the list.
+            keepFilenames = [a.remoteName for a in editPTWDialog.tableAttachments.getAttachments() if a.uploaded]
+            ClientRequests.deleteAllPtwAttachments(self.loggedUser, ptw.id, keepFilenames=keepFilenames, callback=on_attachments_deleted)
+
+            if editPTWDialog.attachsToBeUploaded:
+                def on_attachments_uploaded(err, _):
+                    if err:
+                        QMessageBox.warning(self, t("Error"), t("Failed to upload attachments:") + f" {err}")
+                ClientRequests.addPtwAttachments(self.loggedUser, ptw.id, editPTWDialog.attachsToBeUploaded, callback=on_attachments_uploaded)
 
             self.stack.currentWidget().updatePTW(row, ptw)
 
@@ -944,14 +958,10 @@ class MainWindow(QMainWindow):
             def on_copy_attachments_done(err, _):
                 if err:
                     QMessageBox.warning(self, t("Error"), t("Failed to copy attachments:") + f" {err}")
-                    return
 
             def on_attachments_uploaded(err, _):
                 if err:
                     QMessageBox.warning(self, t("Error"), t("Failed to upload attachments:") + f" {err}")
-                    return
-                if ptw:
-                    ClientRequests.copyPtwAttachments(self.loggedUser, ptw.id, newPTW.id, callback=on_copy_attachments_done)
                 # self.refreshGUI()  # SSE event handles refresh
 
             if err:
@@ -967,6 +977,11 @@ class MainWindow(QMainWindow):
             # On re-request, the server also copies the original PTW's own risk rows onto
             # this new ptw_id (server/app.py copyPtwAttachments), additively — so any custom
             # rows from the original that weren't re-selected/re-added here still carry over.
+
+            # Copy the reference PTW's attachments unconditionally on re-request - this must
+            # not depend on whether the user also staged a brand-new attachment (H11).
+            if ptw:
+                ClientRequests.copyPtwAttachments(self.loggedUser, ptw.id, newPTW.id, callback=on_copy_attachments_done)
 
             if dlg.attachsToBeUploaded:
                 ClientRequests.addPtwAttachments(self.loggedUser, newPTW.id, dlg.attachsToBeUploaded, callback=on_attachments_uploaded)

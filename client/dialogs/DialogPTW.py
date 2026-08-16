@@ -31,6 +31,7 @@ from tables.TableIsolations import TablePTWIsolations
 from widgets.RiskPreview import RiskAssessmentPreview
 from widgets.UiUtils import Timeline
 from widgets.RefreshOverlay import RefreshOverlay
+from widgets.SearchableComboBox import SearchableComboBox
 from dialogs.TabbedDialog import TabbedDialog
 from functools import partial
 import qtawesome as qta
@@ -412,10 +413,17 @@ class DialogPTW(TabbedDialog):
         self.boxMOS.setAcceptRichText(False)
         self.boxMOS.setText(str(ptw.mos) if ptw.mos else '')
 
-        self.boxMiwi = QComboBox(self.tabMiwiMos)
-        self.boxMiwi.addItems(sorted(globalData.allMIWIs, key=str.casefold))
-        # self.boxMiwi.setEditable(True)
+        self.boxMiwi = SearchableComboBox(self.tabMiwiMos)
+        miwiItems = sorted(globalData.allMIWIs, key=str.casefold)
+        if ptw.miwi and ptw.miwi not in miwiItems:
+            # The permit's saved MIWI is no longer in the current list (e.g.
+            # deleted server-side) - keep it in the list so the permit's own
+            # value is still shown instead of silently falling back to another entry.
+            miwiItems.append(ptw.miwi)
+        self.boxMiwi.setItems(miwiItems)
         self.boxMiwi.setMaxVisibleItems(10)
+        if ptw.miwi:
+            self.boxMiwi.setCurrentText(ptw.miwi)
 
         self.btnViewMiwi = QPushButton(qta.icon("fa6.eye"), t('View MIWI'))
         self.btnViewMiwi.clicked.connect(self.openMIWI)
@@ -967,7 +975,8 @@ class DialogPTW(TabbedDialog):
                 QMessageBox.warning(self, t("Error"), err)
                 return
             globalData.allMIWIs.append(miwiName)
-            self.boxMiwi.addItem(miwiName)
+            # setItems (not addItem) so the completer's fuzzy-search model stays in sync
+            self.boxMiwi.setItems(sorted(globalData.allMIWIs, key=str.casefold))
             self.boxMiwi.setCurrentText(miwiName)
 
         self._refreshOverlay.showBusy()
