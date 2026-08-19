@@ -29,12 +29,16 @@ class SSEListener(QThread):
     eventReceived = pyqtSignal(str, dict)   # (event_type, data)
     reconnected = pyqtSignal()   # fired once the stream re-establishes after the *first* connection
 
-    def __init__(self, server_url: str, username: str, password: str):
-        """Store the server URL and Basic Auth credentials for the eventual connection."""
+    def __init__(self, server_url: str, username: str, password: str, verify=True):
+        """Store the server URL, Basic Auth credentials, and TLS `verify=` value (see
+        `network.requestConfig.VERIFY` - this listener opens its own raw `requests.get()`
+        outside that module's mixins, so it needs the same treatment passed in explicitly)
+        for the eventual connection."""
         super().__init__()
         self._server_url = server_url
         self._username = username
         self._password = password
+        self._verify = verify
         self._running = True
         self._ever_connected = False
 
@@ -70,6 +74,7 @@ class SSEListener(QThread):
                     f"{self._server_url}/events",
                     auth=(self._username, self._password),
                     stream=True,
+                    verify=self._verify,
                     # Read timeout must exceed the server's 30s heartbeat interval:
                     # a half-open connection (no FIN/RST) then raises ReadTimeout
                     # instead of blocking iter_lines() forever, letting the outer

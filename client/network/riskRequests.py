@@ -4,7 +4,7 @@ assessments, and create/update/delete them.
 Mixed into ``ClientRequests`` (see ``network/clientRequests.py``).
 """
 
-from network.requestConfig import SERVER_URL, TIMEOUT, FILE_TIMEOUT, extractError
+from network.requestConfig import SERVER_URL, VERIFY, TIMEOUT, FILE_TIMEOUT, extractError
 import requests
 from network.RequestWorker import async_request
 from helper.utils import dictToObj, objToDict
@@ -29,7 +29,7 @@ class RiskRequests:
             response = requests.get(
                 f'{SERVER_URL}/risks',
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -55,7 +55,7 @@ class RiskRequests:
                 f'{SERVER_URL}/risks/ptw',
                 json={'ptw_id': ptw_id},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -81,7 +81,7 @@ class RiskRequests:
                 f'{SERVER_URL}/risks',
                 json=objToDict(riskAssessment),
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -106,7 +106,7 @@ class RiskRequests:
                 f'{SERVER_URL}/risks',
                 json=objToDict(riskAssessment),
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -131,7 +131,7 @@ class RiskRequests:
                 f'{SERVER_URL}/risks',
                 json={'title': riskTitle, 'ptw_id': ptw_id},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()

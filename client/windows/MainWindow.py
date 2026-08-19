@@ -38,7 +38,7 @@ from tables.TableBackups import TableBackups
 from dialogs.DialogSettings import DialogSettings
 from widgets.RefreshOverlay import RefreshOverlay
 from network.clientRequests import ClientRequests
-from network.requestConfig import SERVER_URL
+from network.requestConfig import SERVER_URL, VERIFY
 from GlobalData import globalData
 from reports.ReportGenerator import ReportGenerator
 from network.SSEListener import SSEListener
@@ -526,7 +526,7 @@ class MainWindow(QMainWindow):
         # between the two would otherwise be missed by both. Anything broadcast during a
         # later outage is still gone for good (no server-side replay/Last-Event-ID), so a
         # full refreshGUI() on every *re*connect (not this first one) resyncs from scratch.
-        self._sseListener = SSEListener(SERVER_URL, loggedUser.getUsername(), loggedUser.getPassword())
+        self._sseListener = SSEListener(SERVER_URL, loggedUser.getUsername(), loggedUser.getPassword(), verify=VERIFY)
         self._sseListener.eventReceived.connect(self._onSSEEvent)
         self._sseListener.reconnected.connect(self.refreshGUI)
         self._sseListener.start()
@@ -1438,7 +1438,7 @@ class MainWindow(QMainWindow):
         own reconnect loop unless it's explicitly rebuilt like this."""
         self._sseListener.stop()
         self._sseListener.wait(1000)
-        self._sseListener = SSEListener(SERVER_URL, self.loggedUser.getUsername(), self.loggedUser.getPassword())
+        self._sseListener = SSEListener(SERVER_URL, self.loggedUser.getUsername(), self.loggedUser.getPassword(), verify=VERIFY)
         self._sseListener.eventReceived.connect(self._onSSEEvent)
         self._sseListener.reconnected.connect(self.refreshGUI)
         self._sseListener.start()

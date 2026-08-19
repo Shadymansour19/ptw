@@ -3,7 +3,7 @@
 Mixed into ``ClientRequests`` (see ``network/clientRequests.py``).
 """
 
-from network.requestConfig import SERVER_URL, TIMEOUT, FILE_TIMEOUT, extractError
+from network.requestConfig import SERVER_URL, VERIFY, TIMEOUT, FILE_TIMEOUT, extractError
 import requests
 from network.RequestWorker import async_request
 from models.User import User, SecuredUser
@@ -24,7 +24,7 @@ class UserRequests:
         """
         response = None
         try:
-            response = requests.get(f'{SERVER_URL}/users', auth=(loggedUser.getUsername(), loggedUser.getPassword()), timeout=TIMEOUT)
+            response = requests.get(f'{SERVER_URL}/users', auth=(loggedUser.getUsername(), loggedUser.getPassword()), verify=VERIFY, timeout=TIMEOUT)
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
@@ -46,7 +46,7 @@ class UserRequests:
         """Create a new user via POST /users. Returns an error string, or None on success."""
         response = None
         try:
-            response = requests.post(f'{SERVER_URL}/users', json=newUser.__dict__, auth=(loggedUser.getUsername(), loggedUser.getPassword()), timeout=TIMEOUT)
+            response = requests.post(f'{SERVER_URL}/users', json=newUser.__dict__, auth=(loggedUser.getUsername(), loggedUser.getPassword()), verify=VERIFY, timeout=TIMEOUT)
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
@@ -66,7 +66,7 @@ class UserRequests:
         response = None
         try:
             user_dict = {k: v for k, v in user.__dict__.items() if not (k == 'password' and not v)}
-            response = requests.put(f'{SERVER_URL}/users', json=user_dict, auth=(loggedUser.getUsername(), loggedUser.getPassword()), timeout=TIMEOUT)
+            response = requests.put(f'{SERVER_URL}/users', json=user_dict, auth=(loggedUser.getUsername(), loggedUser.getPassword()), verify=VERIFY, timeout=TIMEOUT)
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
@@ -85,7 +85,7 @@ class UserRequests:
         """
         response = None
         try:
-            response = requests.patch(f'{SERVER_URL}/users/theme', json={'username': loggedUser.getUsername(), 'theme': theme}, auth=(loggedUser.getUsername(), loggedUser.getPassword()), timeout=TIMEOUT)
+            response = requests.patch(f'{SERVER_URL}/users/theme', json={'username': loggedUser.getUsername(), 'theme': theme}, auth=(loggedUser.getUsername(), loggedUser.getPassword()), verify=VERIFY, timeout=TIMEOUT)
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
@@ -102,7 +102,7 @@ class UserRequests:
         """
         response = None
         try:
-            response = requests.patch(f'{SERVER_URL}/users/language', json={'username': loggedUser.getUsername(), 'language': language}, auth=(loggedUser.getUsername(), loggedUser.getPassword()), timeout=TIMEOUT)
+            response = requests.patch(f'{SERVER_URL}/users/language', json={'username': loggedUser.getUsername(), 'language': language}, auth=(loggedUser.getUsername(), loggedUser.getPassword()), verify=VERIFY, timeout=TIMEOUT)
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
@@ -119,7 +119,7 @@ class UserRequests:
         """
         response = None
         try:
-            response = requests.patch(f'{SERVER_URL}/users/active', json={'username': username, 'is_active': is_active}, auth=(loggedUser.getUsername(), loggedUser.getPassword()), timeout=TIMEOUT)
+            response = requests.patch(f'{SERVER_URL}/users/active', json={'username': username, 'is_active': is_active}, auth=(loggedUser.getUsername(), loggedUser.getPassword()), verify=VERIFY, timeout=TIMEOUT)
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
@@ -138,7 +138,7 @@ class UserRequests:
         """
         response = None
         try:
-            response = requests.put(f'{SERVER_URL}/users', json={'username': username, 'must_change_password': True}, auth=(loggedUser.getUsername(), loggedUser.getPassword()), timeout=TIMEOUT)
+            response = requests.put(f'{SERVER_URL}/users', json={'username': username, 'must_change_password': True}, auth=(loggedUser.getUsername(), loggedUser.getPassword()), verify=VERIFY, timeout=TIMEOUT)
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
@@ -152,7 +152,7 @@ class UserRequests:
         """Delete a user via DELETE /users. Returns an error string, or None on success."""
         response = None
         try:
-            response = requests.delete(f'{SERVER_URL}/users', json={'username': username}, auth=(loggedUser.getUsername(), loggedUser.getPassword()), timeout=TIMEOUT)
+            response = requests.delete(f'{SERVER_URL}/users', json={'username': username}, auth=(loggedUser.getUsername(), loggedUser.getPassword()), verify=VERIFY, timeout=TIMEOUT)
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:

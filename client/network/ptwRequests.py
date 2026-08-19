@@ -4,7 +4,7 @@ run/hold/close request-and-confirm cycles, plus PTW attachments.
 Mixed into ``ClientRequests`` (see ``network/clientRequests.py``).
 """
 
-from network.requestConfig import SERVER_URL, TIMEOUT, FILE_TIMEOUT, extractError
+from network.requestConfig import SERVER_URL, VERIFY, TIMEOUT, FILE_TIMEOUT, extractError
 import requests
 import tempfile
 from network.RequestWorker import async_request
@@ -31,7 +31,7 @@ class PTWRequests:
                 f'{SERVER_URL}/ptws',
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
                 json={'department': department, 'requestor': requestorUsername},
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -55,7 +55,7 @@ class PTWRequests:
             response = requests.get(
                 f'{SERVER_URL}/ptws/{ptwId}',
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             if response.status_code == 404:
                 return None, None
@@ -83,7 +83,7 @@ class PTWRequests:
                 f'{SERVER_URL}/ptws/archive',
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
                 json={'department': department},
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -110,7 +110,7 @@ class PTWRequests:
                 f'{SERVER_URL}/ptws',
                 json=objToDict(ptw),
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -131,7 +131,7 @@ class PTWRequests:
         """
         response = None
         try:
-            response = requests.put(f'{SERVER_URL}/ptws', json=objToDict(ptw), auth=(loggedUser.getUsername(), loggedUser.getPassword()), timeout=TIMEOUT)
+            response = requests.put(f'{SERVER_URL}/ptws', json=objToDict(ptw), auth=(loggedUser.getUsername(), loggedUser.getPassword()), verify=VERIFY, timeout=TIMEOUT)
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
@@ -169,7 +169,7 @@ class PTWRequests:
                 data={'ptw-id': ptwId},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
                 files=files,
-                timeout=FILE_TIMEOUT
+                verify=VERIFY, timeout=FILE_TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -199,7 +199,7 @@ class PTWRequests:
                 f'{SERVER_URL}/ptws/attachments',
                 json={'ptw-id': ptwId},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -225,7 +225,7 @@ class PTWRequests:
                 f'{SERVER_URL}/ptws/attachments',
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
                 json={'ptw-id': ptwId, 'filename': filename},
-                timeout=FILE_TIMEOUT
+                verify=VERIFY, timeout=FILE_TIMEOUT
             )
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
@@ -254,7 +254,7 @@ class PTWRequests:
                 f'{SERVER_URL}/ptws/attachments',
                 json={'ptw-id': ptwId, 'keep-filenames': keepFilenames},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -280,7 +280,7 @@ class PTWRequests:
                 f'{SERVER_URL}/ptws/attachments/copy',
                 json={'source-ptw-id': sourcePtwId, 'target-ptw-id': targetPtwId},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=FILE_TIMEOUT
+                verify=VERIFY, timeout=FILE_TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -298,7 +298,7 @@ class PTWRequests:
         """Delete a PTW via DELETE /ptws. Returns an error string, or None on success."""
         response = None
         try:
-            response = requests.delete(f'{SERVER_URL}/ptws', json={'ptw-id': ptwId}, auth=(loggedUser.getUsername(), loggedUser.getPassword()), timeout=TIMEOUT)
+            response = requests.delete(f'{SERVER_URL}/ptws', json={'ptw-id': ptwId}, auth=(loggedUser.getUsername(), loggedUser.getPassword()), verify=VERIFY, timeout=TIMEOUT)
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
@@ -323,7 +323,7 @@ class PTWRequests:
                 f'{SERVER_URL}/ptws/return',
                 json={'ptw-id': ptwId, 'comment': comment},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -349,7 +349,7 @@ class PTWRequests:
                 f'{SERVER_URL}/ptws/approvals',
                 json={'ptw-id': ptwId, 'approval': approval.__dict__},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -371,7 +371,7 @@ class PTWRequests:
         """
         response = None
         try:
-            response = requests.post(f'{SERVER_URL}/ptws/archive', json={'ptw-ids': ptwIds}, auth=(loggedUser.getUsername(), loggedUser.getPassword()), timeout=TIMEOUT)
+            response = requests.post(f'{SERVER_URL}/ptws/archive', json={'ptw-ids': ptwIds}, auth=(loggedUser.getUsername(), loggedUser.getPassword()), verify=VERIFY, timeout=TIMEOUT)
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
@@ -396,7 +396,7 @@ class PTWRequests:
                 f'{SERVER_URL}/ptws/run-request',
                 json={'ptw-id': ptwId, 'pa': pa, 'timestamp': ts},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -422,7 +422,7 @@ class PTWRequests:
                 f'{SERVER_URL}/ptws/run',
                 json={'ptw-id': ptwId, 'ia': ia, 'timestamp': ts, 'response': accepted, 'comment': comment},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -449,7 +449,7 @@ class PTWRequests:
                 f'{SERVER_URL}/ptws/hold-request',
                 json={'ptw-id': ptwId, 'pa': pa, 'timestamp': ts, 'comment': comment, 'held-ics': heldICs},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -475,7 +475,7 @@ class PTWRequests:
                 f'{SERVER_URL}/ptws/hold',
                 json={'ptw-id': ptwId, 'ia': ia, 'timestamp': ts, 'response': accepted, 'comment': comment},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -501,7 +501,7 @@ class PTWRequests:
                 f'{SERVER_URL}/ptws/close-request',
                 json={'ptw-id': ptwId, 'pa': pa, 'timestamp': ts, 'comment': comment},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -527,7 +527,7 @@ class PTWRequests:
                 f'{SERVER_URL}/ptws/close',
                 json={'ptw-id': ptwId, 'ia': ia, 'timestamp': ts, 'response': accepted, 'comment': comment},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()

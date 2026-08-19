@@ -125,16 +125,6 @@ The server authorizes against the authenticated user but records the actor from 
 
 ## High
 
-### H2 — No HTTPS — Basic Auth credentials sent unencrypted
-
-**File:** `server/app.py` — `app.run()`
-
-The server binds to plain HTTP on port 5000. Every request sends the username and password base64-encoded (not encrypted) in the `Authorization` header. Anyone on the local network path can capture credentials with a packet sniffer.
-
-**Fix:** Terminate TLS at a reverse proxy (nginx/caddy) in front of Flask, or use `ssl_context` in `app.run()` with a certificate.
-
----
-
 ### H3 — No rate limiting on login or password-reset code
 
 **File:** `server/routes/auth.py` — `/login`, `/reset-password`
@@ -469,5 +459,23 @@ Replaced the single shared `self.conn` in every `*Db` class with a `ThreadedConn
 **File:** `server/routes/auth.py`
 
 Added `_RESET_CODE_TTL` and `_RESET_CODE_PRUNE_INTERVAL` constants. A daemon thread now prunes expired entries every `_RESET_CODE_PRUNE_INTERVAL` seconds. The inline `15 * 60` in `resetPassword` was replaced with `_RESET_CODE_TTL`.
+
+---
+
+### ~~H2 — No HTTPS — Basic Auth credentials sent unencrypted~~ ✓ (code done; deployment is an ops step)
+
+**File:** `server/app.py` — `app.run()`
+
+The server bound to plain HTTP on port 5000, sending the username/password base64-encoded (not encrypted) in every `Authorization` header — capturable by anyone on the local network path with a packet sniffer.
+
+**Fix (2026-08-19):** TLS is now terminated at an nginx reverse proxy in front of the app, not in Flask itself:
+- `server/app.py` no longer calls Flask's dev-server `app.run()` — it serves the app via **waitress** (cross-platform, unlike POSIX-only gunicorn — the deployment OS wasn't fixed), bound to `host="127.0.0.1"` instead of `0.0.0.0`. That bind is the primary defense against LAN access to the raw port, not just a firewall rule.
+- `server/deploy/ptw.conf` (new): nginx config terminating TLS and proxying to `127.0.0.1:5000`, with a dedicated `/events` location (`proxy_buffering off`, `proxy_read_timeout` raised past the client's 65s SSE read timeout) since nginx's default buffering/60s timeout would otherwise silently break real-time push. No plain `:80` listener — no browser is involved, so nothing needs a redirect.
+- `server/deploy/generate_cert.sh` (new): generates the one self-signed cert/key pair (multi-decade validity, SAN covering the static server IP + `localhost`/`127.0.0.1`), locks the key to mode 600. No CA — the cert is pinned directly by clients, not chained to a trust store.
+- `client/network/requestConfig.py`: `SERVER_URL` and the new `VERIFY` (the pinned cert path used as `requests`' `verify=`) are both env-configurable (`PTW_SERVER_URL`, `PTW_CA_CERT_PATH`) instead of hardcoded, centralized here rather than repeated at every call site (mirrors `extractError()`, M24's fix). Configurable via real OS env vars or the new `client/.env` (see `client/.env.example`), loaded with `python-dotenv` — the client had no config-file mechanism at all before this, unlike the server's existing `server/.env`. Every `requests.*` call across the seven `*Requests.py` mixins, plus `SSEListener`'s separate raw `requests.get()` (easy to miss — its own code path, not one of the mixins), now passes `verify=VERIFY`.
+- `dev-scripts/generate_bookmarklet.py` (local-only, gitignored): `BASE_URL` now documented as needing to track `PTW_SERVER_URL`, plus a note that a browser has no `verify=` equivalent — it must be made to trust the self-signed cert itself (import it, or click through the browser's own interstitial) once `BASE_URL` is https.
+- The `migrate_*.py`/`reset_all_passwords.py` dev-scripts talk to Postgres directly, never the HTTP API — confirmed unaffected, left as-is.
+
+**Remaining (ops, not code):** actually running `generate_cert.sh` and standing up nginx with `ptw.conf` on the real server, and distributing the resulting public `.crt` to client machines, is a deployment step for whoever stands up the real server — not something a code change can do on its own. See the H2 rollout plan (staged bring-up keeping port 5000 reachable until HTTPS is confirmed, *then* locking it down; hard client+server cutover since there's no partial-migration path) for the sequencing once that's underway.
 
 ---

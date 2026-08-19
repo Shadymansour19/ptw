@@ -3,7 +3,7 @@
 Mixed into ``ClientRequests`` (see ``network/clientRequests.py``).
 """
 
-from network.requestConfig import SERVER_URL, TIMEOUT, FILE_TIMEOUT, extractError
+from network.requestConfig import SERVER_URL, VERIFY, TIMEOUT, FILE_TIMEOUT, extractError
 import requests
 from network.RequestWorker import async_request
 from models.User import User
@@ -25,7 +25,7 @@ class AuthRequests:
         """
         response = None
         try:
-            response = requests.post(f'{SERVER_URL}/login', auth=(username, password), timeout=TIMEOUT)
+            response = requests.post(f'{SERVER_URL}/login', auth=(username, password), verify=VERIFY, timeout=TIMEOUT)
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
@@ -52,7 +52,7 @@ class AuthRequests:
             response = requests.post(
                 f'{SERVER_URL}/reset-password-request',
                 json={'username': username},
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -77,7 +77,7 @@ class AuthRequests:
             response = requests.post(
                 f'{SERVER_URL}/reset-password',
                 json={'username': username, 'new-password': newPassword, 'verification-code': verificationCode},
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()

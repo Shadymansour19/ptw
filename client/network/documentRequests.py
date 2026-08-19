@@ -4,7 +4,7 @@ download, and upload.
 Mixed into ``ClientRequests`` (see ``network/clientRequests.py``).
 """
 
-from network.requestConfig import SERVER_URL, TIMEOUT, FILE_TIMEOUT, extractError
+from network.requestConfig import SERVER_URL, VERIFY, TIMEOUT, FILE_TIMEOUT, extractError
 import requests
 import tempfile
 from network.RequestWorker import async_request
@@ -29,7 +29,7 @@ class DocumentRequests:
                 f'{SERVER_URL}/miwi',
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
                 json={'filename': filename, 'department': department},
-                timeout=FILE_TIMEOUT
+                verify=VERIFY, timeout=FILE_TIMEOUT
             )
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
@@ -58,7 +58,7 @@ class DocumentRequests:
                 f'{SERVER_URL}/miwis',
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
                 json={'department': department},
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -87,7 +87,7 @@ class DocumentRequests:
                     auth=(loggedUser.getUsername(), loggedUser.getPassword()),
                     files=files,
                     data={'department': loggedUser.getDepartment()},
-                    timeout=FILE_TIMEOUT
+                    verify=VERIFY, timeout=FILE_TIMEOUT
                 )
                 response.raise_for_status()
                 data = response.json()

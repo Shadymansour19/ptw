@@ -3,7 +3,7 @@
 Mixed into ``ClientRequests`` (see ``network/clientRequests.py``).
 """
 
-from network.requestConfig import SERVER_URL, TIMEOUT, FILE_TIMEOUT, extractError
+from network.requestConfig import SERVER_URL, VERIFY, TIMEOUT, FILE_TIMEOUT, extractError
 import re
 import requests
 from network.RequestWorker import async_request
@@ -27,7 +27,7 @@ class AdminRequests:
             response = requests.get(
                 f'{SERVER_URL}/logs',
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -53,7 +53,7 @@ class AdminRequests:
                 f'{SERVER_URL}/logs',
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
                 json={'filename': filename},
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
@@ -74,7 +74,7 @@ class AdminRequests:
             response = requests.get(
                 f'{SERVER_URL}/backups',
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -99,7 +99,7 @@ class AdminRequests:
             response = requests.post(
                 f'{SERVER_URL}/backups',
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=FILE_TIMEOUT
+                verify=VERIFY, timeout=FILE_TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -125,7 +125,7 @@ class AdminRequests:
                 f'{SERVER_URL}/backups',
                 json={'name': name},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -152,7 +152,7 @@ class AdminRequests:
                 f'{SERVER_URL}/backups',
                 json={'name': name, 'which': which},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=FILE_TIMEOUT
+                verify=VERIFY, timeout=FILE_TIMEOUT
             )
             response.raise_for_status()
         except requests.exceptions.RequestException as e:

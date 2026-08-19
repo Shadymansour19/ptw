@@ -29,7 +29,7 @@ jobs:
           restore-keys: nuitka-windows-
 
       - name: Install dependencies
-        run: pip install nuitka pyqt6 qtawesome reportlab pillow qrcode requests pypdf openpyxl bcrypt keyring pytesseract
+        run: pip install nuitka pyqt6 qtawesome reportlab pillow qrcode requests pypdf openpyxl bcrypt keyring pytesseract python-dotenv
 
       - name: Stage Tesseract OCR (English only)
         shell: pwsh
@@ -51,6 +51,7 @@ jobs:
           --include-data-dir=assets=assets
           --include-data-dir=fonts=fonts
           --include-data-dir=tesseract-bin=tesseract-bin
+          --include-data-file=.env.example=.env.example
           --windows-icon-from-ico=assets/sh-logo-trans.ico
           --windows-console-mode=disable
           --output-filename=PTW.exe
@@ -93,7 +94,7 @@ jobs:
           sudo apt-get install -y tesseract-ocr-eng || true
 
       - name: Install dependencies
-        run: pip install nuitka pyqt6 qtawesome reportlab pillow qrcode requests pypdf openpyxl bcrypt keyring pytesseract
+        run: pip install nuitka pyqt6 qtawesome reportlab pillow qrcode requests pypdf openpyxl bcrypt keyring pytesseract python-dotenv
 
       - name: Stage Tesseract OCR (English only)
         run: |
@@ -115,6 +116,7 @@ jobs:
           --include-data-dir=assets=assets
           --include-data-dir=fonts=fonts
           --include-data-dir=tesseract-bin=tesseract-bin
+          --include-data-file=.env.example=.env.example
           --output-filename=PTW
           main.py
 

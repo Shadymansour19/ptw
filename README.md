@@ -304,9 +304,11 @@ Tables (`users`, `ptws`, `ics`, `risks`) are auto-created on first server start 
 
 ```bash
 cd server
-pip install flask flask-mail psycopg2 python-dotenv bcrypt
+pip install flask flask-mail psycopg2 python-dotenv bcrypt waitress
 python app.py
 ```
+
+`python app.py` serves via **waitress**, bound to `127.0.0.1:5000` — not exposed to the network by itself. For any real (non-localhost) deployment, put a TLS-terminating reverse proxy in front of it; see [HTTPS Deployment](#https-deployment) below. Running against a bare `python app.py` with no proxy is fine for local development only.
 
 Create a `server/.env` file with your credentials:
 
@@ -331,11 +333,38 @@ MAIL_PASSWORD=your_app_password
 
 ```bash
 cd client
-pip install PyQt6 qtawesome requests keyring reportlab pillow qrcode pypdf openpyxl bcrypt pytesseract arabic-reshaper python-bidi
+pip install PyQt6 qtawesome requests keyring reportlab pillow qrcode pypdf openpyxl bcrypt pytesseract arabic-reshaper python-bidi python-dotenv
 python main.py
 ```
 
-On first launch, open **Settings** and point the client at your server URL.
+The server address defaults to `http://localhost:5000`, for local dev against a bare `python app.py`. To point at a real server, copy `client/.env.example` to `client/.env` and fill in `PTW_SERVER_URL`/`PTW_CA_CERT_PATH` (plain OS environment variables also work, and take precedence over `.env`) — see [HTTPS Deployment](#https-deployment) below.
+
+---
+
+## HTTPS Deployment
+
+The server itself never terminates TLS — it's meant to sit behind a reverse proxy on the same machine, with the proxy handling HTTPS and forwarding plain HTTP to the server on `127.0.0.1` only. There's no CA involved: a single self-signed cert is generated once and pinned directly by every client, rather than validated against a trust store.
+
+1. **Generate the cert** (once per deployment, or whenever the server's IP/hostname changes):
+   ```bash
+   server/deploy/generate_cert.sh <server-static-ip-or-hostname>
+   ```
+   Writes `server/certs/server_key.pem` (keep on the server, mode 600) and `server/certs/server_cert.pem` (the public half to distribute to clients) — and also drops a copy at `client/certs/dev-server-cert.pem` in this checkout, for local dev/testing against this same machine.
+
+2. **Stand up nginx** using `server/deploy/ptw.conf` as a starting point — update its `ssl_certificate`/`ssl_certificate_key` paths to the files above, then include/symlink it into nginx's config and reload. It proxies to the server on `127.0.0.1:5000` and gives the real-time `/events` (SSE) endpoint the buffering/timeout settings it needs to actually stream through a proxy.
+
+3. **Start the server** (`python app.py`, from `server/`) — it binds to `127.0.0.1:5000`, reachable only via the proxy above.
+
+4. **Point each client at the proxy**, via `client/.env` (copy `client/.env.example` — it's also bundled into every release zip, see `.github/workflows/build.yml`) or real OS environment variables:
+   ```bash
+   PTW_SERVER_URL=https://<server-static-ip-or-hostname>
+   PTW_CA_CERT_PATH=/path/to/server_cert.pem   # copy the public cert from step 1 onto this client machine first
+   ```
+   `PTW_CA_CERT_PATH` is used as `requests`' `verify=` value — this is a pinned-cert check, not a "skip verification" flag; every client needs its own local copy of the real `server_cert.pem`. A relative value resolves against the client's own install directory (not the process's working directory), so prefer that over a hardcoded absolute path where possible — e.g. drop the cert at `client/certs/<name>.pem` and just reference `certs/<name>.pem`.
+
+   `client/.env` (like `server/.env`) is never committed to git or baked into the CI-built release zip — it's deployment-specific, so it's created by hand on each client machine (dropped next to the installed app for a packaged build, or in `client/` when running from source).
+
+Client and server must be switched over together — a client still pointed at `http://` breaks once the server stops serving plain HTTP externally, and there's no partial/gradual migration path between the two. See `KNOWN_ISSUES.md`'s H2 entry for the full background.
 
 ---
 

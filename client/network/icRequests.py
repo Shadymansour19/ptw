@@ -4,7 +4,7 @@ isolate/de-isolate request-confirm-execute cycles, PTW linkage, and IC attachmen
 Mixed into ``ClientRequests`` (see ``network/clientRequests.py``).
 """
 
-from network.requestConfig import SERVER_URL, TIMEOUT, FILE_TIMEOUT, extractError
+from network.requestConfig import SERVER_URL, VERIFY, TIMEOUT, FILE_TIMEOUT, extractError
 import os
 import requests
 import tempfile
@@ -33,7 +33,7 @@ class ICRequests:
                 f'{SERVER_URL}/ics',
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
                 json={'department': department},
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -56,7 +56,7 @@ class ICRequests:
             response = requests.get(
                 f'{SERVER_URL}/ics/{icId}',
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             if response.status_code == 404:
                 return None, None
@@ -84,7 +84,7 @@ class ICRequests:
                 f'{SERVER_URL}/ics',
                 json=objToDict(ic),
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -122,7 +122,7 @@ class ICRequests:
                 data={'ic-id': icId},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
                 files=files,
-                timeout=FILE_TIMEOUT
+                verify=VERIFY, timeout=FILE_TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -152,7 +152,7 @@ class ICRequests:
                 f'{SERVER_URL}/ics/attachments',
                 json={'ic-id': icId},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -178,7 +178,7 @@ class ICRequests:
                 f'{SERVER_URL}/ics/attachments',
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
                 json={'ic-id': icId, 'filename': filename},
-                timeout=FILE_TIMEOUT
+                verify=VERIFY, timeout=FILE_TIMEOUT
             )
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
@@ -208,7 +208,7 @@ class ICRequests:
                 f'{SERVER_URL}/ics/attachments',
                 json={'ic-id': icId, 'keep-filenames': keepFilenames},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -238,7 +238,7 @@ class ICRequests:
                 f'{SERVER_URL}/ics/approvals',
                 json={'ic-id': icId, 'approval': approval.__dict__, 'mark_psic': mark_psic, 'psic_terms': psic_terms},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -264,7 +264,7 @@ class ICRequests:
                 f'{SERVER_URL}/ics/isolate-request',
                 json={'ic-id': icId},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -290,7 +290,7 @@ class ICRequests:
                 f'{SERVER_URL}/ics/isolate-confirm',
                 json={'ic-id': icId, 'response': response},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             resp.raise_for_status()
             data = resp.json()
@@ -316,7 +316,7 @@ class ICRequests:
                 f'{SERVER_URL}/ics/isolate-execute',
                 json={'ic-id': icId, 'items': objToDict(items or [])},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -342,7 +342,7 @@ class ICRequests:
                 f'{SERVER_URL}/ics/deisolate-request',
                 json={'ic-id': icId},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -368,7 +368,7 @@ class ICRequests:
                 f'{SERVER_URL}/ics/deisolate-confirm',
                 json={'ic-id': icId, 'response': response},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             resp.raise_for_status()
             data = resp.json()
@@ -394,7 +394,7 @@ class ICRequests:
                 f'{SERVER_URL}/ics/deisolate-execute',
                 json={'ic-id': icId},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -420,7 +420,7 @@ class ICRequests:
                 f'{SERVER_URL}/ics/link-ptw',
                 json={'ic-id': icId, 'ptw-id': ptwId},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()
@@ -446,7 +446,7 @@ class ICRequests:
                 f'{SERVER_URL}/ics/unlink-ptw',
                 json={'ic-id': icId, 'ptw-id': ptwId},
                 auth=(loggedUser.getUsername(), loggedUser.getPassword()),
-                timeout=TIMEOUT
+                verify=VERIFY, timeout=TIMEOUT
             )
             response.raise_for_status()
             data = response.json()

@@ -1,5 +1,15 @@
 # Credentials — NEVER commit these
 server/.env
+client/.env
+
+# Generated TLS private key + cert (server/deploy/generate_cert.sh) and the local-dev
+# copy of the public cert (see requestConfig.py's PTW_CA_CERT_PATH fallback) — both are
+# per-deployment material, not something to ship in the repo.
+server/certs/
+client/certs/
+# Machine-specific nginx config with this box's absolute cert paths baked in — ptw.conf
+# is the generic, committed template.
+server/deploy/ptw.local.conf
 
 # Python cache
 __pycache__/
