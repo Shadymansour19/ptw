@@ -462,7 +462,7 @@ Added `_RESET_CODE_TTL` and `_RESET_CODE_PRUNE_INTERVAL` constants. A daemon thr
 
 ---
 
-### ~~H2 — No HTTPS — Basic Auth credentials sent unencrypted~~ ✓ (code done; deployment is an ops step)
+### ~~H2 — No HTTPS — Basic Auth credentials sent unencrypted~~ ✓ (verified locally; real-server deployment is a separate ops step)
 
 **File:** `server/app.py` — `app.run()`
 
@@ -476,6 +476,8 @@ The server bound to plain HTTP on port 5000, sending the username/password base6
 - `dev-scripts/generate_bookmarklet.py` (local-only, gitignored): `BASE_URL` now documented as needing to track `PTW_SERVER_URL`, plus a note that a browser has no `verify=` equivalent — it must be made to trust the self-signed cert itself (import it, or click through the browser's own interstitial) once `BASE_URL` is https.
 - The `migrate_*.py`/`reset_all_passwords.py` dev-scripts talk to Postgres directly, never the HTTP API — confirmed unaffected, left as-is.
 
-**Remaining (ops, not code):** actually running `generate_cert.sh` and standing up nginx with `ptw.conf` on the real server, and distributing the resulting public `.crt` to client machines, is a deployment step for whoever stands up the real server — not something a code change can do on its own. See the H2 rollout plan (staged bring-up keeping port 5000 reachable until HTTPS is confirmed, *then* locking it down; hard client+server cutover since there's no partial-migration path) for the sequencing once that's underway.
+**Verified end-to-end locally (2026-08-19):** `generate_cert.sh localhost` + nginx (via the new `server/dev-scripts/setup_nginx_local.sh`, which also fixed a real bug in `generate_cert.sh` — it always emitted the passed address as a SAN `IP:` entry, which openssl rejects for a hostname like `localhost`) + `flask run` behind it. Confirmed via socket state (`nginx` on `0.0.0.0:443`, `flask` on `127.0.0.1:5000` only — not externally reachable directly) and a real login + SSE connection + users/logs/backups fetches, all over `https://localhost`, verified against the pinned `client/certs/dev-server-cert.pem`.
+
+**Remaining (ops, not code):** this was all against `localhost` on the dev machine. The real server still needs `generate_cert.sh <real-static-ip>` run on it, `ptw.conf` (the generic template — not the gitignored, localhost-specific `ptw.local.conf` used above) stood up in its nginx, and the resulting public `.crt` distributed to actual client machines. See the H2 rollout plan (staged bring-up keeping port 5000 reachable until HTTPS is confirmed, *then* locking it down; hard client+server cutover since there's no partial-migration path) for the sequencing once that's underway.
 
 ---
