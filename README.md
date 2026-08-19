@@ -45,6 +45,7 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 - **Role-based UI** — Each of 11 roles gets a tailored interface showing only relevant actions and data
 - **Guest access** — Anyone can log in as a Guest (name + free-text department, no account needed) to create and track their own PTWs
 - **Invitation email** — New users get an emailed username + auto-generated password on account creation
+- **Forced password change** — every new account (including the first-boot admin) must change its auto-generated password on first login, gated client-side before the main window opens; an admin can also force this on an existing account at any time
 - **Password reset via email** — 6-digit verification code sent via Gmail SMTP, expires in 15 minutes
 - **Multi-language support** — Language switching built into the UI
 - **Server activity logging** — rotating log files (10 MB, 5 backups) with DEBUG/INFO/WARNING/ERROR/CRITICAL levels; log lines include timestamp, level, and source location
@@ -324,7 +325,7 @@ MAIL_PASSWORD=your_app_password
 > INITIAL ADMIN PASSWORD: <generated-password>
 > ```
 >
-> Change it immediately after first login.
+> The account is flagged to require a password change, so the client will prompt for a new one right after that first login.
 
 ### Client
 

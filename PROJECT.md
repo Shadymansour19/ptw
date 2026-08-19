@@ -488,6 +488,7 @@ A handful of legacy files still sit directly under `DATA_DIR/miwi/` (uploaded be
 - Passwords are hashed with **bcrypt** before storage. The server never returns a password hash in any API response.
 - **First boot:** if the `users` table is empty, a random admin password is generated with `secrets.token_urlsafe(12)` and printed once to the server log at `WARNING` level. Change it immediately after first login.
 - **New user creation:** the initial password is auto-generated (`secrets.token_urlsafe(12)`), shown read-only in the admin's "Add User" dialog, and emailed to the new user's registered email address (see **Guest Access** below for the email itself — it uses the same template family as password reset).
+- **Forced password change** *(added 2026-08-19)*: every account has a `must_change_password` flag, stored on `User` only — never on `SecuredUser` — so it's never visible to anyone but the account itself (its own login response), unlike every other profile field which any authenticated user can see via `GET /users`/`GET /user`. `POST /users` always forces it `True` on creation server-side, ignoring whatever the client sends (including the seeded first-boot `admin` account). The client (`main.py`) checks it right after a successful login, before any role-specific `MainWindow` is constructed, and gates entry behind a mandatory `DialogChangePassword` (no Cancel button) until a new password is submitted. `PUT /users` clears the flag automatically whenever a (truthy) `password` is included in the same update — the only way a non-admin self-update can affect it, since it isn't in `SELF_EDITABLE_FIELDS`. An admin may also set it `True` directly on another account (bypassing `SELF_EDITABLE_FIELDS` like any other admin update) to force that user to change their password on their next login — exposed client-side as a write-only "Force Password Change" action in the admin's user table (no current-value display, since the field is never fetched for other users).
 - **Password Reset** flow: user requests a reset → server sends a 6-digit verification code to the user's registered email via Gmail SMTP → code expires after 15 minutes → user submits new password with code.
 - Role-based access control is enforced at the API layer for sensitive operations (user management, risk assessment management, PTW lifecycle: only `ISSUING` can accept/reject run, hold, and close requests).
 - `DELETE /ptws` and `POST /ptws/archive` are open to all authenticated users but are state-gated: deletion requires `approval_status == RETURNED` — an archived PTW qualifies too, but only incidentally, since `globalData.allPTWs` excludes archived rows entirely (see [Database Schema](#database-schema)) and the lookup returning nothing skips the check rather than passing it explicitly; archiving requires `running_status == CLOSED`.
@@ -524,8 +525,8 @@ New-user invitation email (`POST /users`) and the password-reset verification em
 | GET    | `/users`        | Get all users (secured view)                              | Any           |
 | GET    | `/user`         | Get a specific user                                       | Any           |
 | GET    | `/usernames`    | Get all usernames                                         | Any           |
-| POST   | `/users`        | Create a new user                                         | Admin only    |
-| PUT    | `/users`        | Update a user                                             | Admin or self |
+| POST   | `/users`        | Create a new user (`must_change_password` always forced `True` server-side) | Admin only    |
+| PUT    | `/users`        | Update a user (non-admin self-update limited to `SELF_EDITABLE_FIELDS`; a password change clears `must_change_password`; admin may also set `must_change_password` directly) | Admin or self |
 | PATCH  | `/users/active` | Activate/inactivate a user (`{"username", "is_active"}`)  | Admin only    |
 | DELETE | `/users`        | Delete a user                                             | Admin only    |
 
@@ -673,7 +674,9 @@ department  VARCHAR(100)
 email       VARCHAR(100)
 ext         VARCHAR(50)
 theme       VARCHAR(20)
+language    VARCHAR(10)
 is_active   BOOLEAN      NOT NULL DEFAULT TRUE
+must_change_password BOOLEAN NOT NULL DEFAULT FALSE
 ```
 
 ### `ptws`
@@ -807,7 +810,7 @@ The desktop client is structured around role-based main windows. After login, `m
 
 | Module | Purpose |
 | ----------------------------- | ------------------------------------------------------------------ |
-| `main.py` | Entry point; launches QApplication |
+| `main.py` | Entry point; launches QApplication. `on_login_success` gates entry behind `_forcePasswordChange` when the logged-in user's `must_change_password` flag is set — opening the mandatory `dialogs/DialogChangePassword.py` and only constructing the role-specific `MainWindow` (`_showMainWindow`) once a new password is submitted |
 | `Login.py` | Login screen; handles password reset flow |
 | `windows/MainWindow.py` | Base main-window class — chrome, PTW/IC action handlers, SSE sync; role-specific subclasses live alongside it in `windows/` |
 | `network/clientRequests.py` | HTTP wrapper; all server calls return `(err, data)` |
@@ -823,7 +826,7 @@ The desktop client is structured around role-based main windows. After login, `m
 | `dialogs/DialogPTW.py` | Full PTW form (create/view/edit); `DialogPTW` is tabbed (Basic Info / Tools / Hazards / Controls / Risks / Isolation / MIWI-MOS / Attachments / **History** / **IC Linkage** — the last two only in readonly mode, mirroring `DialogIC`'s History/PTW Linkage split). History renders the approval log and the running cycle as two side-by-side `Timeline` panes — a vertical rail of colored dots (green=approved, orange=returned/rejected, gray=pending) connected by a continuous line, each dot's row scrollable via `QScrollArea`. The Approval Timeline reads `ptw.approvals`; the Running Timeline (`_buildRunningTimelinePane`/`_runCycleRequestEntry`/`_runCycleResponseEntry`) reads `ptw.run_cycles`, rendering each `RunCycle` as a "Run Cycle #N" header followed by its Run Requested/Run Approved-or-Rejected rows, and — once a hold or close has actually been requested on that cycle — its Hold/Close Requested and Hold/Close Approved-or-Rejected rows (gray "Pending" only for whichever step the *current*, still-open cycle hasn't reached yet; earlier, already-finished cycles never show a pending row). IC Linkage groups `ptw.linked_ics` by looking up each id's type in `globalData.ics`, one row per `IC.Types` value, each row with **View** and (non-Guest) **Unlink** buttons. |
 | `widgets/UiUtils.py` | Reusable UI helpers shared across dialogs: `TabButton` (colored tab-bar button — text/icon color is picked per-state by whoever calls `setHighlightColor()`, see `TabbedDialog.setTabBarColor()`), `lightenColor` (accent-color helper), `bestForegroundColor` (picks black/white by perceived luminance for readable text/icons against an arbitrary background), `Timeline`/`TimelineEntry` (vertical rail of colored dots + content, used for approval/isolation history panes) — extracted here since both `dialogs/DialogPTW.py` and `dialogs/DialogIC.py` (via `dialogs/TabbedDialog.py`) import them |
 | `tables/TablePTWs.py` | Table listing all PTWs with filters; supports Excel export; `filterColumn(label, values)` sets a specific column filter programmatically (used by the home dashboard's location segments) |
-| `tables/TableUsers.py` | Admin user management table; supports bulk user import from Excel; also has `filterColumn(label, values)` (used by the Admin dashboard's department segments) |
+| `tables/TableUsers.py` | Admin user management table; context menu also has a write-only "Force Password Change" action (`must_change_password` isn't fetched/shown for other users, so there's no current value to display); supports bulk user import from Excel; also has `filterColumn(label, values)` (used by the Admin dashboard's department segments) |
 | `widgets/DonutChart.py` | Reusable donut-chart widget (`DonutChart`/`DonutSegment`) for the home-page dashboard — clickable/hoverable ring + legend, fixed categorical palette |
 | `reports/ImportUsersExcel.py` | Parses bulk-user Excel/CSV imports + DialogUsersPreview dialog |
 | `tables/TableRisks.py` | Generic risk assessment CRUD list (Safety admin tab); also embedded read-only+checkboxes inside `DialogSelectGenericRisks` |
@@ -846,6 +849,7 @@ The desktop client is structured around role-based main windows. After login, `m
 | `dialogs/DialogSelectHeldICs.py` | Dual-mode linked-IC dialog for the PTW hold flow — PA selects which linked ICs stay held (`getHeldICIds()`), or a plain review of which ICs were kept |
 | `dialogs/DialogPtwAlarms.py` | Two-section, individually collapsible grouped popup for `MainWindow._checkPtwAlarms()` — 14-shift-validity-expired PTWs (View/Close/Close All) and run-cycle-shift-ended PTWs (View/Hold/Close), each row disabling its own acted-on button(s) in place on success; View opens its own `DialogPTW` with the busy overlay on this dialog rather than delegating to `MainWindow.viewPTW` |
 | `dialogs/DialogSettings.py` | App/session settings — profile fields, theme, and the close-behavior preference (below) |
+| `dialogs/DialogChangePassword.py` | *(added 2026-08-19)* Mandatory password-change prompt shown by `main.py` before the main window opens when `must_change_password` is set — no Cancel button; closing the window without accepting just leaves the login window showing |
 | `reports/ReportGenerator.py` | Generates printable PDF permit reports and Excel exports |
 
 ### System Tray & Background Notifications
