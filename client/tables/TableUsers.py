@@ -1,8 +1,9 @@
 """Admin user management table.
 
 Displays all registered users in a filterable, sortable table with a
-right-click context menu for viewing/editing/activating users, and provides
-the entry point for bulk user import from Excel/CSV files.
+right-click context menu for viewing/editing/activating users and forcing a
+password change, and provides the entry point for bulk user import from
+Excel/CSV files.
 """
 import copy
 from PyQt6.QtCore import Qt, QPoint, QDir, QSize
@@ -23,7 +24,8 @@ class TableUsers(QWidget):
     """Table widget listing all users, for the Admin user-management tab.
 
     Supports per-column filtering, sorting, a right-click context menu
-    (view/edit/activate-inactivate), and bulk user import from Excel/CSV.
+    (view/edit/activate-inactivate/force password change), and bulk user
+    import from Excel/CSV.
     """
 
     def __init__(self, parent, loggedUser, label: str):
@@ -286,14 +288,14 @@ class TableUsers(QWidget):
     def showContextMenu(self, pos: QPoint):
         """Slot for the table's customContextMenuRequested signal.
 
-        Shows a View/Edit/Activate-Inactivate context menu for the
-        right-clicked row.
+        Shows a View/Edit/Activate-Inactivate/Force Password Change context
+        menu for the right-clicked row.
         """
         row = self.tbl.indexAt(pos)
 
         if not row.isValid():
             return
-        
+
         row = row.row()
         user = self.users[row]
         menu = QMenu(self.tbl)
@@ -305,16 +307,19 @@ class TableUsers(QWidget):
             actionToggleActive = QAction(qta.icon('fa6s.user-slash'), t('Inactivate'), self.tbl)
         else:
             actionToggleActive = QAction(qta.icon('fa6s.user-check'), t('Activate'), self.tbl)
+        actionForcePasswordChange = QAction(qta.icon('fa6s.key'), t('Force Password Change'), self.tbl)
 
         actionView.triggered.connect(lambda: self.viewUser(row))
         actionEdit.triggered.connect(lambda: self.updateUser(row))
         # actionDelete.triggered.connect(lambda: self.deleteUser(row))
         actionToggleActive.triggered.connect(lambda: self.toggleActive(row))
+        actionForcePasswordChange.triggered.connect(lambda: self.forcePasswordChange(row))
 
         menu.addAction(actionView)
         menu.addAction(actionEdit)
         # menu.addAction(actionDelete)
         menu.addAction(actionToggleActive)
+        menu.addAction(actionForcePasswordChange)
 
         menu.exec(self.tbl.mapToGlobal(pos))
     
@@ -403,6 +408,30 @@ class TableUsers(QWidget):
                 self._applyFilters()
         self.window()._refreshOverlay.showBusy()
         ClientRequests.setUserActive(self.loggedUser, user.getUsername(), activate, callback=on_done)
+
+    def forcePasswordChange(self, row: int):
+        """Confirm with the admin, then force the user at the given row to change their
+        password on their next login. Write-only: must_change_password isn't part of
+        SecuredUser, so there's no current value to show or update in this row."""
+        user = self.users[row]
+        reply = QMessageBox.question(
+            self, t("Force Password Change"),
+            t("Are you sure you want to force '{0}' to change their password on next login?").format(user.getUsername()),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        def on_done(err, _):
+            """Handle the forcePasswordChange response; show a confirmation or an error."""
+            self.window()._refreshOverlay.hideBusy()
+            if err:
+                QMessageBox.warning(self, t("Fail"), err)
+                return
+            QMessageBox.information(self, t("Success"), t("'{0}' will be asked to change their password on next login.").format(user.getUsername()))
+
+        self.window()._refreshOverlay.showBusy()
+        ClientRequests.forcePasswordChange(self.loggedUser, user.getUsername(), callback=on_done)
 
     def addNewUserDialog(self):
         """Open the new-user dialog and, if accepted, submit the new user to the server."""

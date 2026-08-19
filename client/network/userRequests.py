@@ -129,6 +129,25 @@ class UserRequests:
             return data.get("error", "Failed to update active status")
 
     @async_request
+    def forcePasswordChange(loggedUser: User, username: str):
+        """Force a user to change their password on their next login, via PUT /users
+        (admin only - bypasses SELF_EDITABLE_FIELDS since the requester is an admin
+        acting on someone else's account).
+
+        Returns an error string, or None on success.
+        """
+        response = None
+        try:
+            response = requests.put(f'{SERVER_URL}/users', json={'username': username, 'must_change_password': True}, auth=(loggedUser.getUsername(), loggedUser.getPassword()), timeout=TIMEOUT)
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            err = extractError(response, e)
+            return f"Failed to force password change\n{err}"
+        if not data.get("success"):
+            return data.get("error", "Failed to force password change")
+
+    @async_request
     def deleteUser(loggedUser: User, username: str):
         """Delete a user via DELETE /users. Returns an error string, or None on success."""
         response = None

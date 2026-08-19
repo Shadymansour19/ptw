@@ -143,19 +143,26 @@ class SecuredUser:
 
 
 class User(SecuredUser):
-    """Full user model backing the `users` table, adding the bcrypt password hash and theme preference.
+    """Full user model backing the `users` table, adding the bcrypt password hash, theme
+    preference, and the must-change-password flag.
 
     Used internally for authentication (`getVerifiedUser`) and persistence;
-    outward-facing responses use `SecuredUser` instead so the password hash
-    never leaves the server.
+    outward-facing responses about *other* users use `SecuredUser` instead so
+    the password hash never leaves the server. `must_change_password` lives
+    here rather than on `SecuredUser` for the same reason: whether an account
+    is being forced to change its password is only relevant/visible to that
+    account's own session (returned via the login response), never surfaced
+    to other users browsing the user list.
     """
 
     def __init__(self, username = '', password = '', name = '', role = None, department = '', email = ''):
-        """Initialize the base profile fields plus password and a null theme/language."""
+        """Initialize the base profile fields plus password, a null theme/language, and
+        must_change_password defaulting to False."""
         super().__init__(username, name, role, department, email)
         self.password = password
         self.theme: str | None = None
         self.language: str | None = None
+        self.must_change_password: bool = False
 
     def setPassword(self, password: str):
         """Set the password (hash) and return self for chaining."""
@@ -183,3 +190,12 @@ class User(SecuredUser):
     def getLanguage(self) -> str | None:
         """Return the client UI language preference, or None if unset (falls back to the OS locale)."""
         return self.language
+
+    def setMustChangePassword(self, must_change_password: bool):
+        """Set the must-change-password flag and return self for chaining."""
+        self.must_change_password = must_change_password
+        return self
+
+    def getMustChangePassword(self) -> bool:
+        """Return whether this account must change its password before proceeding past login."""
+        return self.must_change_password

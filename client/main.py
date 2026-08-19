@@ -6,11 +6,12 @@ shows the login window; a successful login routes to the role-appropriate main w
 """
 
 import sys
+import copy
 import logging
 import tempfile
 import traceback
 import qtawesome as qta
-from PyQt6.QtWidgets import QApplication, QMessageBox
+from PyQt6.QtWidgets import QApplication, QDialog, QMessageBox
 from PyQt6.QtCore import QLocale
 from PyQt6.QtGui import QIcon
 from Login import LoginWindow
@@ -28,6 +29,7 @@ from helper.utils import resource_path
 from qdarktheme import load_palette, load_stylesheet
 from helper.OcrConfig import configureTesseract
 import helper.i18n as i18n
+from helper.i18n import t
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("client")
@@ -50,9 +52,56 @@ sys.excepthook = _excepthook
 def on_login_success(user):
     """Handle a successful login by opening the role-appropriate main window.
 
-    Connected to `LoginWindow.on_login_success`. Picks a `*MainWindow` subclass based on
-    `user.getRole()`, connects its `on_logout` signal to `on_logout`, shows it maximized,
-    and hides the login window.
+    Connected to `LoginWindow.on_login_success`. If the account is flagged
+    must_change_password, first gates entry behind `_forcePasswordChange` -
+    the role-appropriate main window is only opened once that's resolved
+    (or immediately, if the flag isn't set).
+    """
+    if user.getMustChangePassword():
+        _forcePasswordChange(user)
+    else:
+        _showMainWindow(user)
+
+
+def _forcePasswordChange(user):
+    """Block entry past login until `user` sets a new password.
+
+    Opens the mandatory `DialogChangePassword`; if it's dismissed without
+    accepting (no Cancel button, but the window can still be closed), the
+    login window is simply left showing - same as backing out of login.
+    Once a new password is accepted, submits it via PUT /users (reusing the
+    same loggedUser-for-auth/deep-copy-for-payload pattern as
+    MainWindow.dlgSettings), and only opens the main window on success.
+    """
+    from dialogs.DialogChangePassword import DialogChangePassword
+    from network.clientRequests import ClientRequests
+
+    dlg = DialogChangePassword(None, user.getUsername())
+    if dlg.exec() != QDialog.DialogCode.Accepted:
+        return
+
+    payload = copy.deepcopy(user)
+    payload.setPassword(dlg.newPassword)
+
+    def on_done(err, _):
+        loginWindow._refreshOverlay.hideBusy()
+        if err:
+            QMessageBox.warning(loginWindow, t("Fail"), err)
+            return
+        user.setPassword(dlg.newPassword)
+        user.setMustChangePassword(False)
+        _showMainWindow(user)
+
+    loginWindow._refreshOverlay.showBusy()
+    ClientRequests.updateUser(user, payload, callback=on_done)
+
+
+def _showMainWindow(user):
+    """Open the role-appropriate main window for `user`.
+
+    Picks a `*MainWindow` subclass based on `user.getRole()`, connects its
+    `on_logout` signal to `on_logout`, shows it maximized, and hides the
+    login window.
     """
     mainWindow = None
     if user.getRole() == UserRoles.GUEST:

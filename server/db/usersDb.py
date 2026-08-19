@@ -35,7 +35,8 @@ class UsersDb:
     def __init__(self):
         """Assumes the `users` table already exists — run server/dev-scripts/init_db.py once
         before first starting the server. Only seeds the initial admin account if the
-        table is empty."""
+        table is empty, with must_change_password set so it's forced to change the
+        generated password on its first login."""
         with CommonDB.get_conn() as conn:
             try:
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
@@ -43,9 +44,9 @@ class UsersDb:
                     if cursor.fetchone()['count'] == 0:
                         seed_password = secrets.token_urlsafe(12)
                         cursor.execute('''
-                            INSERT INTO users (username, password, name, role, department, email)
-                            VALUES (%s, %s, %s, %s, %s, %s)''',
-                            ("admin", _hash_password(seed_password), "Administrator", UserRoles.ADMIN, "Admin", "")
+                            INSERT INTO users (username, password, name, role, department, email, must_change_password)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s)''',
+                            ("admin", _hash_password(seed_password), "Administrator", UserRoles.ADMIN, "Admin", "", True)
                         )
                         log.warning("=" * 60)
                         log.warning("INITIAL ADMIN PASSWORD: %s", seed_password)

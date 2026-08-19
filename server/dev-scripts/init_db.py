@@ -55,7 +55,8 @@ def init_tables():
                     ext         VARCHAR(50),
                     theme       VARCHAR(20),
                     language    VARCHAR(10),
-                    is_active   BOOLEAN NOT NULL DEFAULT TRUE
+                    is_active   BOOLEAN NOT NULL DEFAULT TRUE,
+                    must_change_password BOOLEAN NOT NULL DEFAULT FALSE
                 )
             """)
             print("Ensured table: users")

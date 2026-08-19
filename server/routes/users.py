@@ -166,7 +166,9 @@ def _sendInvitationEmail(username, password, name, userEmail):
 def newUserRequest():
     """POST /users: admin only. Body: new user fields as a dict (including
     'password', the auto-generated initial password shown read-only in the
-    admin's Add User dialog). Creates the user, patches it into
+    admin's Add User dialog). must_change_password is always forced to True
+    server-side regardless of the payload, so every new account is required to
+    change its password on first login. Creates the user, patches it into
     globalData.allUsers, and — if an email is given — fires the invitation
     email on a background daemon thread (not awaited; a send failure is only
     logged). Returns 401 if not admin, 400 on exception; otherwise 200 with
@@ -177,6 +179,9 @@ def newUserRequest():
         log.warning("POST /users unauthorized: requester='%s' (ip=%s)", user.getUsername() if user else "unauthenticated", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     userDataDict = request.get_json(silent=True) or {}
+    # Every new account is forced to change its password on first login - always True
+    # regardless of whatever the client sent (or didn't send) for this field.
+    userDataDict['must_change_password'] = True
     try:
         err = userDB.addUserFromDict(userDataDict)
         username = userDataDict.get('username')
@@ -213,6 +218,12 @@ def updateUserRequest():
     explicitly denied. Body: {"username": <target>, ...fields to update}.
     A non-admin self-update only applies SELF_EDITABLE_FIELDS; privileged
     fields (role, is_active, department, ...) in the payload are dropped.
+    Whenever the resulting update includes a (truthy) 'password', it also
+    forces must_change_password to False, clearing any pending forced change -
+    this is the only way a self-update can affect that field, since it isn't
+    in SELF_EDITABLE_FIELDS. An admin may also set must_change_password to
+    True directly on another user's account (e.g. to force them to change it),
+    since admin updates bypass the SELF_EDITABLE_FIELDS filter entirely.
     On success, patches globalData.allUsers with the refreshed SecuredUser and
     returns {"success": True, "user": None} (the DB layer returns None, not
     the updated record, on success; an exception it caught internally
@@ -241,6 +252,11 @@ def updateUserRequest():
                     )
                     userDataDict = {k: v for k, v in userDataDict.items()
                                     if k in SELF_EDITABLE_FIELDS or k == 'username'}
+            if userDataDict.get('password'):
+                # Changing the password (self-service or admin-driven) always clears any
+                # pending forced change - this is the only way a non-admin self-update can
+                # touch must_change_password, since it isn't in SELF_EDITABLE_FIELDS.
+                userDataDict['must_change_password'] = False
             result = userDB.updateUserFromDict(userDataDict)
             if result is None:
                 if target:

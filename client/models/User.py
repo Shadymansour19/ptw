@@ -144,19 +144,25 @@ class SecuredUser:
 
 
 class User(SecuredUser):
-    """Full user model, adding the password hash and client-side theme preference on top of `SecuredUser`.
+    """Full user model, adding the password hash, client-side theme preference, and the
+    must-change-password flag on top of `SecuredUser`.
 
     Used for authenticating and for the logged-in user's own record; other
     users are generally represented as `SecuredUser` to avoid carrying
-    password data around unnecessarily.
+    password data around unnecessarily. `must_change_password` lives here for
+    the same reason - it's only meaningful for the account's own session
+    (checked right after login), never exposed via the SecuredUser views other
+    users see.
     """
 
     def __init__(self, username = '', password = '', name = '', role = None, department = '', email = ''):
-        """Initialize the base profile fields plus password and a null theme/language."""
+        """Initialize the base profile fields plus password, a null theme/language, and
+        must_change_password defaulting to False."""
         super().__init__(username, name, role, department, email)
         self.password = password
         self.theme: str | None = None
         self.language: str | None = None
+        self.must_change_password: bool = False
 
     def setPassword(self, password: str):
         """Set the password (hash) and return self for chaining."""
@@ -184,3 +190,12 @@ class User(SecuredUser):
     def getLanguage(self) -> str | None:
         """Return the client UI language preference, or None if unset (falls back to the OS locale)."""
         return self.language
+
+    def setMustChangePassword(self, must_change_password: bool):
+        """Set the must-change-password flag and return self for chaining."""
+        self.must_change_password = must_change_password
+        return self
+
+    def getMustChangePassword(self) -> bool:
+        """Return whether this account must change its password before proceeding past login."""
+        return self.must_change_password
