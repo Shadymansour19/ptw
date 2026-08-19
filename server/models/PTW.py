@@ -315,10 +315,7 @@ class PTW:
         ),
         'Scaffolding': CheckBox(
             title='Scaffolding',
-            requirements=[
-                Requirement(type=Requirement.Types.HAZARD, description='Working at Height'), 
-            ],
-        ), 
+        ),
         'Working at Height': CheckBox(
             title='Working at Height',
             requirements=[
@@ -875,9 +872,12 @@ class PTW:
         (matched by filename prefix). Returns a descriptive error string for
         the first violation found, or None if valid. Called client-side before
         submit and server-side on POST /ptws; the server only rejects, it
-        never auto-corrects invalid data."""
+        never auto-corrects invalid data. `id` is deliberately not in the
+        required-fields list below: it's legitimately empty for a brand-new
+        PTW (assigned only after this validation passes), and `PUT /ptws`
+        already independently validates/looks up the id before ever
+        constructing a PTW to validate."""
         for key, field in [
-            ('id', self.id),
             ('type', self.type),
             ('requestor', self.requestor),
             ('department', self.department),
@@ -886,7 +886,7 @@ class PTW:
             ('equipment', self.equipment),
             ('description', self.description)
         ]:
-            if field == '':
+            if not field:
                 return "{} cannot be empty".format(key.capitalize())
         if not (self.mos or self.miwi):
             return "Must have either MOS or MIWI"

@@ -56,6 +56,7 @@ class PasswordLineEdit(QLineEdit):
         self.setEchoMode(QLineEdit.EchoMode.Password)
         self._update_icon()
         self._adjust_text_margins()
+        self.textEdited.connect(self._onTextEdited)
 
     def _toggle_visibility(self):
         """Slot for the eye-icon button click: flip between masked and plain-text echo mode
@@ -63,6 +64,28 @@ class PasswordLineEdit(QLineEdit):
         self._visible = not self._visible
         self.setEchoMode(QLineEdit.EchoMode.Normal if self._visible else QLineEdit.EchoMode.Password)
         self._update_icon()
+
+    def _onTextEdited(self, _text):
+        """Slot for the field's own `textEdited` signal - fires only on user-driven edits,
+        never on a programmatic `setText()` - so typing over/into a keyring-filled value
+        re-enables the toggle for the password now actually at the keyboard."""
+        self.setToggleEnabled(True)
+
+    def setToggleEnabled(self, enabled: bool):
+        """Enable/disable the eye-icon toggle button.
+
+        Used to prevent revealing a password that was placed into this field
+        programmatically (e.g. retrieved from the OS keyring) rather than typed by
+        whoever is currently at the keyboard (H8) - the button is disabled rather than
+        hidden so it's still obvious the field holds a real value. Disabling also forces
+        the field back into masked echo mode, so a password already revealed before the
+        toggle was disabled doesn't stay visible.
+        """
+        self._btn.setEnabled(enabled)
+        if not enabled and self._visible:
+            self._visible = False
+            self.setEchoMode(QLineEdit.EchoMode.Password)
+            self._update_icon()
 
     def _update_icon(self):
         """Set the toggle button's icon (eye / eye-slash) to match the current visibility state."""
@@ -339,17 +362,22 @@ class LoginWindow(QMainWindow):
         usernames = self._rememberedUsernames()
         self.boxUsername.setItems(usernames)
         self.boxPassword.clear()
+        self.boxPassword.setToggleEnabled(True)
         if usernames:
             self._fillPasswordFor(usernames[0])
 
     def _fillPasswordFor(self, username: str):
         """Look up `username`'s stored password via the keyring and set it in the password
-        field (blank if unavailable)."""
+        field (blank if unavailable), disabling the reveal toggle whenever a real
+        keyring-retrieved value was placed there (H8) - re-enabled the moment whoever's
+        at the keyboard actually types into the field themselves (see
+        `PasswordLineEdit._onTextEdited`)."""
         try:
             password = self.retrieveLoginCredentials(username)
         except KeyringError:
             password = None
         self.boxPassword.setText(password or '')
+        self.boxPassword.setToggleEnabled(not password)
 
     def _onUsernameSelected(self, username: str):
         """Slot for the username combo's `itemSelected` signal: fill in the stored password
@@ -358,6 +386,7 @@ class LoginWindow(QMainWindow):
             self._fillPasswordFor(username)
         else:
             self.boxPassword.clear()
+            self.boxPassword.setToggleEnabled(True)
 
     def forgotPassword(self):
         """Slot for the Forgot Password button: open `ResetPasswordDialog` for the entered

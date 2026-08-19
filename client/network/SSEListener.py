@@ -18,9 +18,16 @@ class SSEListener(QThread):
     (``MainWindow._onSSEEvent``) dispatch on the ``data`` payload's own
     ``{object, object_id, action, by}`` envelope, not on ``event_type``. Runs
     until ``stop()`` is called, auto-reconnecting after any connection error.
+
+    The server keeps no replay buffer / Last-Event-ID support, so anything
+    broadcast while disconnected is gone by the time the stream reopens —
+    ``reconnected`` tells a consumer (``MainWindow``) exactly when that may have
+    happened, so it can run a full resync instead of silently trusting a cache
+    that might be missing whatever was lost during the outage.
     """
 
     eventReceived = pyqtSignal(str, dict)   # (event_type, data)
+    reconnected = pyqtSignal()   # fired once the stream re-establishes after the *first* connection
 
     def __init__(self, server_url: str, username: str, password: str):
         """Store the server URL and Basic Auth credentials for the eventual connection."""
@@ -29,6 +36,7 @@ class SSEListener(QThread):
         self._username = username
         self._password = password
         self._running = True
+        self._ever_connected = False
 
     def stop(self):
         """Ask the thread's run loop to exit and quit the underlying QThread."""
@@ -41,17 +49,20 @@ class SSEListener(QThread):
         Loops while ``_running``. Each iteration opens a streaming, Basic-Auth
         GET to ``{server_url}/events`` (10s connect timeout, 65s read timeout
         — comfortably above the server's 30s heartbeat, so a half-open
-        connection surfaces as ReadTimeout and triggers a reconnect)
-        and reads it line by line in the SSE wire format: a blank line resets
-        the current event type back to ``"message"``, a line starting with
-        ``:`` is a comment and is ignored, an ``event:`` line updates the
-        current event type, and a ``data:`` line JSON-decodes its payload and
-        emits ``eventReceived(event_type, data)`` — a JSON decode failure on
-        that line is silently swallowed rather than raised. If ``_running``
-        turns false while reading, the method returns immediately, ending the
-        thread. Any other exception (e.g. a dropped connection) is caught
-        broadly; if the listener hasn't been stopped, it sleeps 5 seconds and
-        the outer loop reconnects by opening a fresh stream.
+        connection surfaces as ReadTimeout and triggers a reconnect) and, once
+        connected, emits ``reconnected`` (skipped the very first time — that
+        initial connection races the caller's own startup fetch, not a resync)
+        before reading the stream line by line in the SSE wire format: a blank
+        line resets the current event type back to ``"message"``, a line
+        starting with ``:`` is a comment and is ignored, an ``event:`` line
+        updates the current event type, and a ``data:`` line JSON-decodes its
+        payload and emits ``eventReceived(event_type, data)`` — a JSON decode
+        failure on that line is silently swallowed rather than raised. If
+        ``_running`` turns false while reading, the method returns
+        immediately, ending the thread. Any other exception (e.g. a dropped
+        connection) is caught broadly; if the listener hasn't been stopped, it
+        sleeps 5 seconds and the outer loop reconnects by opening a fresh
+        stream.
         """
         while self._running:
             try:
@@ -66,6 +77,9 @@ class SSEListener(QThread):
                     timeout=(10, 65),
                 ) as resp:
                     resp.raise_for_status()
+                    if self._ever_connected:
+                        self.reconnected.emit()
+                    self._ever_connected = True
                     event_type = "message"
                     for raw in resp.iter_lines():
                         if not self._running:

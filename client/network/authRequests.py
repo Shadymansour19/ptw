@@ -3,7 +3,7 @@
 Mixed into ``ClientRequests`` (see ``network/clientRequests.py``).
 """
 
-from network.requestConfig import SERVER_URL, TIMEOUT, FILE_TIMEOUT
+from network.requestConfig import SERVER_URL, TIMEOUT, FILE_TIMEOUT, extractError
 import requests
 from network.RequestWorker import async_request
 from models.User import User
@@ -29,7 +29,7 @@ class AuthRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Login request failed\n{err}\n", None
 
         if data.get("success"):
@@ -37,7 +37,7 @@ class AuthRequests:
             user.setPassword(password)
             return None, user
         else:
-            err = response.json().get("error", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Login Failed! Incorrect username or password\n{err}", None
 
     @async_request
@@ -57,11 +57,11 @@ class AuthRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Password reset request failed\n{err}\nPlease check your connection and try again."
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return data.get("message", f"Password reset request failed\n{err}")
         return None
 
@@ -82,11 +82,11 @@ class AuthRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Password reset failed\n{err}\nPlease check your connection and try again."
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return data.get("message", f"Password reset failed!\n{err}")
         return None
 

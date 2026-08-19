@@ -4,7 +4,7 @@ run/hold/close request-and-confirm cycles, plus PTW attachments.
 Mixed into ``ClientRequests`` (see ``network/clientRequests.py``).
 """
 
-from network.requestConfig import SERVER_URL, TIMEOUT, FILE_TIMEOUT
+from network.requestConfig import SERVER_URL, TIMEOUT, FILE_TIMEOUT, extractError
 import requests
 import tempfile
 from network.RequestWorker import async_request
@@ -36,14 +36,14 @@ class PTWRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to fetch PTWs\n{err}", {}
 
         if data.get("success"):
             ptws = [PTW().setAll(namespace=dictToObj(ptwDict)) for ptwDict in data["ptws"]]
             return None, {ptw.id: ptw for ptw in ptws}
         else:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to fetch PTWs\n{err}", {}
 
     @async_request
@@ -62,11 +62,11 @@ class PTWRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to fetch PTW #{ptwId}\n{err}", None
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to fetch PTW #{ptwId}\n{err}", None
 
         return None, PTW().setAll(namespace=dictToObj(data["ptw"]))
@@ -88,14 +88,14 @@ class PTWRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to fetch archived PTWs\n{err}", {}
 
         if data.get("success"):
             ptws = [PTW().setAll(namespace=dictToObj(ptwDict)) for ptwDict in data["ptws"]]
             return None, {ptw.id: ptw for ptw in ptws}
         else:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to fetch archived PTWs\n{err}", {}
 
     @async_request
@@ -115,11 +115,11 @@ class PTWRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to add PTW\n{err}", None
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to add PTW\n{err}", None
         return None, data.get('ptw-id')
 
@@ -135,11 +135,11 @@ class PTWRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to update PTW\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to update PTW\n{err}"
 
         return None
@@ -176,14 +176,14 @@ class PTWRequests:
         except requests.exceptions.RequestException as e:
             for f in opened:
                 f.close()
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to add attachment\n{err}"
 
         for f in opened:
             f.close()
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to add attachment\n{err}"
         return None
 
@@ -204,11 +204,11 @@ class PTWRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to get attachments\n{err}", None
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to get attachments\n{err}", None
 
         return None, data.get("attachments", [])
@@ -229,7 +229,7 @@ class PTWRequests:
             )
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to download attachment file {filename}\n{err}", None
 
         try:
@@ -237,8 +237,10 @@ class PTWRequests:
                 f.write(response.content)
                 return None, f.name
         except Exception as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
-            return f"Failed to save attachment file {filename}\n{err}", None
+            # response.content here is the already-downloaded binary PDF, not JSON - the
+            # failure is local (e.g. disk full/permission denied writing the temp file),
+            # so use e's own message directly rather than trying (and failing) to parse it.
+            return f"Failed to save attachment file {filename}\n{e}", None
 
     @async_request
     def deleteAllPtwAttachments(loggedUser: User, ptwId: str, keepFilenames: list[str] = []) -> str:
@@ -257,11 +259,11 @@ class PTWRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to delete attachments\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to delete attachments\n{err}"
         return None
 
@@ -283,11 +285,11 @@ class PTWRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to copy some of the attachments\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to copy attachments\n{err}"
         return None
 
@@ -300,11 +302,11 @@ class PTWRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to delete PTW\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to delete PTW\n{err}"
 
         return None
@@ -326,11 +328,11 @@ class PTWRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to return PTW\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to return PTW\n{err}"
 
         return None
@@ -352,11 +354,11 @@ class PTWRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to update PTW approvals\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to update PTW approvals\n{err}"
 
         return None
@@ -373,11 +375,11 @@ class PTWRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to archive PTW\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to archive PTW\n{err}"
 
         return None
@@ -399,11 +401,11 @@ class PTWRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Request to run PTW {ptwId} failed\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Request to run PTW {ptwId} failed\n{err}"
 
         return None
@@ -425,11 +427,11 @@ class PTWRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to {'run' if accepted else 'reject'} PTW {ptwId}\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to {'run' if accepted else 'reject'} PTW {ptwId}\n{err}"
 
         return None
@@ -452,11 +454,11 @@ class PTWRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Request to hold PTW {ptwId} failed\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Request to hold PTW {ptwId} failed\n{err}"
 
         return None
@@ -478,11 +480,11 @@ class PTWRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to {'hold' if accepted else 'reject hold for'} PTW {ptwId}\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to {'hold' if accepted else 'reject hold for'} PTW {ptwId}\n{err}"
 
         return None
@@ -504,11 +506,11 @@ class PTWRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Request to close PTW {ptwId} failed\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Request to close PTW {ptwId} failed\n{err}"
 
         return None
@@ -530,11 +532,11 @@ class PTWRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to {'close' if accepted else 'reject'} PTW {ptwId}\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to {'close' if accepted else 'reject'} PTW {ptwId}\n{err}"
 
         return None

@@ -22,30 +22,6 @@ The **Full-Project Audit (2026-08-15)** section below was added after a code rev
 
 ### High
 
-#### H7 — SSE reconnect loses every event during the outage, with no resync
-
-**File:** `client/network/SSEListener.py:81-83`; `server/sse.py` (per-connection queue, no replay/Last-Event-ID); `client/windows/MainWindow.py` (no refetch-on-reconnect)
-
-Anything broadcast while the client is disconnected (≥5 s by design) is permanently lost — the server queue is created at register time with no replay, and the client does no full refetch on reconnect. There's also a smaller startup race: the initial full fetch and the SSE thread start are not ordered, so events landing between the fetch snapshot and stream registration are lost.
-
-**Fix:** Emit a `connected`/`reconnected` signal from `SSEListener` and have `MainWindow` run a full `refreshGUI()` on it; start the SSE thread before (or atomically with) the initial fetch.
-
-#### H8 — Login screen pre-fills a remembered user's password into a revealable field
-
-**File:** `client/Login.py:336-360` (`_populateRememberedUsers`/`_fillPasswordFor`/`_onUsernameSelected`), `reset()` (`:386-390`)
-
-The most-recent user's keyring password is auto-filled on load, any selected username's password is filled on selection, and the password field has an unmask (eye) toggle — so the plaintext is one click away. After logout, `reset()` re-fills the *previous* user's password for whoever is next at the machine. On a shared control-room PC under one OS login (common in plants, defeating keyring's per-OS-user isolation), anyone can read a colleague's password and forge approvals under their identity. *(Severity is deployment-dependent: with per-operator OS logins this is not cross-user exploitable. The keyring usage itself is sound — no plaintext fallback, no passwords in logs.)*
-
-**Fix:** Never place a retrieved password into a revealable widget. Keep a sentinel and substitute the real credential only at submit time; at minimum disable the eye toggle for keyring-filled values.
-
-#### H12 — Closing the window (even Cancel or minimize-to-tray) permanently disables the safety-alarm polling
-
-**File:** `client/windows/MainWindow.py:808-809`
-
-`self._ptwAlarmTimer.stop()` and `self._fabProximityTimer.stop()` run unconditionally at the top of `closeEvent`, before the tray/exit/Cancel branching, and are only ever started in `__init__` (`_restoreFromTray` doesn't restart them). A USER-role PA who presses X and picks "keep running in tray" (whose whole purpose is background notifications), or who presses X then Cancel, never gets shift-ended / 14-shift-validity alarms again for the rest of the session — a silently disabled safety alarm.
-
-**Fix:** Only stop the timers in the real-exit branch (or restart them in `_restoreFromTray`).
-
 #### H13 — Stale row indexes after async round-trips race SSE updates: wrong row deleted/overwritten, desync, crashes
 
 **File:** `client/tables/TablePTWs.py:348-377` (`updatePTW`/`deletePTW`); `client/windows/MainWindow.py:913-924` (`editPTW`), `:1871-1890` (`_applyPTWEvent`)
@@ -96,30 +72,6 @@ The upload endpoints don't block the GUEST session, and no `MAX_CONTENT_LENGTH` 
 
 **Fix:** Block guests on all upload endpoints; set `app.config['MAX_CONTENT_LENGTH']`; validate content type/extension.
 
-#### M22 — `validate()` empty-field check can never fire on `None`; server accepts skeleton permits
-
-**File:** `server/models/PTW.py:869` / `client/models/PTW.py:1930` (`if field == '':`)
-
-Every validated field defaults to `None` (`data.get(...)`), and the client's own empty-id path yields `None`, not `''`, so `if field == '':` never matches — the "… cannot be empty" rule is dead. A `POST /ptws {"description":"x","mos":"y"}` passes validation and inserts a permit with NULL type/department/location/requestor, which then enters the normal approval flow.
-
-**Fix:** `if not field:` (both copies).
-
-#### M23 — Model divergence: server's `ALL_HAZARDS['Scaffolding']` cascades `Working at Height`; client's doesn't
-
-**File:** `server/models/PTW.py:316-321` vs `client/models/PTW.py:330-332`
-
-The server copy of the `Scaffolding` hazard carries a `Working at Height` requirement; the client copy is a bare `CheckBox`. So the client's `updateRequirements()`/`validate()` never adds or demands it, and a submit that checks Scaffolding alone is accepted client-side but **rejected 400 by the server** with an error the UI never predicted (and the cascaded medical-check attachment is never requested). This is exactly the hand-kept-in-sync drift the module docstrings warn about.
-
-**Fix:** Re-sync the two model copies (add the requirement to the client), and ideally add a CI check that diffs the shared tables/methods.
-
-#### M24 — `response.json()` inside exception handlers crashes on any non-JSON error body (~60 sites)
-
-**File:** `client/network/authRequests.py:32,40` and the same pattern across `ptwRequests.py`, `icRequests.py`, `riskRequests.py`, `adminRequests.py`, `documentRequests.py`
-
-The error path does `response.json().get("error", response.text)` inside the `except`; if the body isn't JSON (Flask HTML 500, gateway page, empty body) `response.json()` raises `JSONDecodeError` from within the handler and escapes — the async path surfaces "Expecting value: line 1 column 1", the sync path (reports) hits the excepthook crash dialog. The variants that call `response.json()` in the temp-file-write `except` of a **successful binary PDF** download (`ptwRequests.py:239-241`, `icRequests.py:193-195`, `documentRequests.py:43-45`) are always-wrong. (`authRequests.py:40` also references an undefined `e` in its `else` branch.)
-
-**Fix:** One shared helper that tries `response.json()` and falls back to `response.text`; never call `.json()` in a binary-download error path.
-
 #### M26 — Sortable isolation tables delete by row index without resync: wrong item removed after a sort
 
 **File:** `client/tables/TableIsolations.py:40,92-106`; `client/tables/TableIsolationItems.py:44,135-150`
@@ -135,14 +87,6 @@ Both call `setSortingEnabled(True)` but keep their backing lists in insertion or
 These call `ClientRequests.*` **without** `callback=`, taking the synchronous branch and blocking the GUI thread — the exact regression class the async decorator was meant to eliminate. Opening any PTW view/edit/re-request dialog can freeze for up to 2×15 s on a slow server; "print current tab" over N permits can freeze for minutes (the RefreshOverlay animation stalls). Also `MainWindow.py:605,1378` block up to 15 s in the theme/language "Restart Now" branches.
 
 **Fix:** Route these through the async path with `callback=`, or run report generation on a worker thread.
-
-#### M28 — RefreshOverlay refcount leak on dialog-construction exceptions → permanently frozen app
-
-**File:** `client/windows/MainWindow.py:891-894,910-912,936-938`; `client/dialogs/DialogIC.py:322-324`; `client/dialogs/DialogPtwAlarms.py:163-165`
-
-These do `showBusy()` … construct a dialog … `hideBusy()` with no `try/finally` (unlike `printPTW`/`printIC`). If the dialog constructor raises — and M24's sync error path is a concrete trigger, since it does the blocking fetches in `__init__` — the input-blocking overlay is never hidden; `sys.excepthook` keeps the process alive but the app is frozen until killed.
-
-**Fix:** Wrap each show/construct/hide in `try/finally: hideBusy()`.
 
 #### M30 — Client-supplied actor identity on create/approve/run endpoints (audit-trail integrity)
 
@@ -214,6 +158,55 @@ The server binds to plain HTTP on port 5000. Every request sends the username an
 ---
 
 ## Fixed
+
+### ~~M22 — `validate()` empty-field check can never fire on `None`; server accepts skeleton permits~~ ✓
+**File:** `server/models/PTW.py`, `client/models/PTW.py` — `validate()`
+
+Every validated field defaulted to `None` (`data.get(...)`), and the client's own empty-id path yielded `None`, not `''`, so `if field == '':` never matched — the "… cannot be empty" rule was dead. Fixed (2026-08-19) by switching to `if not field:` in both copies - **and** dropping `id` from the checked-fields list entirely (it was there before too, equally dead): `id` is legitimately empty for a brand-new PTW at validation time in both the client's New-PTW dialog and the server's `POST /ptws` (validated *before* the DB assigns a real id, per the M9 fix), so a naive `if not field` swap on the unedited list would have rejected every single new-PTW submission with "Id cannot be empty". `PUT /ptws` (the only path where an id is actually required at this point) already independently validates and looks up the id before ever constructing a `PTW` to run `validate()` on, so nothing was relying on this check for `id`.
+
+---
+
+### ~~M23 — Model divergence: server's `ALL_HAZARDS['Scaffolding']` cascades `Working at Height`; client's doesn't~~ ✓
+**File:** `server/models/PTW.py`
+
+Resolved the opposite way from the original **Fix:** suggestion, per business-rule clarification: Scaffolding does not actually require Working at Height, so the server's cascade was the wrong copy, not the client's. Fixed (2026-08-19) by removing the `Working at Height` requirement from the server's `Scaffolding` `CheckBox` entry, matching the client's bare checkbox - a Scaffolding-only submission is no longer rejected 400 by the server.
+
+---
+
+### ~~M24 — `response.json()` inside exception handlers crashes on any non-JSON error body (~60 sites)~~ ✓
+**File:** `client/network/requestConfig.py` (new `extractError()`); every `*Requests.py` mixin (`authRequests.py`, `adminRequests.py`, `documentRequests.py`, `riskRequests.py`, `icRequests.py`, `userRequests.py`, `ptwRequests.py`)
+
+The error path did `response.json().get("error", response.text)` inside the `except`; if the body wasn't JSON, `response.json()` raised `JSONDecodeError` from within the handler and escaped in place of the original error. Fixed (2026-08-19) with a single shared `extractError(response, exc=None)` helper in `requestConfig.py` - tries `response.json()`'s `error`/`message` keys, falls back to `response.text` if the body isn't JSON at all, and falls back to `str(exc)` only when `response` itself is `None` (a connection error before any response arrived). All ~110 call sites across the seven request mixins now call this helper instead of the inline pattern, including the ones inside a subsequent `if not data.get("success")`/`else` branch that had no exception object in scope at all - one of those (`authRequests.py`'s `login()`) was referencing a genuinely undefined `e`, silently never hit only because `response is not None` was always true there so Python's conditional never evaluated it; that dead reference is gone now too. The three binary-download temp-file-write sites (`ptwRequests.py`'s `getPtwAttachment`, `icRequests.py`'s `getIcAttachment`, `documentRequests.py`'s `getMIWI`) were deliberately *not* pointed at `extractError()` - `response.content` there is already-downloaded binary PDF data, not JSON, and the failure being handled is local (e.g. disk full writing the temp file), so they now use the local exception's own message (`str(e)`) directly instead.
+
+---
+
+### ~~M28 — RefreshOverlay refcount leak on dialog-construction exceptions → permanently frozen app~~ ✓
+**File:** `client/windows/MainWindow.py` — `viewPTW`, `editPTW`, `addPTWDialog`; `client/dialogs/DialogIC.py` — `_viewLinkedPTW`; `client/dialogs/DialogPtwAlarms.py` — `_view`
+
+These did `showBusy()` … construct a dialog … `hideBusy()` with no `try/finally` (unlike `printPTW`/`printIC`, which already had it). If the dialog constructor raised, the input-blocking overlay was never hidden, freezing the app until killed. Fixed (2026-08-19) by wrapping the construction call in each of the five sites in `try/finally: hideBusy()`, mirroring `printPTW`/`printIC`'s existing pattern.
+
+---
+
+### ~~H7 — SSE reconnect loses every event during the outage, with no resync~~ ✓
+**File:** `client/network/SSEListener.py`, `client/windows/MainWindow.py`
+
+Anything broadcast while the client was disconnected (≥5 s by design) was permanently lost — the server queue is created at register time with no replay, and the client did no full refetch on reconnect; there was also a smaller startup race where the initial full fetch and the SSE thread start weren't ordered. Fixed (2026-08-19): `SSEListener` now emits a new `reconnected` signal right after its stream re-establishes — skipped on the very first connection, so it only fires for genuine reconnects — and `MainWindow` connects it (both at initial construction and in `_restartSSEListener`, the password-change path from M25) to a full `refreshGUI()`, resyncing everything that might have been missed during the outage. Separately, `MainWindow.__init__` now starts the SSE listener immediately before the initial `refreshGUI()` call (it previously started ~25 lines later, well after), shrinking the startup race window so the server registers this connection's event queue no later than the initial fetch's snapshot is taken.
+
+---
+
+### ~~H8 — Login screen pre-fills a remembered user's password into a revealable field~~ ✓ (partial)
+**File:** `client/Login.py` — `PasswordLineEdit`, `_fillPasswordFor`, `_populateRememberedUsers`, `_onUsernameSelected`
+
+The most-recent user's keyring password was auto-filled on load, any selected username's password was filled on selection, and the password field had an unmask (eye) toggle — so the plaintext was one click away. Fixed (2026-08-19), per explicit scoping to the minimal mitigation the original **Fix:** note called out: `PasswordLineEdit` gained a `setToggleEnabled()` method that disables the eye button (and forces the field back to masked echo mode if it was already revealed) whenever a value was placed into it programmatically rather than typed; `_fillPasswordFor` now disables the toggle whenever a real keyring password was retrieved, and `_populateRememberedUsers`/`_onUsernameSelected` re-enable it whenever the field is cleared for manual entry. `PasswordLineEdit` also now re-enables the toggle the moment the user edits the field themselves (`textEdited`, which - unlike `textChanged` - never fires from a programmatic `setText()`), so typing over an auto-filled value immediately restores it. **Not done:** the field still silently receives the previous/selected user's real password on load/selection/`reset()` (only the in-app *reveal* is now blocked - masked-echo `QLineEdit`s already block clipboard copy, but the password is still submitted un-noticed if whoever's at the keyboard just clicks Login) — the fuller fix (a sentinel value substituted for the real credential only at submit time, so a retrieved password is never actually placed in the widget at all) remains open.
+
+---
+
+### ~~H12 — Closing the window (even Cancel or minimize-to-tray) permanently disables the safety-alarm polling~~ ✓
+**File:** `client/windows/MainWindow.py` — `closeEvent`, `_quitApp`, `logout`
+
+`self._ptwAlarmTimer.stop()`/`self._fabProximityTimer.stop()` ran unconditionally at the top of `closeEvent`, before the tray/exit/Cancel branching, so a USER-role PA who minimized to tray (whose whole purpose is background notifications) or hit Cancel silently lost shift-ended/14-shift-validity alarms for the rest of the session. Fixed (2026-08-19) by moving both `.stop()` calls out of the unconditional top of `closeEvent` and into only the branches that represent a real exit: the `self._forceClose` branch (logout, and the historical path this was presumably added for in the first place) and `_quitApp()` (the tray menu's Quit action and the remembered/chosen "exit" behavior) — Cancel and tray-minimize now leave both timers running, exactly as the doc's fix note asked. Per explicit concern raised alongside this fix (an old logout bug where a stale alarm kept surfacing on the login screen, or after logging in as a different role): `logout()` was also given its own explicit `.stop()` calls for both timers, rather than relying solely on `closeEvent`'s `_forceClose` branch to catch it — so a stale alarm timer from the previous session can't survive logout even if that branch's logic ever regresses again.
+
+---
 
 ### ~~L6 — PTW#/IC# columns sort lexicographically~~ ✓
 **File:** `client/tables/TablePTWs.py`, `client/tables/TableICs.py` — `_makeCell`

@@ -1935,9 +1935,11 @@ class PTW:
         for the first violation found (empty required fields, missing MOS/MIWI,
         required/restricted tool-hazard-control selections, cascading requirements, and
         required attachments), or None if the PTW is valid. Run both client-side before
-        submit and server-side on POST /ptws."""
+        submit and server-side on POST /ptws. `id` is deliberately not in the
+        required-fields list below: it's legitimately empty for a brand-new PTW (assigned
+        only after the server accepts it) - this same `validate()` gates the New PTW
+        dialog's accept, well before there is an id to check."""
         for key, field in [
-            ('id', self.id),
             ('type', self.type),
             ('requestor', self.requestor),
             ('department', self.department),
@@ -1946,7 +1948,7 @@ class PTW:
             ('equipment', self.equipment),
             ('description', self.description)
         ]:
-            if field == '':
+            if not field:
                 return "{} cannot be empty".format(key.capitalize())
         if not (self.mos or self.miwi):
             return "Must have either MOS or MIWI"

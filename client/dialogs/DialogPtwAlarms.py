@@ -161,8 +161,10 @@ class DialogPtwAlarms(QDialog):
         """
         from dialogs.DialogPTW import DialogPTW
         self._refreshOverlay.showBusy()
-        dlg = DialogPTW(self, self._mainWindow.loggedUser, ptw, None, False, True, f'View Mode - PTW# {ptw.id}')
-        self._refreshOverlay.hideBusy()
+        try:
+            dlg = DialogPTW(self, self._mainWindow.loggedUser, ptw, None, False, True, f'View Mode - PTW# {ptw.id}')
+        finally:
+            self._refreshOverlay.hideBusy()
         dlg.exec()
 
     def _validityRow(self, ptw: PTW) -> QWidget:

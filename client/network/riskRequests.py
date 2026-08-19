@@ -4,7 +4,7 @@ assessments, and create/update/delete them.
 Mixed into ``ClientRequests`` (see ``network/clientRequests.py``).
 """
 
-from network.requestConfig import SERVER_URL, TIMEOUT, FILE_TIMEOUT
+from network.requestConfig import SERVER_URL, TIMEOUT, FILE_TIMEOUT, extractError
 import requests
 from network.RequestWorker import async_request
 from helper.utils import dictToObj, objToDict
@@ -34,11 +34,11 @@ class RiskRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to get risks\n{err}", None
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to get risks\n{err}", None
 
         return None, {title: RiskAssessment().setAll(riskAssessmentDict) for title, riskAssessmentDict in data["risks"].items()}
@@ -60,11 +60,11 @@ class RiskRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to get PTW-specific risk\n{err}", None
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to get PTW-specific risk\n{err}", None
 
         return None, RiskAssessment().setAll(data["risk"]) if data.get("risk") else None
@@ -86,11 +86,11 @@ class RiskRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to add risk\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to add risk\n{err}"
         return None
 
@@ -111,11 +111,11 @@ class RiskRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to update risk\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to update risk\n{err}"
         return None
 
@@ -136,11 +136,11 @@ class RiskRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to delete risk\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to delete risk\n{err}"
         return None
 

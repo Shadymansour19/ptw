@@ -3,7 +3,7 @@
 Mixed into ``ClientRequests`` (see ``network/clientRequests.py``).
 """
 
-from network.requestConfig import SERVER_URL, TIMEOUT, FILE_TIMEOUT
+from network.requestConfig import SERVER_URL, TIMEOUT, FILE_TIMEOUT, extractError
 import re
 import requests
 from network.RequestWorker import async_request
@@ -32,11 +32,11 @@ class AdminRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to get log files\n{err}", None
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to get log files\n{err}", None
 
         return None, data["logs"]
@@ -57,7 +57,7 @@ class AdminRequests:
             )
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to get log file '{filename}'\n{err}", None
 
         return None, response.text
@@ -79,11 +79,11 @@ class AdminRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to get backups\n{err}", None
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to get backups\n{err}", None
 
         return None, data
@@ -104,11 +104,11 @@ class AdminRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to create backup\n{err}", None
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to create backup\n{err}", None
 
         return None, data["backup"]
@@ -130,11 +130,11 @@ class AdminRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to delete backup\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to delete backup\n{err}"
 
     @async_request
@@ -156,7 +156,7 @@ class AdminRequests:
             )
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to download backup file '{which}' for '{name}'\n{err}", None
 
         # Trust the server's Content-Disposition for the real filename (e.g. the actual

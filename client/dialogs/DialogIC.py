@@ -320,8 +320,10 @@ class DialogIC(TabbedDialog):
             return
         from dialogs.DialogPTW import DialogPTW
         self._refreshOverlay.showBusy()
-        dlg = DialogPTW(self, self.loggedUser, ptw, None, False, True, f"View Mode - PTW# {ptw.id}")
-        self._refreshOverlay.hideBusy()
+        try:
+            dlg = DialogPTW(self, self.loggedUser, ptw, None, False, True, f"View Mode - PTW# {ptw.id}")
+        finally:
+            self._refreshOverlay.hideBusy()
         dlg.exec()
 
     def _unlinkPTW(self, ptwId):

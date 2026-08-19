@@ -4,7 +4,7 @@ download, and upload.
 Mixed into ``ClientRequests`` (see ``network/clientRequests.py``).
 """
 
-from network.requestConfig import SERVER_URL, TIMEOUT, FILE_TIMEOUT
+from network.requestConfig import SERVER_URL, TIMEOUT, FILE_TIMEOUT, extractError
 import requests
 import tempfile
 from network.RequestWorker import async_request
@@ -33,7 +33,7 @@ class DocumentRequests:
             )
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to download MIWI file\n{err}", None
 
         try:
@@ -41,8 +41,10 @@ class DocumentRequests:
                 f.write(response.content)
                 return None, f.name
         except Exception as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
-            return f"Failed to save MIWI file\n{err}", None
+            # response.content here is the already-downloaded binary PDF, not JSON - the
+            # failure is local (e.g. disk full/permission denied writing the temp file),
+            # so use e's own message directly rather than trying (and failing) to parse it.
+            return f"Failed to save MIWI file\n{e}", None
 
     @async_request
     def getAllMIWIs(loggedUser: User, department: UserDepartments = None) -> tuple[str, list[str]]:
@@ -61,11 +63,11 @@ class DocumentRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to get MIWIs\n{err}", None
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to get MIWIs\n{err}", None
 
         return None, data["miwis"]
@@ -90,14 +92,14 @@ class DocumentRequests:
                 response.raise_for_status()
                 data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to upload MIWI file\n{err}"
         except Exception as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to read MIWI file\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to upload MIWI file\n{err}"
 
         return None

@@ -4,7 +4,7 @@ isolate/de-isolate request-confirm-execute cycles, PTW linkage, and IC attachmen
 Mixed into ``ClientRequests`` (see ``network/clientRequests.py``).
 """
 
-from network.requestConfig import SERVER_URL, TIMEOUT, FILE_TIMEOUT
+from network.requestConfig import SERVER_URL, TIMEOUT, FILE_TIMEOUT, extractError
 import os
 import requests
 import tempfile
@@ -38,11 +38,11 @@ class ICRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to get ICs\n{err}", None
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to get ICs\n{err}", None
 
         return None, {ic['id']: IC().setAll(namespace=dictToObj(ic)) for ic in data.get("ics", [])}
@@ -63,11 +63,11 @@ class ICRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to fetch IC #{icId}\n{err}", None
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to fetch IC #{icId}\n{err}", None
 
         return None, IC().setAll(namespace=dictToObj(data["ic"]))
@@ -89,11 +89,11 @@ class ICRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to add IC\n{err}", None
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to add IC\n{err}", None
         return None, data.get('ic-id')
 
@@ -129,14 +129,14 @@ class ICRequests:
         except requests.exceptions.RequestException as e:
             for f in opened:
                 f.close()
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to add attachment\n{err}"
 
         for f in opened:
             f.close()
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to add attachment\n{err}"
         return None
 
@@ -157,11 +157,11 @@ class ICRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to get attachments\n{err}", None
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to get attachments\n{err}", None
 
         return None, data.get("attachments", [])
@@ -182,7 +182,7 @@ class ICRequests:
             )
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to download attachment file {filename}\n{err}", None
 
         try:
@@ -191,8 +191,10 @@ class ICRequests:
                 f.write(response.content)
                 return None, f.name
         except Exception as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
-            return f"Failed to save attachment file {filename}\n{err}", None
+            # response.content here is the already-downloaded binary PDF, not JSON - the
+            # failure is local (e.g. disk full/permission denied writing the temp file),
+            # so use e's own message directly rather than trying (and failing) to parse it.
+            return f"Failed to save attachment file {filename}\n{e}", None
 
     @async_request
     def deleteAllIcAttachments(loggedUser: User, icId: str, keepFilenames: list[str] = []) -> str:
@@ -211,11 +213,11 @@ class ICRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to delete attachments\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to delete attachments\n{err}"
         return None
 
@@ -241,11 +243,11 @@ class ICRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to update IC approvals\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to update IC approvals\n{err}"
 
         return None
@@ -267,11 +269,11 @@ class ICRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to request isolation\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to request isolation\n{err}"
 
         return None
@@ -319,11 +321,11 @@ class ICRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to execute isolation\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to execute isolation\n{err}"
 
         return None
@@ -345,11 +347,11 @@ class ICRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to request de-isolation\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to request de-isolation\n{err}"
 
         return None
@@ -397,11 +399,11 @@ class ICRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to execute de-isolation\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to execute de-isolation\n{err}"
 
         return None
@@ -423,11 +425,11 @@ class ICRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to link PTW\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to link PTW\n{err}"
 
         return None
@@ -449,11 +451,11 @@ class ICRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to unlink PTW\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to unlink PTW\n{err}"
 
         return None

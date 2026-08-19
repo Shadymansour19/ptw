@@ -3,7 +3,7 @@
 Mixed into ``ClientRequests`` (see ``network/clientRequests.py``).
 """
 
-from network.requestConfig import SERVER_URL, TIMEOUT, FILE_TIMEOUT
+from network.requestConfig import SERVER_URL, TIMEOUT, FILE_TIMEOUT, extractError
 import requests
 from network.RequestWorker import async_request
 from models.User import User, SecuredUser
@@ -28,7 +28,7 @@ class UserRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to fetch users\n{err}", None
 
         if data.get("success"):
@@ -38,7 +38,7 @@ class UserRequests:
                 allUsers[user.getUsername()] = user
             return None, allUsers
         else:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to fetch users\n{err}", None
 
     @async_request
@@ -50,11 +50,11 @@ class UserRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to register user\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to register user!\n{err}"
 
     @async_request
@@ -70,11 +70,11 @@ class UserRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to update user\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to update user!\n{err}"
 
     @async_request
@@ -89,7 +89,7 @@ class UserRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to update theme\n{err}"
         if not data.get("success"):
             return data.get("error", "Failed to update theme")
@@ -106,7 +106,7 @@ class UserRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to update language\n{err}"
         if not data.get("success"):
             return data.get("error", "Failed to update language")
@@ -123,7 +123,7 @@ class UserRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to update active status\n{err}"
         if not data.get("success"):
             return data.get("error", "Failed to update active status")
@@ -137,10 +137,10 @@ class UserRequests:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response, e)
             return f"Failed to delete user\n{err}"
 
         if not data.get("success"):
-            err = response.json().get("error", response.text) or response.json().get("message", response.text) if response is not None else str(e)
+            err = extractError(response)
             return f"Failed to delete user!\n{err}"
 

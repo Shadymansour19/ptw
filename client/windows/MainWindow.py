@@ -520,6 +520,17 @@ class MainWindow(QMainWindow):
 
         self._refreshOverlay = RefreshOverlay(self)
 
+        # Start the SSE listener before the initial fetch below (not after, as it used to
+        # be) so the server registers this connection's event queue no later than that
+        # fetch's snapshot is taken - closing most of the gap where an event landing
+        # between the two would otherwise be missed by both. Anything broadcast during a
+        # later outage is still gone for good (no server-side replay/Last-Event-ID), so a
+        # full refreshGUI() on every *re*connect (not this first one) resyncs from scratch.
+        self._sseListener = SSEListener(SERVER_URL, loggedUser.getUsername(), loggedUser.getPassword())
+        self._sseListener.eventReceived.connect(self._onSSEEvent)
+        self._sseListener.reconnected.connect(self.refreshGUI)
+        self._sseListener.start()
+
         self.stackTabChanged()
         self.refreshGUI()
 
@@ -545,10 +556,6 @@ class MainWindow(QMainWindow):
         self._trayIcon.setContextMenu(trayMenu)
         self._trayIcon.activated.connect(self._onTrayActivated)
         self._trayIcon.show()
-
-        self._sseListener = SSEListener(SERVER_URL, loggedUser.getUsername(), loggedUser.getPassword())
-        self._sseListener.eventReceived.connect(self._onSSEEvent)
-        self._sseListener.start()
 
         # PA-side reminder: a RUNNING PTW whose shift ended, or any open PTW past its
         # 14-shift validity, needs a human decision — see _checkPtwAlarms(). Nothing here
@@ -791,10 +798,15 @@ class MainWindow(QMainWindow):
         return
     
     def logout(self):
-        """Handle a logout request: stop the SSE listener, hide the tray icon, force
+        """Handle a logout request: stop the SSE listener and the PTW-alarm/FAB-proximity
+        timers (explicitly, not just via closeEvent's forceClose branch below - this must
+        not depend on that branch logic staying correct, since a stale alarm surviving
+        logout would fire for whichever user/role logs in next), hide the tray icon, force
         a real close (bypassing the close-to-tray prompt), and emit `on_logout`."""
         self._sseListener.stop()
         self._sseListener.wait(1000)
+        self._ptwAlarmTimer.stop()
+        self._fabProximityTimer.stop()
         self._trayIcon.hide()
         self._forceClose = True
         self.on_logout.emit()
@@ -805,10 +817,14 @@ class MainWindow(QMainWindow):
         remembered close-to-tray/exit preference immediately if one is set, otherwise
         ask the user (with an optional 'remember my choice' checkbox) whether to keep
         running in the tray or exit completely, and act on the answer — Cancel just
-        re-ignores the event."""
-        self._ptwAlarmTimer.stop()
-        self._fabProximityTimer.stop()
+        re-ignores the event.
+
+        The PTW-alarm/FAB-proximity timers are only ever stopped on a real exit (here,
+        and in `_quitApp`) - not on Cancel or a tray-minimize, whose entire point is to
+        keep background notifications (including these alarms) alive."""
         if self._forceClose:
+            self._ptwAlarmTimer.stop()
+            self._fabProximityTimer.stop()
             event.accept()
             return
 
@@ -879,8 +895,10 @@ class MainWindow(QMainWindow):
 
     def _quitApp(self):
         """Fully quit the application (from the tray menu's 'Quit' action or a
-        close-behavior of 'exit'): stop the SSE listener, hide the tray icon, and
-        call `QApplication.quit()`."""
+        close-behavior of 'exit'): stop the PTW-alarm/FAB-proximity timers and the SSE
+        listener, hide the tray icon, and call `QApplication.quit()`."""
+        self._ptwAlarmTimer.stop()
+        self._fabProximityTimer.stop()
         self._sseListener.stop()
         self._sseListener.wait(1000)
         self._trayIcon.hide()
@@ -890,8 +908,10 @@ class MainWindow(QMainWindow):
     def viewPTW(self, row: int, ptw: PTW):
         """Open a read-only `DialogPTW` for `ptw`, e.g. from a table's View action."""
         self._refreshOverlay.showBusy()
-        viewPTWDialog = DialogPTW(self, self.loggedUser, ptw, None, False, True, t('View Mode - PTW# {0}').format(ptw.id))
-        self._refreshOverlay.hideBusy()
+        try:
+            viewPTWDialog = DialogPTW(self, self.loggedUser, ptw, None, False, True, t('View Mode - PTW# {0}').format(ptw.id))
+        finally:
+            self._refreshOverlay.hideBusy()
         viewPTWDialog.exec()
 
     def _savePTWRiskAssessment(self, ptwId: int, risk: RiskAssessment, callback=None):
@@ -909,8 +929,10 @@ class MainWindow(QMainWindow):
         toEditPtw = copy.deepcopy(ptw)
         wasReturned = toEditPtw.approval_status == PTW.ApprovalStatus.RETURNED
         self._refreshOverlay.showBusy()
-        editPTWDialog = DialogPTW(self, self.loggedUser, toEditPtw, None, False, False, t('Edit Mode - PTW# {0}').format(ptw.id))
-        self._refreshOverlay.hideBusy()
+        try:
+            editPTWDialog = DialogPTW(self, self.loggedUser, toEditPtw, None, False, False, t('Edit Mode - PTW# {0}').format(ptw.id))
+        finally:
+            self._refreshOverlay.hideBusy()
         if editPTWDialog.exec() == QDialog.DialogCode.Accepted:
             if wasReturned:
                 toEditPtw.clearApprovals()
@@ -949,8 +971,10 @@ class MainWindow(QMainWindow):
             newPTW.setId(None).clearApprovals()
         title = t("Re-request PTW") if ptw else t("New PTW")
         self._refreshOverlay.showBusy()
-        dlg = DialogPTW(self, self.loggedUser, newPTW, ptw, True, False, title)
-        self._refreshOverlay.hideBusy()
+        try:
+            dlg = DialogPTW(self, self.loggedUser, newPTW, ptw, True, False, title)
+        finally:
+            self._refreshOverlay.hideBusy()
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
 
@@ -1416,6 +1440,7 @@ class MainWindow(QMainWindow):
         self._sseListener.wait(1000)
         self._sseListener = SSEListener(SERVER_URL, self.loggedUser.getUsername(), self.loggedUser.getPassword())
         self._sseListener.eventReceived.connect(self._onSSEEvent)
+        self._sseListener.reconnected.connect(self.refreshGUI)
         self._sseListener.start()
 
     def dlgSettings(self):
