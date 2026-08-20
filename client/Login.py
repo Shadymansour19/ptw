@@ -6,18 +6,30 @@ or background-notification concept before a user is logged in.
 """
 
 from PyQt6.QtCore import Qt, pyqtSignal, QSize, QSettings, QLocale
+from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (QLineEdit, QToolButton, QDialog, QFormLayout, QLabel,
                               QPushButton, QCheckBox, QDialogButtonBox,
                               QMessageBox, QMainWindow, QWidget, QSizePolicy, QApplication,
-                              QHBoxLayout)
+                              QHBoxLayout, QGridLayout, QVBoxLayout)
 import keyring
 from keyring.errors import KeyringError
 import qtawesome as qta
 
 from widgets.SearchableComboBox import SearchableComboBox
 from widgets.RefreshOverlay import RefreshOverlay
+from widgets.LoginBackground import LoginBackground
+from helper.utils import resource_path
 import helper.i18n as i18n
 from helper.i18n import t
+
+
+# qtawesome resolves an icon's default color from the active application palette's text
+# color (see qtawesome.iconic_font._default_options) - which is exactly what made these
+# icons pick up the wrong (theme-following) color once the buttons/fields around them
+# were pinned to an explicit light look. Every qta.icon() call on this screen passes
+# this color explicitly instead, so icons always match the login card's fixed palette
+# regardless of the OS/app color scheme.
+_ICON_COLOR = '#202124'
 
 
 SERVICE_NAME = "PTW-login-credentials"
@@ -33,7 +45,7 @@ class PasswordLineEdit(QLineEdit):
         super().__init__(parent)
 
         self._visible = False
-        self._icons = [qta.icon('fa6.eye'), qta.icon('fa6.eye-slash')]
+        self._icons = [qta.icon('fa6.eye', color=_ICON_COLOR), qta.icon('fa6.eye-slash', color=_ICON_COLOR)]
 
         self._btn = QToolButton(self)
         self._btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -253,8 +265,78 @@ class LoginWindow(QMainWindow):
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.CustomizeWindowHint)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowMaximizeButtonHint)
 
-        container = QWidget()
-        self.setCentralWidget(container)
+        background = LoginBackground()
+        self.setCentralWidget(background)
+
+        # The card deliberately pins itself to an explicit light look (background,
+        # text, and every input inside it) instead of inheriting the system/app
+        # palette - this screen is shown before any user is logged in, so there is no
+        # saved theme yet, and letting a dark OS color scheme bleed into individual
+        # child widgets (labels, checkboxes, inputs) while the card itself stays
+        # light is what produced unreadable white-on-white text.
+        card = QWidget()
+        card.setObjectName("loginCard")
+        card.setStyleSheet('''
+            QWidget#loginCard {
+                background-color: rgba(255, 255, 255, 150);
+                border-radius: 14px;
+            }
+            QWidget#loginCard QLabel,
+            QWidget#loginCard QCheckBox {
+                color: #202124;
+                background: transparent;
+            }
+            QWidget#loginCard QLineEdit,
+            QWidget#loginCard QComboBox {
+                background-color: rgba(255, 255, 255, 210);
+                color: #202124;
+                border: 1px solid rgba(0, 0, 0, 60);
+                border-radius: 5px;
+                padding: 3px 4px;
+            }
+            QWidget#loginCard QComboBox QAbstractItemView {
+                background-color: #ffffff;
+                color: #202124;
+                selection-background-color: #2f7d52;
+                selection-color: #ffffff;
+                outline: 0;
+            }
+            QWidget#loginCard QPushButton#loginActionButton {
+                background-color: rgba(255, 255, 255, 210);
+                color: #202124;
+                border: 1px solid rgba(0, 0, 0, 60);
+                border-radius: 5px;
+                padding: 5px 10px;
+            }
+            QWidget#loginCard QPushButton#loginActionButton:hover {
+                background-color: rgba(255, 255, 255, 245);
+            }
+        ''')
+        card.setMinimumWidth(380)
+
+        # Bespoke ambigram logo (assets/login-logo.png), designed from Shady's sketch:
+        # left-to-right it reads "PtW"; right-to-left the same strokes read "شادي" -
+        # the W's three verticals are س's teeth (the t's crossbar breaks into dashes
+        # above them as ش's dots), the t's stem is ا with its bottom bar as the شـا
+        # joint, and the P's split bowl gives د (right+bottom) and ي (stem+top, with
+        # its hook and two dots below). RASHPETCO caption line underneath.
+        brand = QWidget()
+        brandLayout = QVBoxLayout(brand)
+
+        logoLabel = QLabel()
+        logoLabel.setPixmap(QPixmap(resource_path('assets/login-logo.png')).scaled(
+            360, 250, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        logoLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        logoLabel.setStyleSheet("background: transparent;")
+
+        brandLayout.addWidget(logoLabel)
+
+        outerLayout = QGridLayout(background)
+        outerLayout.setContentsMargins(48, 48, 64, 56)
+        outerLayout.setRowStretch(0, 1)
+        outerLayout.setColumnStretch(0, 1)
+        outerLayout.addWidget(brand, 0, 0, Qt.AlignmentFlag.AlignCenter)
+        outerLayout.addWidget(card, 1, 1, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom)
 
         self.boxUsername = SearchableComboBox()
         self.boxPassword = PasswordLineEdit()
@@ -265,9 +347,9 @@ class LoginWindow(QMainWindow):
         self.boxUsername.setPlaceholderText(t("Enter username"))
         self.boxPassword.setPlaceholderText(t("Enter password"))
         self.btnForgotPassword.setStyleSheet('''
-            QPushButton { border: none; background: transparent; color: palette(link); }
-            QPushButton:hover { text-decoration: underline;}
-            QPushButton:pressed { color: palette(highlight); }
+            QPushButton { border: none; background: transparent; color: #0b5fae; }
+            QPushButton:hover { text-decoration: underline; }
+            QPushButton:pressed { color: #08417a; }
         ''')
         self.btnForgotPassword.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btnForgotPassword.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
@@ -277,9 +359,11 @@ class LoginWindow(QMainWindow):
         self.boxPassword.returnPressed.connect(self.login)
         self.btnForgotPassword.clicked.connect(self.forgotPassword)
 
-        self.btnCancel = QPushButton(qta.icon('fa5s.times'), t("&Cancel"))
-        self.btnLogin = QPushButton(qta.icon('fa6s.arrow-right-to-bracket'), t("&Login"))
-        self.btnGuest = QPushButton(qta.icon('fa5s.user'), t("Login as a &Guest"))
+        self.btnCancel = QPushButton(qta.icon('fa5s.times', color=_ICON_COLOR), t("&Cancel"))
+        self.btnLogin = QPushButton(qta.icon('fa6s.arrow-right-to-bracket', color=_ICON_COLOR), t("&Login"))
+        self.btnGuest = QPushButton(qta.icon('fa5s.user', color=_ICON_COLOR), t("Login as a &Guest"))
+        for btn in (self.btnCancel, self.btnLogin, self.btnGuest):
+            btn.setObjectName("loginActionButton")
 
         self.btnCancel.clicked.connect(self.close)
         self.btnLogin.clicked.connect(self.login)
@@ -292,7 +376,9 @@ class LoginWindow(QMainWindow):
 
         mainLayout = QFormLayout()
         mainLayout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-        container.setLayout(mainLayout)
+        mainLayout.setContentsMargins(28, 28, 28, 28)
+        mainLayout.setVerticalSpacing(14)
+        card.setLayout(mainLayout)
 
         mainLayout.addRow(t("Username"), self.boxUsername)
         mainLayout.addRow(t("Password"), self.boxPassword)
@@ -306,8 +392,7 @@ class LoginWindow(QMainWindow):
 
         mainLayout.addRow(btnLayout)
 
-        self.adjustSize()
-        self.setFixedHeight(self.height())
+        self.setFixedSize(980, 640)
         frame = self.frameGeometry()
         frame.moveCenter(self.screen().availableGeometry().center())
         self.move(frame.topLeft())
