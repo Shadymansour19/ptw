@@ -93,7 +93,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.loggedUser = loggedUser
         self.setWindowTitle(t("PTW (Permit To Work)"))
-        self.setWindowIcon(QIcon(resource_path('assets/sh-logo-trans.png')))
+        self.setWindowIcon(QIcon(resource_path('assets/ptw-logo-icon.png')))
         self.setMinimumSize(1200, 900)
 
         frame = self.frameGeometry()
@@ -548,7 +548,7 @@ class MainWindow(QMainWindow):
 
         self._forceClose = False
 
-        self._trayIcon = QSystemTrayIcon(QIcon(resource_path("assets/sh-logo-trans.png")), self)
+        self._trayIcon = QSystemTrayIcon(QIcon(resource_path("assets/ptw-logo-icon.png")), self)
         trayMenu = QMenu(self)
         trayMenu.addAction(t("Open PTW")).triggered.connect(self._restoreFromTray)
         trayMenu.addSeparator()

@@ -160,7 +160,7 @@ i18n.apply_layout(app)
 # app.setStyleSheet(load_stylesheet('dark'))
 app.setApplicationName("PTW")
 app.setDesktopFileName("ptw")
-app.setWindowIcon(QIcon(resource_path('assets/sh-logo-trans.png')))
+app.setWindowIcon(QIcon(resource_path('assets/ptw-logo-icon.png')))
 
 _pixmap = qta.icon('fa5s.check', color='white').pixmap(16, 16)
 _tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)

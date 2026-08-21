@@ -1,5 +1,5 @@
 """Busy overlay shown while a GUI refresh is in flight: dims and blocks input, and
-plays an animated bouncing-logo sprite until every outstanding refresh has finished.
+plays an animated logo-typing sprite until every outstanding refresh has finished.
 
 Busy state is app-wide, coordinated by the module-level `_Manager` singleton: a
 `showBusy()` on any window's overlay dims that window AND every other window currently
@@ -15,21 +15,22 @@ from PyQt6.QtWidgets import QWidget, QLabel, QVBoxLayout, QApplication
 from helper.i18n import t
 from helper.utils import resource_path
 
-_FRAME_W = 140
-_FRAME_H = 200
-_FRAME_COUNT = 90   # see dev-scripts/generate_refresh_overlay_frames.py
+_FRAME_W = 220
+_FRAME_H = 160
+_FRAME_COUNT = 90   # see dev-scripts/generate_ptw_logo_assets.py
 
 
-class _BouncingLogo(QWidget):
-    """Steps through a precomputed sprite sheet: the logo shrinks into a ball, drops,
-    bounces twice, then expands back into the logo - looping. Physics and frames are
-    baked in offline (see the generator script) - this just blits the current frame."""
+class _TypingLogo(QWidget):
+    """Steps through a precomputed sprite sheet: a green pen dot hand-draws the PtW
+    ambigram logo stroke by stroke (like typing), then settles as the ي dots - looping.
+    Frames are baked in offline (see the generator script) - this just blits the
+    current frame."""
 
     def __init__(self, parent=None):
         """Load the sprite sheet and configure the looping `progress` animation that
-        drives it from 0.0 to 1.0 over one ~2.5s bounce cycle."""
+        drives it from 0.0 to 1.0 over one ~2.5s typing cycle."""
         super().__init__(parent)
-        self._sheet = QPixmap(resource_path("assets/sh-logo-bounce-frames.png"))
+        self._sheet = QPixmap(resource_path("assets/ptw-typing-frames.png"))
         self._progress = 0.0
         self.setFixedSize(_FRAME_W, _FRAME_H)
 
@@ -53,11 +54,11 @@ class _BouncingLogo(QWidget):
     progress = pyqtProperty(float, _getProgress, _setProgress)
 
     def start(self):
-        """Start (or resume) the looping bounce animation."""
+        """Start (or resume) the looping typing animation."""
         self._anim.start()
 
     def stop(self):
-        """Stop the bounce animation."""
+        """Stop the typing animation."""
         self._anim.stop()
 
     def paintEvent(self, event):
@@ -101,7 +102,7 @@ class _Manager:
 
     def hideBusy(self):
         """Decrement the app-wide busy refcount; once it reaches zero, queue every
-        dimmer's hide (each applies it at its own bounce-cycle boundary)."""
+        dimmer's hide (each applies it at its own typing-cycle boundary)."""
         self.count = max(0, self.count - 1)
         if self.count != 0:
             return
@@ -137,7 +138,7 @@ class RefreshOverlay(QWidget):
 
     def __init__(self, parent):
         """Build the dimmed overlay covering the `parent` window: configure its
-        appearance, wait cursor, and focus stealing, lay out the bouncing logo and
+        appearance, wait cursor, and focus stealing, lay out the typing logo and
         "Refreshing..." label, install an event filter on `parent` to keep the overlay
         sized to it, start hidden, and register with the app-wide `_Manager`."""
         super().__init__(parent)
@@ -148,9 +149,9 @@ class RefreshOverlay(QWidget):
         self._pendingHide = False
         self._prevFocus = None
 
-        self._logo = _BouncingLogo(self)
-        # Fires once per completed bounce loop (~2.5s) - lets a refresh that finishes
-        # mid-bounce play out to the end of that loop instead of cutting it off.
+        self._logo = _TypingLogo(self)
+        # Fires once per completed typing loop (~2.5s) - lets a refresh that finishes
+        # mid-cycle play out to the end of that loop instead of cutting it off.
         self._logo._anim.currentLoopChanged.connect(self._onCycleBoundary)
 
         text = QLabel(t("Refreshing..."), self)
@@ -185,7 +186,7 @@ class RefreshOverlay(QWidget):
     def hideBusy(self):
         """Report one in-flight refresh finished to the app-wide `_Manager`, which -
         once no refresh remains anywhere - queues every dimmer's hide so the current
-        bounce animation cycle can finish, applied later by `_onCycleBoundary`."""
+        typing animation cycle can finish, applied later by `_onCycleBoundary`."""
         _manager.hideBusy()
 
     def _showDim(self):
@@ -196,23 +197,23 @@ class RefreshOverlay(QWidget):
         self.raise_()
 
     def _queueHide(self):
-        """Queue this dimmer's hide for the next bounce-cycle boundary. If it never
+        """Queue this dimmer's hide for the next typing-cycle boundary. If it never
         actually became visible (its window was never shown while busy), just clear
         the pending show outright - there is no animation cycle to play out, and its
         `_onCycleBoundary` would otherwise never fire to apply the hide."""
         if not self.isVisible():
             self.hide()
             return
-        # Don't yank the animation off mid-bounce: queue the hide and let
+        # Don't yank the animation off mid-stroke: queue the hide and let
         # _onCycleBoundary() apply it at the next loop edge, so a refresh that
         # finishes inside one cycle still plays that cycle out to completion -
         # the overlay's total visible time is always a whole multiple of the
-        # ~2.5s bounce cycle instead of an abrupt, flickery cutoff.
+        # ~2.5s typing cycle instead of an abrupt, flickery cutoff.
         self._pendingHide = True
 
     def _onCycleBoundary(self, _loop=None):
         """Slot for the logo animation's `currentLoopChanged` signal, fired once per
-        completed ~2.5s bounce cycle; if a hide is still pending and the app-wide busy
+        completed ~2.5s typing cycle; if a hide is still pending and the app-wide busy
         refcount is zero, hide the overlay now that the cycle has played out."""
         if self._pendingHide and _manager.count == 0:
             self._pendingHide = False
@@ -257,7 +258,7 @@ class RefreshOverlay(QWidget):
             prev.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def showEvent(self, event):
-        """Triggered when the overlay becomes visible; starts the bouncing-logo
+        """Triggered when the overlay becomes visible; starts the logo-typing
         animation and steals the window's keyboard focus (remembering the previous
         focus widget) so key presses land on the overlay and get swallowed."""
         self._logo.start()
@@ -269,7 +270,7 @@ class RefreshOverlay(QWidget):
         super().showEvent(event)
 
     def hideEvent(self, event):
-        """Triggered when the overlay is hidden; stops the bouncing-logo animation and
+        """Triggered when the overlay is hidden; stops the logo-typing animation and
         hands keyboard focus back to whichever widget held it before."""
         self._logo.stop()
         self._restoreFocus()

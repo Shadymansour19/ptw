@@ -88,7 +88,7 @@ class ReportGenerator:
 
         logo_size = qr_w // 3
         padding = logo_size // 32
-        logo = PILImage.open(resource_path("assets/sh-logo-bw.png")).convert("RGB").resize((logo_size, logo_size), PILImage.LANCZOS)
+        logo = PILImage.open(resource_path("assets/ptw-logo-bw.png")).convert("RGB").resize((logo_size, logo_size), PILImage.LANCZOS)
         logo_mask = PILImage.new("L", (logo_size, logo_size), 0)
         PILImageDraw.Draw(logo_mask).ellipse((0, 0, logo_size - 1, logo_size - 1), fill=255)
         total_size = logo_size + 2 * padding

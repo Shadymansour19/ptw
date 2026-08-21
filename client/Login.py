@@ -314,22 +314,32 @@ class LoginWindow(QMainWindow):
         ''')
         card.setMinimumWidth(380)
 
-        # Bespoke ambigram logo (assets/login-logo.png), designed from Shady's sketch:
-        # left-to-right it reads "PtW"; right-to-left the same strokes read "شادي" -
-        # the W's three verticals are س's teeth (the t's crossbar breaks into dashes
-        # above them as ش's dots), the t's stem is ا with its bottom bar as the شـا
-        # joint, and the P's split bowl gives د (right+bottom) and ي (stem+top, with
-        # its hook and two dots below). RASHPETCO caption line underneath.
+        # Bespoke ambigram logo (assets/ptw-logo.png, regenerable via
+        # dev-scripts/generate_ptw_logo_assets.py), designed from Shady's sketch:
+        # left-to-right it reads "ptw"; right-to-left the same strokes read "شادي" -
+        # the W's teeth+cups are س with the green dashes above as ش's dots, the t's
+        # stem is ا with its curved foot/baseline bar as the شـا joint, and the P's
+        # split shape gives د (detached bowl) and ي (curved stem+descender, its two
+        # dots merged into the green dash beside the tail). The caption is real text
+        # here rather than part of the image, so it stays crisp and translatable.
         brand = QWidget()
         brandLayout = QVBoxLayout(brand)
+        brandLayout.setSpacing(16)
 
         logoLabel = QLabel()
-        logoLabel.setPixmap(QPixmap(resource_path('assets/login-logo.png')).scaled(
+        logoLabel.setPixmap(QPixmap(resource_path('assets/ptw-logo.png')).scaled(
             360, 250, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         logoLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
         logoLabel.setStyleSheet("background: transparent;")
 
+        captionLabel = QLabel("RASHPETCO  ·  PERMIT TO WORK")
+        captionLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        captionLabel.setStyleSheet(
+            "color: rgba(255, 255, 255, 215); font-size: 13px; font-weight: bold;"
+            "letter-spacing: 4px; background: transparent;")
+
         brandLayout.addWidget(logoLabel)
+        brandLayout.addWidget(captionLabel)
 
         outerLayout = QGridLayout(background)
         outerLayout.setContentsMargins(48, 48, 64, 56)

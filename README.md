@@ -6,6 +6,9 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 
 ## Screenshots
 
+**Login:**
+![Login](screenshots/login.png)
+
 **Home Dashboard:**
 ![Home](screenshots/home.png)
 
