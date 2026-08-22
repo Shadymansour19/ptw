@@ -15,9 +15,13 @@ from PyQt6.QtWidgets import QWidget, QLabel, QVBoxLayout, QApplication
 from helper.i18n import t
 from helper.utils import resource_path
 
-_FRAME_W = 220
-_FRAME_H = 160
-_FRAME_COUNT = 90   # see dev-scripts/generate_ptw_logo_assets.py
+_FRAME_W = 660       # the sprite sheet's own per-frame resolution - see
+_FRAME_H = 480       # dev-scripts/generate_ptw_logo_assets.py (kept 3x the
+                     # widget's on-screen size below, so drawPixmap's downscale
+                     # is genuine supersampling rather than a 1:1 blit)
+_FRAME_COUNT = 150   # see dev-scripts/generate_ptw_logo_assets.py
+_WIDGET_W = 220      # the overlay widget's actual fixed on-screen size -
+_WIDGET_H = 160      # unchanged from before, independent of sprite resolution
 
 
 class _TypingLogo(QWidget):
@@ -32,7 +36,7 @@ class _TypingLogo(QWidget):
         super().__init__(parent)
         self._sheet = QPixmap(resource_path("assets/ptw-typing-frames.png"))
         self._progress = 0.0
-        self.setFixedSize(_FRAME_W, _FRAME_H)
+        self.setFixedSize(_WIDGET_W, _WIDGET_H)
 
         self._anim = QPropertyAnimation(self, b"progress", self)
         self._anim.setDuration(2500)
@@ -68,6 +72,7 @@ class _TypingLogo(QWidget):
         frame = min(_FRAME_COUNT - 1, int(self._progress * _FRAME_COUNT))
         source = QRect(0, frame * _FRAME_H, _FRAME_W, _FRAME_H)
         painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         painter.drawPixmap(self.rect(), self._sheet, source)
 
 
