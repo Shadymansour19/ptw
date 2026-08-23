@@ -38,13 +38,34 @@ SETTINGS_REMEMBERED_USERS_KEY = "login/rememberedUsernames"
 
 class PasswordLineEdit(QLineEdit):
     """A QLineEdit for entering a password, with a built-in eye-icon button overlaid on
-    its right edge to toggle showing the password in plain text."""
+    its right edge to toggle showing the password in plain text.
+
+    H8 hardening: a password retrieved from an external source (the OS keyring) is
+    NEVER placed into this widget's own text buffer - only a fixed-length sentinel
+    placeholder is. The real value lives solely in `_realValue` (a private Python
+    attribute, not the widget), and `getPassword()` is the only way to read the actual
+    current password back out. This closes the whole class of "the real widget content
+    is exposed to the reveal toggle / clipboard copy / accessibility APIs / anything
+    else that can read a QLineEdit's text" - not just the reveal button specifically.
+    (An earlier version of this fix only disabled the reveal toggle while the real
+    password sat in the widget's own text - appending even one throwaway character
+    still counted as "the user is typing their own password now" and re-enabled it,
+    exposing the real value plus that one extra character. Never storing the real
+    value in the widget at all closes that off completely, not just that one path.)
+    """
+
+    # Fixed length so the placeholder's dot-count (which Password echo mode always
+    # renders as one dot per character in the actual text) doesn't leak the real
+    # password's real length either. The characters themselves are never displayed as
+    # anything but masking dots, so their exact value doesn't matter.
+    _SENTINEL = '•' * 10
 
     def __init__(self, parent=None):
         """Build the line edit in password-echo mode with the show/hide toggle button overlaid."""
         super().__init__(parent)
 
         self._visible = False
+        self._realValue = ''
         self._icons = [qta.icon('fa6.eye', color=_ICON_COLOR), qta.icon('fa6.eye-slash', color=_ICON_COLOR)]
 
         self._btn = QToolButton(self)
@@ -72,26 +93,57 @@ class PasswordLineEdit(QLineEdit):
 
     def _toggle_visibility(self):
         """Slot for the eye-icon button click: flip between masked and plain-text echo mode
-        and update the icon to match."""
+        and update the icon to match. Guarded even though the button is also disabled
+        while a real value is held (belt-and-braces - the real password never being in
+        the widget's text at all is the actual protection here, this is just extra)."""
+        if not self._btn.isEnabled():
+            return
         self._visible = not self._visible
         self.setEchoMode(QLineEdit.EchoMode.Normal if self._visible else QLineEdit.EchoMode.Password)
         self._update_icon()
 
     def _onTextEdited(self, _text):
         """Slot for the field's own `textEdited` signal - fires only on user-driven edits,
-        never on a programmatic `setText()` - so typing over/into a keyring-filled value
-        re-enables the toggle for the password now actually at the keyboard."""
+        never on a programmatic `setText()`. If a retrieved password's sentinel was
+        showing, the very first keystroke wipes the field completely (discarding both
+        the sentinel and that keystroke) rather than letting the user edit into/around
+        it - a login field has no legitimate reason to support in-place-editing a
+        retrieved secret, and this guarantees the field can never end up holding a mix
+        of sentinel and freshly-typed characters. Either way, editing means whatever's
+        now in the field is genuinely user-typed, so the toggle is safe to re-enable."""
+        if self._realValue:
+            self._realValue = ''
+            self.clear()
         self.setToggleEnabled(True)
+
+    def setRetrievedPassword(self, password: str):
+        """Set `password` (from an external source, e.g. the OS keyring) as this field's
+        real current value, without ever placing it in the widget's own text - shows a
+        fixed-length sentinel placeholder instead (or clears the field if `password` is
+        falsy) and disables the reveal toggle to match. Use `getPassword()` to read the
+        real value back out; use `.text()` for anything the user has typed themselves."""
+        self._realValue = password or ''
+        self.setText(self._SENTINEL if self._realValue else '')
+        self.setToggleEnabled(not self._realValue)
+
+    def getPassword(self) -> str:
+        """Return the field's real current password: the stored retrieved value if
+        unedited since `setRetrievedPassword()` (the widget's own text is just the
+        sentinel placeholder), otherwise whatever's actually been typed into the field.
+        Always use this (not `.text()`) wherever the real password is actually needed."""
+        return self._realValue or self.text()
 
     def setToggleEnabled(self, enabled: bool):
         """Enable/disable the eye-icon toggle button.
 
-        Used to prevent revealing a password that was placed into this field
-        programmatically (e.g. retrieved from the OS keyring) rather than typed by
-        whoever is currently at the keyboard (H8) - the button is disabled rather than
-        hidden so it's still obvious the field holds a real value. Disabling also forces
-        the field back into masked echo mode, so a password already revealed before the
-        toggle was disabled doesn't stay visible.
+        The button is disabled (not hidden) while a retrieved password's sentinel is
+        showing, so it's still obvious the field holds a real value - though at this
+        point it's belt-and-braces, not the actual protection: `setRetrievedPassword()`
+        never puts the real password in the widget's text at all, so even a fully
+        enabled toggle would only ever reveal the sentinel placeholder or the user's own
+        typed text, never the retrieved secret. Disabling also forces the field back
+        into masked echo mode, so anything already revealed before disabling doesn't
+        stay visible.
         """
         self._btn.setEnabled(enabled)
         if not enabled and self._visible:
@@ -409,10 +461,6 @@ class LoginWindow(QMainWindow):
 
         self._refreshOverlay = RefreshOverlay(self)
 
-    def showHidePassword(self):
-        """Set the password field's echo mode to plain-text or masked based on `btnShowPassword`'s checked state."""
-        self.boxPassword.setEchoMode(QLineEdit.EchoMode.Normal if self.btnShowPassword.isChecked() else QLineEdit.EchoMode.Password)
-
     def _rememberedUsernames(self) -> list[str]:
         """Return the list of previously remembered usernames stored in QSettings."""
         value = QSettings("PTW", "PTW").value(SETTINGS_REMEMBERED_USERS_KEY, [], type=list)
@@ -456,23 +504,19 @@ class LoginWindow(QMainWindow):
         password field for the most recently used username."""
         usernames = self._rememberedUsernames()
         self.boxUsername.setItems(usernames)
-        self.boxPassword.clear()
-        self.boxPassword.setToggleEnabled(True)
+        self.boxPassword.setRetrievedPassword('')
         if usernames:
             self._fillPasswordFor(usernames[0])
 
     def _fillPasswordFor(self, username: str):
-        """Look up `username`'s stored password via the keyring and set it in the password
-        field (blank if unavailable), disabling the reveal toggle whenever a real
-        keyring-retrieved value was placed there (H8) - re-enabled the moment whoever's
-        at the keyboard actually types into the field themselves (see
-        `PasswordLineEdit._onTextEdited`)."""
+        """Look up `username`'s stored password via the keyring and set it as the password
+        field's real value (see `PasswordLineEdit.setRetrievedPassword` - H8: the real
+        value is never placed in the widget's own text, only a sentinel placeholder is)."""
         try:
             password = self.retrieveLoginCredentials(username)
         except KeyringError:
             password = None
-        self.boxPassword.setText(password or '')
-        self.boxPassword.setToggleEnabled(not password)
+        self.boxPassword.setRetrievedPassword(password)
 
     def _onUsernameSelected(self, username: str):
         """Slot for the username combo's `itemSelected` signal: fill in the stored password
@@ -480,8 +524,7 @@ class LoginWindow(QMainWindow):
         if username in self._rememberedUsernames():
             self._fillPasswordFor(username)
         else:
-            self.boxPassword.clear()
-            self.boxPassword.setToggleEnabled(True)
+            self.boxPassword.setRetrievedPassword('')
 
     def forgotPassword(self):
         """Slot for the Forgot Password button: open `ResetPasswordDialog` for the entered
@@ -526,7 +569,7 @@ class LoginWindow(QMainWindow):
         from network.clientRequests import ClientRequests
 
         username = self.boxUsername.currentText()
-        password : str = self.boxPassword.text()
+        password : str = self.boxPassword.getPassword()
 
         def on_done(err, user):
             self._refreshOverlay.hideBusy()
