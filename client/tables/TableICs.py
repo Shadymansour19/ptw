@@ -386,7 +386,10 @@ class TableICs(QWidget):
         removed). If `visibleFor` is given, rows whose IC fails the predicate
         are excluded first - the menu is only built for the right-clicked row,
         but the action can still run over a wider multi-selection."""
-        selectedRows = list(set(row.row() for row in self.tbl.selectedIndexes() if row.isValid()))
+        # sorted(), not list(set(...)) - a set's iteration order is arbitrary, so the
+        # [::-1] below wasn't guaranteed to actually produce descending order, letting a
+        # multi-row delete remove the wrong rows.
+        selectedRows = sorted(set(row.row() for row in self.tbl.selectedIndexes() if row.isValid()))
         if visibleFor is not None:
             selectedRows = [row for row in selectedRows if visibleFor(self.icsData[row])]
         if allAtOnce:

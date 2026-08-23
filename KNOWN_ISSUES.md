@@ -2,7 +2,7 @@
 
 Issues are grouped by severity. Fixed items are noted at the bottom for traceability.
 
-The **Full-Project Audit (2026-08-15)** section below was added after a code review of the entire client and server. Its findings use `C#`/`H#`/`M#`/`L#` ids numbered to not collide with the historical ids further down (which keep their original numbers, including the still-open `H2`/`H3`/`M1`). Line numbers are as of that review and may drift.
+The **Full-Project Audit (2026-08-15)** section below was added after a code review of the entire client and server. Its findings use `C#`/`H#`/`M#`/`L#` ids numbered to not collide with the historical ids further down (which keep their original numbers, including the still-open `H3`). Line numbers are as of that review and may drift.
 
 ---
 
@@ -106,9 +106,7 @@ The server authorizes against the authenticated user but records the actor from 
 
 ### Low
 
-- **L5 — `optionDoForAllSelected` iterates an unordered `set` then reverses it.** `client/tables/TablePTWs.py:426-431` (and `TableICs.py:363-368`): `list(set(rows))[::-1]` is not guaranteed descending, so a multi-row delete can remove wrong rows (compounded by the H13 index race). Fix: `sorted(rows, reverse=True)` + id-based removal.
 - **L7 — Path containment uses `startswith` without a trailing separator.** `server/routes/ptws.py`/`ics.py` attachment handlers, `server/paths.py:74` (`resolveMiwiPath`), `server/routes/admin.py:33` (`getLogs`): `abspath(fp).startswith(abspath(dir))` would accept a sibling dir sharing the prefix (e.g. `miwi` vs `miwi_x`). Not attacker-creatable here, so hardening-level; `backupService` is already safe via a strict regex. Fix: `os.path.commonpath([...])` or append `os.sep`.
-- **L8 — `resetCodes` mutated without a lock.** `server/routes/auth.py:265-275`: the pruner does `del resetCodes[u]` while `resetPassword` may delete the same key concurrently → `KeyError` kills the pruner thread. Fix: guard with a lock or use `resetCodes.pop(u, None)`.
 - **L9 — Cache refresh fails silently / partially.** `server/GlobalData.py:refresh` returns an error string instead of raising and commits `allUsers` before fetching PTWs/ICs; `server/core.py:_periodic_refresh` ignores the return and logs "completed" even on failure. Fix: check the return; make the refresh atomic.
 - **L10 — Temp files are never cleaned up.** Reports/QR/attachment/export/burn-in all use `delete=False`/`mkstemp` with no removal (`ReportGenerator.py:98,491,854,973,1074,1266`, `ptwRequests.py:236`, `icRequests.py:190`, `documentRequests.py:40`, `PidWiringHighlighter.py:315,356,410`). Unbounded temp growth on operator machines; `ptwRequests.py:236` also forces a `.pdf` suffix on every attachment and embeds the server filename in the temp name unsanitized. Fix: clean up after use / open with `delete=True` where possible.
 - **L11 — Context-menu `QMenu`/`QAction` objects leak per right-click.** `TablePTWs.py:443`, `TableICs.py:379`, `TableUsers.py:299`, `TableBackups.py:209`, `TableIsolations.py:115`, `TableIsolationItems.py:160`: parented to the table, never deleted. Slow session-long growth.
@@ -135,19 +133,21 @@ The server authorizes against the authenticated user but records the actor from 
 
 ---
 
-## Medium
+## Fixed
 
-### M1 — Username enumeration via password-reset endpoint
+### ~~L5 — `optionDoForAllSelected` iterates an unordered `set` then reverses it~~ ✓
+**File:** `client/tables/TablePTWs.py`, `client/tables/TableICs.py` — `optionDoForAllSelected`
 
-**File:** `server/routes/auth.py` — `requestResetPassword`
-
-`POST /reset-password-request` returns `"Can't find a mail associated to username {username}"` when the username does not exist (or has no email). An unauthenticated caller can probe for valid usernames by watching which error is returned.
-
-**Fix:** Return a generic response regardless of whether the username exists: `"If this account exists, a verification code has been sent."` Log the real reason internally.
+`list(set(rows))[::-1]` is not guaranteed descending — a `set`'s iteration order is arbitrary, so the `[::-1]` reversal didn't reliably produce descending row order, and a multi-row delete could remove the wrong rows. Fixed (2026-08-19) by sorting the deduplicated rows ascending (`sorted(set(...))`) before that same `[::-1]` reversal, so it now reliably yields descending order. Scoped to just this ordering bug — the id-based-removal side of the original **Fix:** note overlaps with the still-open H13 (stale row indexes racing SSE updates), which covers that more thoroughly on its own.
 
 ---
 
-## Fixed
+### ~~L8 — `resetCodes` mutated without a lock~~ ✓
+**File:** `server/routes/auth.py` — `resetPassword`, `_prune_reset_codes`
+
+The pruner thread did `del resetCodes[u]` on a snapshot of expired keys while `resetPassword` could concurrently delete that same key (a successful or expired reset) — the resulting `KeyError` would kill the pruner's daemon thread outright, silently ending all future pruning for the rest of the process's life. Fixed (2026-08-19) by changing all three deletion sites (the pruner, plus `resetPassword`'s own expired-code and successful-reset branches) from `del resetCodes[key]` to `resetCodes.pop(key, None)` — each becomes a single, self-contained operation that can't raise even if another thread already removed the key, closing the race without needing an explicit lock.
+
+---
 
 ### ~~M22 — `validate()` empty-field check can never fire on `None`; server accepts skeleton permits~~ ✓
 **File:** `server/models/PTW.py`, `client/models/PTW.py` — `validate()`

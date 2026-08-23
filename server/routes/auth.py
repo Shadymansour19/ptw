@@ -245,7 +245,7 @@ def resetPassword():
         return jsonify({"success": False, "error": "No reset password request found for this username"}), 404
     code, timestamp = resetCodes[username]
     if time() - timestamp > _RESET_CODE_TTL:
-        del resetCodes[username]
+        resetCodes.pop(username, None)
         log.warning("Password reset: expired code used for username='%s'", username)
         return jsonify({"success": False, "error": "Verification code expired"}), 400
     if verificationCode != code:
@@ -254,7 +254,7 @@ def resetPassword():
 
     try:
         userDB.updateUserPassword(username, newPassword)
-        del resetCodes[username]
+        resetCodes.pop(username, None)
         log.info("Password reset successful: username='%s'", username)
         return jsonify({"success": True, "message": "Password reset successfully"})
     except Exception as e:
@@ -270,7 +270,11 @@ def _prune_reset_codes():
         cutoff = time() - _RESET_CODE_TTL
         expired = [u for u, (_, ts) in list(resetCodes.items()) if ts < cutoff]
         for u in expired:
-            del resetCodes[u]
+            # pop(), not del - resetPassword() may delete this same key concurrently
+            # (a successful/expired reset) between the snapshot above and this loop;
+            # del would raise KeyError and kill this daemon thread, silently ending all
+            # future pruning for the rest of the process's life.
+            resetCodes.pop(u, None)
         if expired:
             log.debug("Pruned %d expired reset code(s)", len(expired))
 
