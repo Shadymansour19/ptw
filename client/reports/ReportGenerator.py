@@ -69,7 +69,8 @@ class ReportGenerator:
 
     def _qrWithLogoFromRows(basicInfo: list, filePrefix: str):
         """Build a QR code encoding basicInfo, with the app logo composited over
-        its center in a white circle, and save it to a temporary PNG.
+        its center in a white rounded-rect badge sized to the logo's own aspect
+        ratio, and save it to a temporary PNG.
 
         Args:
             basicInfo: list of [label, value] pairs, joined into 'label: value'
@@ -101,17 +102,37 @@ class ReportGenerator:
         qrImg = qr.make_image(fill_color="black", back_color="white").convert("RGB")
         qr_w, qr_h = qrImg.size
 
-        logo_size = qr_w // 3
-        padding = logo_size // 32
-        logo = PILImage.open(resource_path("assets/ptw-logo-bw.png")).convert("RGB").resize((logo_size, logo_size), PILImage.LANCZOS)
-        logo_mask = PILImage.new("L", (logo_size, logo_size), 0)
-        PILImageDraw.Draw(logo_mask).ellipse((0, 0, logo_size - 1, logo_size - 1), fill=255)
-        total_size = logo_size + 2 * padding
-        bg = PILImage.new("RGB", (total_size, total_size), "white")
-        bg_mask = PILImage.new("L", (total_size, total_size), 0)
-        PILImageDraw.Draw(bg_mask).ellipse((0, 0, total_size - 1, total_size - 1), fill=255)
+        # The logo is a wide wordmark, not a compact icon, so crop it to its actual ink
+        # (auto-detected, so this keeps working if the asset is redrawn again) with a
+        # little breathing room, then badge it in a rounded rectangle sized to its own
+        # aspect ratio - a circle wasted most of its area on the mark's blank margins,
+        # leaving a tiny, off-centre sliver of the mark floating in a big pale circle
+        # instead of filling the badge.
+        rawLogo = PILImage.open(resource_path("assets/ptw-logo-bw.png")).convert("RGB")
+        inkBox = rawLogo.convert("L").point(lambda p: 0 if p > 245 else 255).getbbox() or (0, 0, *rawLogo.size)
+        bx0, by0, bx1, by1 = inkBox
+        contentW, contentH = bx1 - bx0, by1 - by0
+        padX, padY = int(contentW * 0.05), int(contentH * 0.05)
+        cropBox = (max(0, bx0 - padX), max(0, by0 - padY), min(rawLogo.width, bx1 + padX), min(rawLogo.height, by1 + padY))
+        cropped = rawLogo.crop(cropBox)
+        cropW, cropH = cropped.size
+
+        # scale so the badge's diagonal matches the old circle's diameter (qr_w // 3) -
+        # it occludes no more of the QR than before, just fills that area better
+        scale = (qr_w // 3) / ((cropW ** 2 + cropH ** 2) ** 0.5)
+        logo_w, logo_h = int(cropW * scale), int(cropH * scale)
+        logo = cropped.resize((logo_w, logo_h), PILImage.LANCZOS)
+
+        padding = max(logo_w, logo_h) // 32
+        total_w, total_h = logo_w + 2 * padding, logo_h + 2 * padding
+        radius = int(min(total_w, total_h) * 0.30)
+        logo_mask = PILImage.new("L", (logo_w, logo_h), 0)
+        PILImageDraw.Draw(logo_mask).rounded_rectangle((0, 0, logo_w - 1, logo_h - 1), radius=int(min(logo_w, logo_h) * 0.30), fill=255)
+        bg = PILImage.new("RGB", (total_w, total_h), "white")
+        bg_mask = PILImage.new("L", (total_w, total_h), 0)
+        PILImageDraw.Draw(bg_mask).rounded_rectangle((0, 0, total_w - 1, total_h - 1), radius=radius, fill=255)
         bg.paste(logo, (padding, padding), logo_mask)
-        qrImg.paste(bg, ((qr_w - total_size) // 2, (qr_h - total_size) // 2), bg_mask)
+        qrImg.paste(bg, ((qr_w - total_w) // 2, (qr_h - total_h) // 2), bg_mask)
         with tempfile.NamedTemporaryFile(delete=False, prefix=f'qr-{filePrefix}-', suffix='.png') as qrFile:
             qrImg.save(qrFile.name)
             return qrFile.name
