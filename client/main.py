@@ -100,42 +100,73 @@ def _showMainWindow(user):
     """Open the role-appropriate main window for `user`.
 
     Picks a `*MainWindow` subclass based on `user.getRole()`, connects its
-    `on_logout` signal to `on_logout`, shows it maximized, and hides the
-    login window.
+    `on_logout` signal to `on_logout`, then shows it maximized and hides the
+    login window - deferred until the login window's busy-overlay typing
+    animation (still finishing its current cycle from the login request) is
+    actually done, so it's never visibly cut off mid-stroke.
     """
-    mainWindow = None
-    if user.getRole() == UserRoles.GUEST:
-        mainWindow = GuestMainWindow(user)
-    elif user.getRole() == UserRoles.USER:
-        mainWindow = UserMainWindow(user)
-    elif user.getRole() == UserRoles.COORDINATOR:
-        mainWindow = CoordinatorMainWindow(user)
-    elif user.getRole() == UserRoles.ISSUING:
-        mainWindow = IssuingMainWindow(user)
-    elif user.getRole() == UserRoles.SAFETY:
-        mainWindow = SafetyMainWindow(user)
-    elif user.getRole() == UserRoles.PGM:
-        mainWindow = ManagerMainWindow(user, "PGM")
-    elif user.getRole() == UserRoles.PDH:
-        mainWindow = ManagerMainWindow(user, "PDH")
-    elif user.getRole() == UserRoles.SOD:
-        mainWindow = ManagerMainWindow(user, "SOD")
-    elif user.getRole() == UserRoles.DFGM:
-        mainWindow = ManagerMainWindow(user, "DFGM")
-    elif user.getRole() == UserRoles.ADMIN:
-        mainWindow = AdminMainWindow(user)
-    elif user.getRole() == UserRoles.ISOLATOR:
-        mainWindow = IsolatorMainWindow(user)
+    def _buildAndRevealMainWindow():
+        # Building a *MainWindow is genuinely heavy (a couple dozen TablePTWs
+        # widgets, menu options, icons - see windows/MainWindow.py's __init__)
+        # and runs synchronously on the GUI thread, which is exactly why this
+        # whole thing is deferred (see below) rather than done up front: were
+        # it built while the login overlay's animation was still visibly
+        # running, it would freeze the event loop for its duration - and
+        # since QPropertyAnimation tracks real wall-clock time, the animation
+        # doesn't just pause during that freeze, it jumps forward to match
+        # elapsed time the moment the loop thaws, which reads as the pen
+        # getting stuck then skipping ahead. Building it here means that
+        # freeze happens only after the animation has already finished and
+        # hidden itself, so there's nothing left running to visibly desync.
+        mainWindow = None
+        if user.getRole() == UserRoles.GUEST:
+            mainWindow = GuestMainWindow(user)
+        elif user.getRole() == UserRoles.USER:
+            mainWindow = UserMainWindow(user)
+        elif user.getRole() == UserRoles.COORDINATOR:
+            mainWindow = CoordinatorMainWindow(user)
+        elif user.getRole() == UserRoles.ISSUING:
+            mainWindow = IssuingMainWindow(user)
+        elif user.getRole() == UserRoles.SAFETY:
+            mainWindow = SafetyMainWindow(user)
+        elif user.getRole() == UserRoles.PGM:
+            mainWindow = ManagerMainWindow(user, "PGM")
+        elif user.getRole() == UserRoles.PDH:
+            mainWindow = ManagerMainWindow(user, "PDH")
+        elif user.getRole() == UserRoles.SOD:
+            mainWindow = ManagerMainWindow(user, "SOD")
+        elif user.getRole() == UserRoles.DFGM:
+            mainWindow = ManagerMainWindow(user, "DFGM")
+        elif user.getRole() == UserRoles.ADMIN:
+            mainWindow = AdminMainWindow(user)
+        elif user.getRole() == UserRoles.ISOLATOR:
+            mainWindow = IsolatorMainWindow(user)
+        else:
+            mainWindow = MainWindow(user)
+
+        if not mainWindow:
+            QMessageBox.warning("Error", "Your user role is not recognized. Please contact the administrator.")
+            return
+
+        mainWindow.on_logout.connect(on_logout)
+        mainWindow.showMaximized()
+        loginWindow.hide()
+
+    # Don't yank the login window's busy overlay away mid-stroke: hideBusy()
+    # (called by the login callback right before this) already queued its
+    # typing animation to finish the current cycle before hiding itself - so
+    # defer the whole main-window build+reveal (see the comment inside, above)
+    # until that's actually done, falling back to building it immediately if
+    # there's no animation running to protect (e.g. guest login, which never
+    # shows a busy overlay).
+    overlay = loginWindow._refreshOverlay
+    if overlay.isVisible():
+        def _onOverlayHidden():
+            overlay.hidden.disconnect(_onOverlayHidden)
+            _buildAndRevealMainWindow()
+        overlay.hidden.connect(_onOverlayHidden)
     else:
-        mainWindow = MainWindow(user)
-
-    if not mainWindow:
-        QMessageBox.warning("Error", "Your user role is not recognized. Please contact the administrator.")
-        return
-
-    mainWindow.on_logout.connect(on_logout)
-    mainWindow.showMaximized()
-    loginWindow.hide()
+        _buildAndRevealMainWindow()
 
 
 def on_logout():

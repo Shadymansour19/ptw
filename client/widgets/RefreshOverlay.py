@@ -1,5 +1,6 @@
 """Busy overlay shown while a GUI refresh is in flight: dims and blocks input, and
-plays an animated logo-typing sprite until every outstanding refresh has finished.
+plays a live-vector-rendered logo-typing animation until every outstanding refresh
+has finished.
 
 Busy state is app-wide, coordinated by the module-level `_Manager` singleton: a
 `showBusy()` on any window's overlay dims that window AND every other window currently
@@ -8,72 +9,14 @@ their own - so the busy state stays visible even when a dialog is stacked on top
 refreshing window, and blocks both mouse (by covering the window) and keyboard (by
 stealing focus and swallowing key/shortcut events) everywhere."""
 
-from PyQt6.QtCore import Qt, QEvent, QEventLoop, QRect, QPropertyAnimation, QEasingCurve, pyqtProperty
-from PyQt6.QtGui import QPixmap, QPainter
+from PyQt6.QtCore import Qt, QEvent, QEventLoop, pyqtSignal
 from PyQt6.QtWidgets import QWidget, QLabel, QVBoxLayout, QApplication
 
 from helper.i18n import t
-from helper.utils import resource_path
+from widgets.PtwLogoLive import PtwLogoLive
 
-_FRAME_W = 660       # the sprite sheet's own per-frame resolution - see
-_FRAME_H = 480       # dev-scripts/generate_ptw_logo_assets.py (kept 3x the
-                     # widget's on-screen size below, so drawPixmap's downscale
-                     # is genuine supersampling rather than a 1:1 blit)
-_FRAME_COUNT = 150   # see dev-scripts/generate_ptw_logo_assets.py
-_WIDGET_W = 220      # the overlay widget's actual fixed on-screen size -
-_WIDGET_H = 160      # unchanged from before, independent of sprite resolution
-
-
-class _TypingLogo(QWidget):
-    """Steps through a precomputed sprite sheet: a green pen dot hand-draws the PtW
-    ambigram logo stroke by stroke (like typing), then settles as the ي dots - looping.
-    Frames are baked in offline (see the generator script) - this just blits the
-    current frame."""
-
-    def __init__(self, parent=None):
-        """Load the sprite sheet and configure the looping `progress` animation that
-        drives it from 0.0 to 1.0 over one ~2.5s typing cycle."""
-        super().__init__(parent)
-        self._sheet = QPixmap(resource_path("assets/ptw-typing-frames.png"))
-        self._progress = 0.0
-        self.setFixedSize(_WIDGET_W, _WIDGET_H)
-
-        self._anim = QPropertyAnimation(self, b"progress", self)
-        self._anim.setDuration(2500)
-        self._anim.setStartValue(0.0)
-        self._anim.setEndValue(1.0)
-        self._anim.setEasingCurve(QEasingCurve.Type.Linear)
-        self._anim.setLoopCount(-1)
-
-    def _getProgress(self):
-        """Return the current animation progress, in the range [0.0, 1.0]."""
-        return self._progress
-
-    def _setProgress(self, value):
-        """Set the current animation progress and schedule a repaint so the sprite
-        frame matching `value` gets drawn."""
-        self._progress = value
-        self.update()
-
-    progress = pyqtProperty(float, _getProgress, _setProgress)
-
-    def start(self):
-        """Start (or resume) the looping typing animation."""
-        self._anim.start()
-
-    def stop(self):
-        """Stop the typing animation."""
-        self._anim.stop()
-
-    def paintEvent(self, event):
-        """Triggered whenever Qt needs to redraw the widget (e.g. after `_setProgress`
-        calls `update()`); blit the sprite-sheet frame corresponding to the current
-        `progress` value."""
-        frame = min(_FRAME_COUNT - 1, int(self._progress * _FRAME_COUNT))
-        source = QRect(0, frame * _FRAME_H, _FRAME_W, _FRAME_H)
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        painter.drawPixmap(self.rect(), self._sheet, source)
+_WIDGET_W = 220      # the overlay's typing-logo widget size, on-screen
+_WIDGET_H = 160
 
 
 class _Manager:
@@ -141,6 +84,15 @@ class RefreshOverlay(QWidget):
     needed. Windows without their own instance still get dimmed: `_Manager` creates
     one for them on demand."""
 
+    # Fires whenever this overlay actually hides - whether immediately (never
+    # became visible) or after waiting out a pending cycle-boundary hide (see
+    # _queueHide/_onCycleBoundary). A caller that's about to hide/replace the
+    # overlay's whole PARENT WINDOW (which would yank the animation off
+    # mid-stroke regardless of this class's own cycle-boundary wait, since the
+    # overlay is just a child widget of it) should wait for this signal first -
+    # see main.py's _showMainWindow for the login-window example.
+    hidden = pyqtSignal()
+
     def __init__(self, parent):
         """Build the dimmed overlay covering the `parent` window: configure its
         appearance, wait cursor, and focus stealing, lay out the typing logo and
@@ -154,7 +106,7 @@ class RefreshOverlay(QWidget):
         self._pendingHide = False
         self._prevFocus = None
 
-        self._logo = _TypingLogo(self)
+        self._logo = PtwLogoLive(self, _WIDGET_W, _WIDGET_H)
         # Fires once per completed typing loop (~2.5s) - lets a refresh that finishes
         # mid-cycle play out to the end of that loop instead of cutting it off.
         self._logo._anim.currentLoopChanged.connect(self._onCycleBoundary)
@@ -275,11 +227,15 @@ class RefreshOverlay(QWidget):
         super().showEvent(event)
 
     def hideEvent(self, event):
-        """Triggered when the overlay is hidden; stops the logo-typing animation and
-        hands keyboard focus back to whichever widget held it before."""
+        """Triggered when the overlay is hidden; stops the logo-typing animation, hands
+        keyboard focus back to whichever widget held it before, and emits `hidden` -
+        covers every path that hides this overlay (immediate or deferred to a cycle
+        boundary), so callers that need to know when it's actually gone can just wait
+        on the one signal instead of duplicating the immediate-vs-deferred logic."""
         self._logo.stop()
         self._restoreFocus()
         super().hideEvent(event)
+        self.hidden.emit()
 
 
 _manager = _Manager()
