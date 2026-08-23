@@ -80,9 +80,24 @@ class ReportGenerator:
             str: path to the generated PNG file.
         """
         data = '\n'.join([': '.join(row) for row in basicInfo])
-        qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_Q, box_size=20, border=2)
-        qr.add_data(data)
-        qr.make(fit=True)
+        # ERROR_CORRECT_Q (more damage-resistant on a printed permit) is preferred, but a
+        # long location/equipment/description combination can overflow even the largest
+        # QR version at that level - fall back to the lower ERROR_CORRECT_L (more raw
+        # capacity) and, as a last resort, truncate the payload (by encoded bytes, since
+        # Arabic/other multi-byte text could otherwise still overflow even after a
+        # naive character-count truncation) rather than let the whole report fail.
+        for errorCorrection, payload in [
+            (qrcode.constants.ERROR_CORRECT_Q, data),
+            (qrcode.constants.ERROR_CORRECT_L, data),
+            (qrcode.constants.ERROR_CORRECT_L, data.encode('utf-8')[:1400].decode('utf-8', errors='ignore')),
+        ]:
+            qr = qrcode.QRCode(error_correction=errorCorrection, box_size=20, border=2)
+            qr.add_data(payload)
+            try:
+                qr.make(fit=True)
+                break
+            except qrcode.exceptions.DataOverflowError:
+                continue
         qrImg = qr.make_image(fill_color="black", back_color="white").convert("RGB")
         qr_w, qr_h = qrImg.size
 

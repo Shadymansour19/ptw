@@ -96,27 +96,17 @@ The server authorizes against the authenticated user but records the actor from 
 
 **Fix:** Stamp `requestor`/`pa`/`ia`/`approval.username`/`department` from `getVerifiedUser()`; ignore those fields in the payload. (Partial progress 2026-08-15: the H5 fix now stamps `approval.role`/`approval.department` from the verified user on `POST /ptws/approvals` and `POST /ics/approvals` — but `approval.username` and the `pa`/`ia`/`requestor` fields are still client-supplied.)
 
-#### M31 — Unguarded `datetime.strptime` on client-supplied approval timestamp → server 500 + USER-client crash-loop
-
-**File:** `server/models/PTW.py:1229` / `client/models/PTW.py` — `fullApprovalTimestamp`; timestamp comes from `PTW.Approval(**approvalData)` (`server/routes/ptws.py:267`)
-
-`fullApprovalTimestamp` does `datetime.strptime(self.approvals[-1].timestamp, TIMESTAMP_FORMAT)` with no try/except and no `None` guard. Since the approval `timestamp` is taken verbatim from the request body, one malformed/None timestamp on the chain-completing approval makes `POST /ptws/run-request` raise before its try block (persistent 500 for that permit) and makes the client's 60 s `_checkPtwAlarms` timer slot raise every minute — aborting the app for every USER client in that department. The normal UI always writes the right format, so the trigger is a raw API caller or edited/legacy data, but the blast radius is large.
-
-**Fix:** Guard the parse (try/except + None check) and reject malformed timestamps at the route; combined with M30 (stamp the timestamp server-side), the input can't be malformed.
-
 ### Low
 
 - **L7 — Path containment uses `startswith` without a trailing separator.** `server/routes/ptws.py`/`ics.py` attachment handlers, `server/paths.py:74` (`resolveMiwiPath`), `server/routes/admin.py:33` (`getLogs`): `abspath(fp).startswith(abspath(dir))` would accept a sibling dir sharing the prefix (e.g. `miwi` vs `miwi_x`). Not attacker-creatable here, so hardening-level; `backupService` is already safe via a strict regex. Fix: `os.path.commonpath([...])` or append `os.sep`.
 - **L9 — Cache refresh fails silently / partially.** `server/GlobalData.py:refresh` returns an error string instead of raising and commits `allUsers` before fetching PTWs/ICs; `server/core.py:_periodic_refresh` ignores the return and logs "completed" even on failure. Fix: check the return; make the refresh atomic.
 - **L10 — Temp files are never cleaned up.** Reports/QR/attachment/export/burn-in all use `delete=False`/`mkstemp` with no removal (`ReportGenerator.py:98,491,854,973,1074,1266`, `ptwRequests.py:236`, `icRequests.py:190`, `documentRequests.py:40`, `PidWiringHighlighter.py:315,356,410`). Unbounded temp growth on operator machines; `ptwRequests.py:236` also forces a `.pdf` suffix on every attachment and embeds the server filename in the temp name unsanitized. Fix: clean up after use / open with `delete=True` where possible.
 - **L11 — Context-menu `QMenu`/`QAction` objects leak per right-click.** `TablePTWs.py:443`, `TableICs.py:379`, `TableUsers.py:299`, `TableBackups.py:209`, `TableIsolations.py:115`, `TableIsolationItems.py:160`: parented to the table, never deleted. Slow session-long growth.
-- **L14 — `PTW.Approval.__str__` diverged between copies.** `client/models/PTW.py:1565-1566` shows the USER approver's department; `server/models/PTW.py:545-552` doesn't (yet `IC.Approval.__str__` has it on both sides). Latent until a server-side report/log stringifies an approval.
 - **L15 — Login `SSEListener.stop()` can't interrupt a blocked read.** `client/network/SSEListener.py` + `MainWindow.py` `stop(); wait(1000)`: after logout the old thread can linger up to 30 s (next heartbeat) still authenticated as the previous user, and can be torn down while running on quit. Fix: keep a reference to the `requests` response and `.close()` it in `stop()` (the H6 read timeout, fixed 2026-08-15, already caps the lingering window at 65 s).
 - **L16 — Async callbacks can fire into deleted/closed dialogs.** `client/network/RequestWorker.py:45-47` calls `cb(err, result)` with no guard; a callback bound to a dialog deleted before delivery raises `RuntimeError: wrapped C/C++ object has been deleted`. Fix: guard with `sip.isdeleted(cb.__self__)` / try-except.
 - **L17 — `@async_request` spawns an unbounded QThread per call.** `client/network/RequestWorker.py`: the bulk user-import loop (`TableUsers.py:466-467`) fires one thread + HTTP request per row (a 1,000-row file → 1,000 concurrent). Resource exhaustion, not a crash. Fix: a bounded pool / batch endpoint.
 - **L18 — Bulk user import surfaces and exports plaintext passwords; weak validation.** `client/reports/ImportUsersExcel.py:105-109,210-218`, `client/tables/TableUsers.py:437-491`: generated passwords are shown and written to an xlsx 'Password' column; no email-format or username-charset validation (a username containing `:` corrupts HTTP Basic auth). Fix: don't persist plaintext credentials to disk; validate email/username.
 - **L19 — Unescaped user-influenced strings in a few `Paragraph()` calls.** `client/reports/ReportGenerator.py:339,370,716,747,1184-1190`: timestamps/approver labels/analysis chars not routed through the escaping `arabicParagraph`; a stored `<`/`&` makes ReportLab's parser raise → per-record report DoS. (Everything routed through `arabicParagraph`→`pdfMarkup` is correctly escaped.) Fix: escape or route all user text through `arabicParagraph`.
-- **L20 — QR payload can overflow.** `client/reports/ReportGenerator.py:80-83`: location+equipment+description at `ERROR_CORRECT_Q` beyond ~1.6 KB raises `DataOverflowError`, failing the whole report. Fix: cap/trim the QR payload or lower the EC level.
 - **L21 — Dev-scripts persist plaintext credentials; one stale docstring.** `dev-scripts/generate_bookmarklet.py` bakes plaintext passwords into a bookmark (bookmark-sync exposure — it carries its own SECURITY NOTE), `dev-scripts/reset_all_passwords.py` writes plaintext passwords to `test_data/import_result.xlsx` and its docstring wrongly claims it sets a blank-string hash (it actually sets random passwords). Dev-only tooling, but worth flagging so nobody runs them against production data.
 
 ---
@@ -134,6 +124,27 @@ The server authorizes against the authenticated user but records the actor from 
 ---
 
 ## Fixed
+
+### ~~L14 — `PTW.Approval.__str__` diverged between copies~~ ✓
+**File:** `server/models/PTW.py`
+
+The client's `PTW.Approval.__str__` (and `IC.Approval.__str__` on both sides) showed the department alongside a USER approver's name; the server's `PTW.Approval.__str__` didn't. Latent until a server-side report/log stringified an approval. Fixed (2026-08-23) by mirroring the client's `if user.getRole() == UserRoles.USER:` branch into the server copy.
+
+---
+
+### ~~L20 — QR payload can overflow~~ ✓
+**File:** `client/reports/ReportGenerator.py` — `_qrWithLogoFromRows`
+
+A long location+equipment+description combination could push the QR payload past ~1.6KB, overflowing even the largest QR version at `ERROR_CORRECT_Q` and raising `DataOverflowError`, failing the whole report. Fixed (2026-08-23) with a three-stage fallback: retry at the lower `ERROR_CORRECT_L` level (more raw capacity) if `ERROR_CORRECT_Q` overflows, and if that still overflows, truncate the payload to a conservative byte-length cutoff (encoded as UTF-8 first, so Arabic/other multi-byte text can't silently double the effective length past a naive character-count truncation) and retry once more at `ERROR_CORRECT_L`.
+
+---
+
+### ~~M31 — Unguarded `datetime.strptime` on client-supplied approval timestamp → server 500 + USER-client crash-loop~~ ✓
+**File:** `server/models/PTW.py`, `client/models/PTW.py` — `fullApprovalTimestamp`
+
+`fullApprovalTimestamp` called `datetime.strptime(self.approvals[-1].timestamp, TIMESTAMP_FORMAT)` with no guard; since that timestamp is taken verbatim from the request body, one malformed/`None` value on the chain-completing approval made `POST /ptws/run-request` raise server-side and made the client's 60s `_checkPtwAlarms` timer slot raise every minute for every USER client in that department. Fixed (2026-08-23) by guarding the parse in both model copies: a falsy timestamp returns `None` immediately, and a `ValueError`/`TypeError` from a malformed one is caught and also returns `None` — every caller (`validityExpiry`, `isValidityExpired`, `needsCloseAlarm`) already treated a `None` result as "not fully approved," so no other code needed to change. Scoped to just this guard, not the fuller companion fix (stamping the timestamp server-side so it can't be malformed in the first place, and rejecting bad ones at the route) — that overlaps with the still-open M30.
+
+---
 
 ### ~~L5 — `optionDoForAllSelected` iterates an unordered `set` then reverses it~~ ✓
 **File:** `client/tables/TablePTWs.py`, `client/tables/TableICs.py` — `optionDoForAllSelected`

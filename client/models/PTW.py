@@ -2339,10 +2339,18 @@ class PTW:
 
     def fullApprovalTimestamp(self) -> datetime:
         """When the approval chain actually completed — the timestamp of the approval action
-        that brought approval_status to APPROVED — or None if it isn't (yet) fully approved."""
+        that brought approval_status to APPROVED — or None if it isn't (yet) fully approved,
+        or if that approval's timestamp is missing/malformed (an untrusted, client-supplied
+        field - see KNOWN_ISSUES.md M31)."""
         if self.approval_status != PTW.ApprovalStatus.APPROVED or not self.approvals:
             return None
-        return datetime.strptime(self.approvals[-1].timestamp, PTW.TIMESTAMP_FORMAT)
+        timestamp = self.approvals[-1].timestamp
+        if not timestamp:
+            return None
+        try:
+            return datetime.strptime(timestamp, PTW.TIMESTAMP_FORMAT)
+        except (ValueError, TypeError):
+            return None
 
     def validityExpiry(self) -> datetime:
         """The PTW may no longer be run once this passes: VALIDITY_SHIFTS shifts (14), counted
