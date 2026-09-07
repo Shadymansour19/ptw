@@ -437,6 +437,32 @@ class PTWRequests:
         return None
 
     @async_request
+    def recordGasTestPTW(loggedUser: User, ptwId: str, readings: list, ts: str, comment: str = None) -> str:
+        """Record an initial gas test reading for a PTW via POST /ptws/gas-test (HSE Engineer).
+
+        Returns an error string, or None on success.
+        """
+        response = None
+        try:
+            response = requests.post(
+                f'{SERVER_URL}/ptws/gas-test',
+                json={'ptw-id': ptwId, 'readings': readings, 'timestamp': ts, 'comment': comment},
+                auth=(loggedUser.getUsername(), loggedUser.getPassword()),
+                verify=VERIFY, timeout=TIMEOUT
+            )
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            err = extractError(response, e)
+            return f"Failed to record gas test for PTW {ptwId}\n{err}"
+
+        if not data.get("success"):
+            err = extractError(response)
+            return f"Failed to record gas test for PTW {ptwId}\n{err}"
+
+        return None
+
+    @async_request
     def requestToHldPTW(loggedUser: User, ptwId: str, pa: str, ts: str, comment: str = None, heldICs: list[str] = []):
         """Submit a hold request for a running PTW via POST /ptws/hold-request (Performing Authority).
 

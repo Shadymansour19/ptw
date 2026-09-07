@@ -43,10 +43,12 @@ class DialogPTW(TabbedDialog):
     Tabs: Basic Info, Tools, Hazards, Controls, Risks, Isolation, MIWI/MOS,
     Attachments — always present — plus History and IC Linkage, offered only in
     readonly mode (a brand-new PTW has neither approvals nor a linked IC yet).
-    History shows two side-by-side Timeline panes: the approval log
-    (_buildApprovalTimelinePane) and the running-cycle log
-    (_buildRunningTimelinePane). IC Linkage lists ICs linked via ptw.linked_ics,
-    each with View and (role-permitting) Unlink/Request Isolate actions.
+    History shows two or three side-by-side Timeline panes: the approval log
+    (_buildApprovalTimelinePane), the running-cycle log
+    (_buildRunningTimelinePane), and — only for a PTW that requires (or already
+    has) an initial gas test — the gas-test log (_buildGasTestTimelinePane). IC
+    Linkage lists ICs linked via ptw.linked_ics, each with View and
+    (role-permitting) Unlink/Request Isolate actions.
 
     Mode is driven by the `new`/`readOnly` constructor flags: `new` controls
     whether data is fetched fresh vs. taken from an existing PTW (and whether a
@@ -451,6 +453,8 @@ class DialogPTW(TabbedDialog):
         if readOnly:
             lytHistoryPanes.addWidget(self._buildApprovalTimelinePane(), stretch=1)
             lytHistoryPanes.addWidget(self._buildRunningTimelinePane(), stretch=1)
+            if self.ptw.requiresInitialGasTest() or self.ptw.gas_tests:
+                lytHistoryPanes.addWidget(self._buildGasTestTimelinePane(), stretch=1)
 
             self._addICLinkRows(lytLinkage, self.ptw.linked_ics)
             # "Link New IC" itself is exposed via the FAB when eligible (see
@@ -763,6 +767,35 @@ class DialogPTW(TabbedDialog):
 
         timeline = Timeline(entries, t("There's no running history at the moment"))
         return self._timelinePane(t("Running Timeline"), timeline)
+
+    def _buildGasTestTimelinePane(self) -> QWidget:
+        """Build the History tab's gas-test Timeline pane from ptw.gas_tests.
+
+        Renders one entry per recorded GasTest — green normally, orange if
+        isLate() (recorded after the shift it's credited toward had already
+        started) — showing who recorded it, each gas/percentage reading, the
+        shift it's credited toward, and its comment if present. Only shown at
+        all when the PTW requires an initial gas test or already has one
+        recorded (see DialogPTW.__init__)."""
+        entries = []
+        for gasTest in self.ptw.gas_tests:
+            color = QColor('orange') if gasTest.isLate() else QColor('green')
+            readingsStr = ', '.join(f"{r.get('gas')}: {r.get('percentage')}%" for r in gasTest.readings)
+            text = f"<b>{t('Gas Test')}</b> {t('by')} {DialogPTW.displayNameForUsername(gasTest.username)} {t('at')} {gasTest.timestamp}"
+            text += f"<br>{t('For shift')}: {gasTest.shift}"
+            if gasTest.isLate():
+                text += f" — <b>{t('Late')}</b>"
+            text += f"<br>{readingsStr}"
+            if gasTest.comment:
+                text += f"<br><b>{t('Comment')}:</b> {gasTest.comment}"
+            content = QLabel(text)
+            content.setWordWrap(True)
+            content.setFont(QFont("Helvetica", 13))
+            content.setStyleSheet(f"color: {color.name()};")
+            entries.append((color, content))
+
+        timeline = Timeline(entries, t("There's no gas test history at the moment"))
+        return self._timelinePane(t("Gas Test Timeline"), timeline)
 
     def ptwTypeChanged(self):
         """Recolor the tab bar for the newly-selected PTW type and refresh required fields.

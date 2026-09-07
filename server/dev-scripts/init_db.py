@@ -83,6 +83,7 @@ def init_tables():
                     risks                 TEXT[],
                     linked_ics            TEXT[],
                     approvals             JSONB[],
+                    gas_tests             JSONB[],
                     is_archived           BOOLEAN NOT NULL DEFAULT FALSE
                 )
             """)

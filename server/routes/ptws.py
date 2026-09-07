@@ -331,10 +331,11 @@ def requestToRunPTW():
     """Record the Performing Authority's request to start work on a PTW.
 
     POST, any non-guest authenticated user. Body carries ``ptw-id``, ``pa``,
-    and ``timestamp``. 403s if the PTW's 14-shift validity has expired or
-    any linked IC isn't ``Active``. Broadcasts a ``PTW run requested`` SSE
-    event to USER and ISSUING roles and responds with
-    ``{"success": True, "message": ...}``.
+    and ``timestamp``. 403s if the PTW's 14-shift validity has expired, any
+    linked IC isn't ``Active``, or the PTW requires an initial gas test and
+    doesn't have an acceptable one recorded for the current shift.
+    Broadcasts a ``PTW run requested`` SSE event to USER and ISSUING roles
+    and responds with ``{"success": True, "message": ...}``.
     """
     user = getVerifiedUser(request.authorization)
     if user is None:
@@ -369,6 +370,10 @@ def requestToRunPTW():
         log.warning("POST /ptws/run-request: forbidden — PTW #%s has non-isolated linked IC(s) %s", ptwId, unisolatedICs)
         return jsonify({"success": False, "error": f"Cannot request run: IC(s) #{', '.join(unisolatedICs)} are not isolated"}), 403
 
+    if ptw.requiresInitialGasTest() and not ptw.hasAcceptableGasTestForShift():
+        log.warning("POST /ptws/run-request: forbidden — PTW #%s has no acceptable initial gas test for the current shift", ptwId)
+        return jsonify({"success": False, "error": f"Cannot request run: PTW #{ptwId} requires an accepted initial gas test for the current shift"}), 403
+
     try:
         result = ptwDB.requestToRunPTW(ptwId, pa, ts)
         syncPtwCache(ptwId)
@@ -386,8 +391,10 @@ def runPTW():
 
     POST, ``ISSUING`` role only. Body carries ``ptw-id``, ``ia``,
     ``timestamp``, ``response`` (accept/reject) and an optional
-    ``comment``. Accepting 403s if the PTW's 14-shift validity has expired
-    or any linked IC isn't ``Active``; otherwise records the accept/reject
+    ``comment``. Accepting 403s if the PTW's 14-shift validity has expired,
+    any linked IC isn't ``Active``, or the PTW requires an initial gas test
+    and doesn't have an acceptable one recorded for the current shift —
+    rejecting is never blocked by any of these. Otherwise records the accept/reject
     via ``ptwDB.runAcceptPTW``/``runRejectPTW``, broadcasts the matching
     ``PTW run accepted``/``PTW run rejected`` SSE event, and responds with
     ``{"success": True}``.
@@ -427,6 +434,9 @@ def runPTW():
             if unisolatedICs:
                 log.warning("POST /ptws/run: forbidden — PTW #%s has non-isolated linked IC(s) %s", ptwId, unisolatedICs)
                 return jsonify({"success": False, "error": f"Cannot run: IC(s) #{', '.join(unisolatedICs)} are not isolated"}), 403
+            if ptw.requiresInitialGasTest() and not ptw.hasAcceptableGasTestForShift():
+                log.warning("POST /ptws/run: forbidden — PTW #%s has no acceptable initial gas test for the current shift", ptwId)
+                return jsonify({"success": False, "error": f"Cannot run: PTW #{ptwId} requires an accepted initial gas test for the current shift"}), 403
             ptwDB.runAcceptPTW(ptwId, ia, ts, comment)
             syncPtwCache(ptwId)
             sse.broadcast(SSEObject.PTW, ptwId, SSEAction.RUN_ACCEPTED, ia)
@@ -440,6 +450,57 @@ def runPTW():
             return jsonify({"success": True})
     except Exception as e:
         log.error("POST /ptws/run failed for PTW #%s: %s", ptwId, e, exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+@ptwsBp.route("/ptws/gas-test", methods=["POST"])
+def recordGasTestPTW():
+    """Record an initial gas test reading for a PTW.
+
+    POST, ``HSE_ENGINEER`` role only. Body carries ``ptw-id``, ``readings``
+    (a list of ``{"gas": ..., "percentage": ...}`` entries), ``timestamp``,
+    and an optional ``comment``. 400s if the PTW doesn't require an initial
+    gas test at all (nothing in ``controls`` for 'Initial Gas Test'). The
+    shift this reading is credited toward is resolved server-side from
+    ``timestamp`` (see PTW.gasTestTargetShift) — never trusted from the
+    client. Broadcasts a ``gas test recorded`` SSE event to USER, ISSUING,
+    and HSE_ENGINEER roles and responds with ``{"success": True}``.
+    """
+    user = getVerifiedUser(request.authorization)
+    if user is None:
+        log.warning("POST /ptws/gas-test unauthorized (ip=%s)", request.remote_addr)
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    if user.getRole() != UserRoles.HSE_ENGINEER:
+        log.warning("POST /ptws/gas-test: forbidden for role='%s' user='%s'", user.getRole(), user.getUsername())
+        return jsonify({"success": False, "error": "Forbidden"}), 403
+    payload = request.get_json(silent=True) or {}
+    ptwId = payload.get('ptw-id')
+    readings = payload.get('readings')
+    ts = payload.get('timestamp')
+    comment = payload.get('comment')
+    if ptwId is None or not readings or ts is None:
+        log.warning("POST /ptws/gas-test: missing required fields (user='%s')", user.getUsername())
+        return jsonify({"success": False, "error": "Missing required fields"}), 400
+
+    ptw = globalData.allPTWs.get(ptwId)
+    if ptw is None:
+        log.warning("POST /ptws/gas-test: PTW #%s not found in active PTWs", ptwId)
+        return jsonify({"success": False, "error": f"PTW# {ptwId} not found"}), 400
+
+    if not ptw.requiresInitialGasTest():
+        log.warning("POST /ptws/gas-test: forbidden — PTW #%s does not require an initial gas test", ptwId)
+        return jsonify({"success": False, "error": f"PTW #{ptwId} does not require an initial gas test"}), 400
+
+    try:
+        shift = PTW.gasTestTargetShift(datetime.strptime(ts, PTW.TIMESTAMP_FORMAT)).strftime(PTW.TIMESTAMP_FORMAT)
+        gasTest = PTW.GasTest(username=user.getUsername(), timestamp=ts, shift=shift, readings=readings, comment=comment)
+        ptwDB.addGasTestPTW(ptwId, gasTest)
+        syncPtwCache(ptwId)
+        sse.broadcast(SSEObject.PTW, ptwId, SSEAction.GAS_TEST_RECORDED, user.getUsername(), roles=[UserRoles.USER, UserRoles.ISSUING, UserRoles.HSE_ENGINEER])
+        log.info("PTW gas test recorded: id=%s by='%s'", ptwId, user.getUsername())
+        return jsonify({"success": True})
+    except Exception as e:
+        log.error("POST /ptws/gas-test failed for PTW #%s: %s", ptwId, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
 
 

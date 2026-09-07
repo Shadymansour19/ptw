@@ -1,7 +1,7 @@
 """Generic risk-assessment library CRUD table, also embeddable as a read-only checkbox picker.
 
 `TableRisks` lists the generic risk assessments (`ptw_id IS NULL`) from the
-Safety admin tab, where Safety users can add/view/edit them; the same widget
+HSE admin tab, where HSE Engineer users can add/view/edit them; the same widget
 is reused in a selectable, non-editable mode by `DialogSelectGenericRisks` to
 pick assessments to copy into a PTW's own risk-item table.
 """
@@ -24,7 +24,7 @@ class TableRisks(QWidget):
 
     Each row is a `RecordWidget` showing the assessment's title with
     View/Edit buttons and, when `selectable`, a checkbox synced to the list's
-    own multi-selection. Used both as the Safety admin's full CRUD table
+    own multi-selection. Used both as the HSE admin's full CRUD table
     (`readonly=False, selectable=False`) and as the read-only, checkbox-driven
     picker embedded in `DialogSelectGenericRisks` (`readonly=True, selectable=True`).
     """

@@ -1,6 +1,6 @@
 """Flask blueprint for risk assessments.
 
-Covers CRUD for the generic risk-assessment library (Safety role only,
+Covers CRUD for the generic risk-assessment library (HSE Engineer role only,
 ``ptw_id`` is ``None``) and for a PTW's own materialized risk-item row set
 (any authenticated user, ``ptw_id`` set) — the server distinguishes the two
 by checking whether ``ptw_id`` is present, not by trusting a client-declared
@@ -78,7 +78,7 @@ def getPTWSpecificRiskAssessment():
 def addNewRiskAssessment():
     """Create a risk assessment.
 
-    POST /risks. Requires an authenticated user; only the Safety role may
+    POST /risks. Requires an authenticated user; only the HSE Engineer role may
     create a generic assessment (``ptw_id`` absent) — any user may create
     their own PTW-specific row set (``ptw_id`` set), 401 otherwise. Body is
     the risk assessment dict. Responds with ``{"success": True, "error":
@@ -91,8 +91,8 @@ def addNewRiskAssessment():
     riskAssessmentDict = request.get_json(silent=True) or {}
     title = riskAssessmentDict.get('title', '')
     ptw_id = riskAssessmentDict.get('ptw_id')
-    # Non-safety users may only create PTW-specific risks (ptw_id set)
-    if user.getRole() != UserRoles.SAFETY and ptw_id is None:
+    # Non-HSE users may only create PTW-specific risks (ptw_id set)
+    if user.getRole() != UserRoles.HSE_ENGINEER and ptw_id is None:
         log.warning("POST /risks unauthorized: requester='%s' tried to create non-PTW risk (ip=%s)", user.getUsername(), request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     try:
@@ -108,7 +108,7 @@ def addNewRiskAssessment():
 def updateRiskAssessment():
     """Update a risk assessment.
 
-    PUT /risks. Requires an authenticated user; only the Safety role may
+    PUT /risks. Requires an authenticated user; only the HSE Engineer role may
     update a generic assessment (``ptw_id`` absent) — any user may update
     their own PTW-specific row set (``ptw_id`` set), 401 otherwise. Body is
     the risk assessment dict. Responds with ``{"success": True, "error":
@@ -121,8 +121,8 @@ def updateRiskAssessment():
     riskAssessmentDict = request.get_json(silent=True) or {}
     title = riskAssessmentDict.get('title', '')
     ptw_id = riskAssessmentDict.get('ptw_id')
-    # Non-safety users may only update PTW-specific risks (ptw_id set)
-    if user.getRole() != UserRoles.SAFETY and ptw_id is None:
+    # Non-HSE users may only update PTW-specific risks (ptw_id set)
+    if user.getRole() != UserRoles.HSE_ENGINEER and ptw_id is None:
         log.warning("PUT /risks unauthorized: requester='%s' tried to update non-PTW risk (ip=%s)", user.getUsername(), request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     try:
@@ -138,7 +138,7 @@ def updateRiskAssessment():
 def deleteRiskAssessment():
     """Delete a risk assessment by title.
 
-    DELETE /risks. Requires an authenticated user; only the Safety role may
+    DELETE /risks. Requires an authenticated user; only the HSE Engineer role may
     delete a generic assessment (``ptw_id`` absent) — any user may delete
     their own PTW-specific row set (``ptw_id`` set), 401 otherwise. Body:
     ``{"title": <str>, "ptw_id": <optional>}``. Responds with
@@ -152,8 +152,8 @@ def deleteRiskAssessment():
     try:
         title = data['title']
         ptw_id = data.get('ptw_id')
-        # Non-safety users may only delete PTW-specific risks (ptw_id set)
-        if user.getRole() != UserRoles.SAFETY and ptw_id is None:
+        # Non-HSE users may only delete PTW-specific risks (ptw_id set)
+        if user.getRole() != UserRoles.HSE_ENGINEER and ptw_id is None:
             log.warning("DELETE /risks unauthorized: requester='%s' tried to delete non-PTW risk (ip=%s)", user.getUsername(), request.remote_addr)
             return jsonify({"success": False, "error": "Unauthorized"}), 401
         result = risksDB.deleteRiskAssessment(title)

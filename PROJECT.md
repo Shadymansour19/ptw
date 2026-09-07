@@ -47,7 +47,7 @@ Each PTW is classified by the nature of the work. The type drives visual theming
 
 **Locations:** Phase VII, Phase V, Scarab, Simian
 
-**Departments:** Turbo, Mech (Mechanical), Elec (Electrical), IT, Prod (Production), Safety, Instrumentation, HVAC, Civil, Telecom, Project, Cathodic Protection, Petrojet, Petromaint, Egypt Gas, Contractor
+**Departments:** Turbo, Mech (Mechanical), Elec (Electrical), IT, Prod (Production), HSE, Instrumentation, HVAC, Civil, Telecom, Project, Cathodic Protection, Petrojet, Petromaint, Egypt Gas, Contractor
 
 ---
 
@@ -60,7 +60,7 @@ The system defines 11 roles with distinct permissions:
 | User        | Creates PTWs; requests run, hold, close                        |
 | Coordinator | Reviews and approves PTWs in the coordination stage            |
 | Issuing     | Authorizes PTW execution; accepts/rejects run, hold, close     |
-| Safety      | Reviews PTWs from a safety perspective; manages risk assessments|
+| HSE Engineer | Reviews PTWs from a safety perspective; manages risk assessments; records per-shift initial gas test readings |
 | PDH         | Plant/Department Head — approval authority                     |
 | PGM         | Production General Manager — approval authority                  |
 | SOD         | System/Operation Director — approval authority                 |
@@ -89,7 +89,7 @@ Typical stages, in order:
 [Coordinator (Prod)]
     → [User (Turbo) ∥ User (Mech) ∥ User (Instrumentation) ∥ User (Telecom)
        ∥ User (Project) ∥ User (Civil) ∥ User (Cathodic Protection)]   — EX-type only
-    → [Issuing (Prod) ∥ Safety (Safety)]
+    → [Issuing (Prod) ∥ HSE Engineer (HSE)]
     → [PGM (Prod)] → [DFGM]                                            — HT/CS types only
 ```
 
@@ -218,6 +218,17 @@ Dismissing the dialog (its only bottom button is `OK`) snoozes the *next* popup 
 
 **Report generation.** `PTW.runningStatusDisplay()` is what every report now prints instead of the raw `running_status` (`ReportGenerator.ptwReport()`'s basic-info table, the multi-PTW Excel export, and the PDF's embedded QR payload) — for every status except `RUNNING` it's unchanged (the plain status/approval string), but a `RUNNING` PTW prints as `Running <from> - <until>`, where `<from>` is the time-of-day (not date) of the current run cycle's `run_ia_timestamp` and `<until>` is that same shift's end.
 
+### Initial Gas Test
+
+**Added 2026-09-07.** Gates the Run lifecycle on a per-shift gas reading recorded by a dedicated **HSE Engineer** role — separate from, and layered on top of, the linked-IC/validity gates above.
+
+- **Gate**: `PTW.requiresInitialGasTest()` — `True` iff `'Initial Gas Test'` is in `ptw.controls` (the existing `ALL_CONTROLS` entry, cascaded from hazards like `Electrical / Mechanical Spark`; this is not a separate Hazards-tab checkbox).
+- **Per-shift, not once-per-permit**: `PTW.gasTestTargetShift(now)` resolves which shift-start a reading taken right now would be credited toward — the *upcoming* shift once within `PTW.INITIAL_GAS_TEST_WINDOW_HOURS` (1, configurable) of its start, otherwise the shift already in progress. Recording is never blocked outside that window — a reading taken after its target shift already started is simply flagged **late** (`GasTest.isLate()`), never rejected.
+- **Recording is independent of run requests**: any PTW requiring this must have a reading recorded for the current shift even if its PA never requests to run that shift at all — `PTW.needsGasTestNow()` is the overlay predicate (mirrors `isInMeeting()`) that puts a PTW into the HSE Engineer's **Gas Test** tab (`MainWindow.tabGasTestPTWs`) regardless of running status.
+- **Acceptance criteria — deliberately deferred**: `GasTest.isAcceptable()` is a stub that always returns `True`. Real per-gas thresholds (O2/H2S/LEL/CO/MeOH Vapor/Hydrogen — `PTW.GAS_TEST_TYPES`) are TODO; the gate plumbing itself doesn't need to change once they're defined.
+- **Enforcement**: both `POST /ptws/run-request` (PA requesting) and the accept branch of `POST /ptws/run` (IA confirming) independently 403 unless `ptw.hasAcceptableGasTestForShift()` — same pattern as the linked-IC/validity checks, re-evaluated fresh at each step. Rejecting a run request is never blocked by this.
+- **Recording**: `POST /ptws/gas-test`, `HSE_ENGINEER` role only — body is `{ptw-id, readings: [{gas, percentage}, ...], timestamp, comment}`. The server resolves and stamps `shift` itself from `timestamp` (never trusted from the client); `PtwsDb.addGasTestPTW` appends a fresh `PTW.GasTest` to the `gas_tests JSONB[]` column (one independent entry per test, same append-only pattern as `approvals` — nothing is ever patched in place, unlike `run_cycles`). UI: `DialogGasTest` collects one required percentage per `GAS_TEST_TYPES` entry plus an optional comment; `DialogPTW`'s History tab gains a third Timeline pane (`_buildGasTestTimelinePane`) once a PTW requires or already has a gas test recorded.
+
 ---
 
 ## Isolation Management
@@ -283,7 +294,7 @@ Per-row menu visibility uses a `TablePTWs.MenuOption(..., visibleFor=lambda ic: 
 - `ManagerMainWindow` (PDH/PGM/SOD/DFGM) — Under Review tab only (with Accept/Request Edits) — Managers are only ever pulled into a PSIC's chain, after Issuing.
 - `IsolatorMainWindow` — Pending (+ Complete Isolation) / Active (view-only) / Closing (+ Complete De-isolation) / Sanctioned tabs only, no PTW tabs, FAB permanently hidden. No Approved, Isolate Confirming, or Deisolate Confirming tab — nothing for the isolator to do at any of those stages.
 - `CoordinatorMainWindow` *(added 2026-07-26)* — the same 9 IC tabs as `IssuingMainWindow` (Under Review/Approved/Isolate Confirming/Pending/Active/Deisolate Confirming/Closing/Sanctioned/Closed, no Requested tab, same reasoning), view-only plus **Link to PTW** — none of Issuing's Confirm/Return/Execute actions — **except Under Review**, which since 2026-08-14 also gets **Accept**/**Request Edits**: Coordinator is now a real required approver on a PSIC's chain (see above), so `myTurn` is `True` for them the moment Issuing's own stage is satisfied and `is_psic` is set, routing it there exactly like it would for any other role's pending stage — no bespoke tab or routing change was needed, only wiring the two options onto a tab that was already present. A non-PSIC IC never adds a Coordinator stage, so this tab still shows nothing for those, same as before Coordinator had any action at all here.
-- Safety/Admin/Guest are untouched.
+- HSE Engineer/Admin/Guest are untouched.
 
 **`DialogIC` is tabbed, mirroring `DialogPTW`'s pattern** — both now subclass `dialogs/TabbedDialog.py` (added 2026-08-06), which owns the shared mechanics: the tab bar (`addTab()` registers a page + its `TabButton`), the `QStackedWidget`, the Back/Next/Finish/Cancel button row (`bottomButtonsLayout()` — Back/Next page the stack, Finish/Cancel accept/reject the dialog), and `setTabBarColor(bgColor)`, which recolors the bar and automatically picks a readable black/white text/icon color for both the selected and unselected `TabButton`s via `bestForegroundColor()` (perceived luminance, `widgets/UiUtils.py`) rather than each dialog supplying its own foreground color. `DialogIC._certTypeChanged()` (also reacting live to the PSIC checkbox toggling, not just the type combo) and `DialogPTW.ptwTypeChanged()` each just compute their own background color from their model (`IC`/`PTW` `backgroundColorForType()`) and call `self.setTabBarColor(color)` — same palette as the row coloring above, but no longer consulting `foregroundColorForType()` for the tab bar (that model-level method is still used for row/report coloring elsewhere, see `getStatus()` above).
 
@@ -299,7 +310,7 @@ Per-row menu visibility uses a `TablePTWs.MenuOption(..., visibleFor=lambda ic: 
 
 **Role-restricted to `USER`/`ISSUING`/`COORDINATOR` only (tightened 2026-07-26 — previously any non-Guest role could reach these)**, enforced on both sides:
 
-- Client: the Unlink button (both dialogs) and the Link New IC / Link to PTW buttons check `self.loggedUser.getRole() in (UserRoles.USER, UserRoles.ISSUING, UserRoles.COORDINATOR)` before showing at all (an Isolator, PDH, Safety, etc. viewing either dialog sees no linking controls whatsoever). `CoordinatorMainWindow`'s `tabApprovedPTWs` gained `optionLinkICToPTW` in its menu to match — it previously had no menu-based linking at all.
+- Client: the Unlink button (both dialogs) and the Link New IC / Link to PTW buttons check `self.loggedUser.getRole() in (UserRoles.USER, UserRoles.ISSUING, UserRoles.COORDINATOR)` before showing at all (an Isolator, PDH, HSE Engineer, etc. viewing either dialog sees no linking controls whatsoever). `CoordinatorMainWindow`'s `tabApprovedPTWs` gained `optionLinkICToPTW` in its menu to match — it previously had no menu-based linking at all.
 - Server: `POST /ics/link-ptw` and `POST /ics/unlink-ptw` independently re-check the same three-role allowlist (403 otherwise) — the old check only rejected `GUEST`, so a non-Guest role outside the three could still hit the endpoint directly even with no UI path to it.
 
 - **Link from the IC side** — two access points to the same action: the **Link to PTW** menu option (`optionLinkPTWToIC`, `UserMainWindow` and `IssuingMainWindow` only, on every non-winding-down IC tab) *and* a **Link to PTW** button directly inside `DialogIC`'s "PTW Linkage" tab (`_linkNewPTW`, visible whenever `not ic.isWindingDown()` **and** the role check above). Either pops a plain `QInputDialog.getText` asking for a PTW #, then → `MainWindow.linkPTWToIC` / `DialogIC._linkNewPTW` → `ClientRequests.linkPTWToIC` → `POST /ics/link-ptw`.
@@ -350,7 +361,7 @@ Server-side: `GET /ics` (list, department-scoped for `UserRoles.USER` only, matc
 
 ## Risk Assessments
 
-Safety department creates and maintains a **generic risk assessment library** — reusable documents that can be selected while requesting a PTW.
+HSE department creates and maintains a **generic risk assessment library** — reusable documents that can be selected while requesting a PTW.
 
 Each `RiskAssessment` contains:
 
@@ -368,7 +379,7 @@ Each `RiskItem` documents:
 - `ctrl_analysis`: analysis after applying controls
 - `eval`: final risk evaluation/rating
 
-Only users with the **Safety** role can create/update/delete *generic* assessments (`ptw_id IS NULL`). Any user can create/update/delete the *PTW-specific* row set for a PTW (`ptw_id` set) — enforced server-side in `POST`/`PUT`/`DELETE /risks` by checking `ptw_id is not None`, not by trusting a client-declared role. Deleting a generic assessment is applicable but NOT allowed to keep already-done PTWs valid — a PTW's materialized rows (below) are independent copies, unaffected by later edits or deletion of the generic assessment they were derived from.
+Only users with the **HSE Engineer** role can create/update/delete *generic* assessments (`ptw_id IS NULL`). Any user can create/update/delete the *PTW-specific* row set for a PTW (`ptw_id` set) — enforced server-side in `POST`/`PUT`/`DELETE /risks` by checking `ptw_id is not None`, not by trusting a client-declared role. Deleting a generic assessment is applicable but NOT allowed to keep already-done PTWs valid — a PTW's materialized rows (below) are independent copies, unaffected by later edits or deletion of the generic assessment they were derived from.
 
 ### PTW-specific risk assessment (`widgets/RiskPreview.py`)
 
@@ -539,8 +550,9 @@ New-user invitation email (`POST /users`) and the password-reset verification em
 | POST   | `/ptws`                     | Create new PTW                             |
 | DELETE | `/ptws`                     | Delete a PTW                               |
 | POST   | `/ptws/approvals`           | Submit an approval action                  |
-| POST   | `/ptws/run-request`         | PA requests to start work (403s if any linked IC isn't `Active` — see [Run safety gate](#ptwic-linkage)) |
-| POST   | `/ptws/run`                 | IA accepts or rejects run request (accept 403s under the same linked-IC gate) |
+| POST   | `/ptws/run-request`         | PA requests to start work (403s if any linked IC isn't `Active`, or the PTW requires an initial gas test with none acceptable for the current shift — see [Run safety gate](#ptwic-linkage) / [Initial Gas Test](#initial-gas-test)) |
+| POST   | `/ptws/run`                 | IA accepts or rejects run request (accept 403s under the same linked-IC and gas-test gates) |
+| POST   | `/ptws/gas-test`            | HSE Engineer records an initial gas test reading (400s if the PTW doesn't require one — see [Initial Gas Test](#initial-gas-test)) |
 | POST   | `/ptws/hold-request`        | PA requests to hold work                   |
 | POST   | `/ptws/hold`                | IA accepts or rejects hold request         |
 | POST   | `/ptws/close-request`       | PA requests to close permit                |
@@ -621,7 +633,7 @@ Hold/sanction-for-test and re-isolate routes don't exist yet (see [Isolation Man
 |--------|--------------|-------------------------------------------------------------------|---------------|
 | GET    | `/risks`     | Get all **generic** risk assessments (`ptw_id IS NULL`)          | Any           |
 | GET    | `/risks/ptw` | Get one PTW's specific risk assessment (body: `{"ptw_id": ...}`) | Any authenticated user, any department |
-| POST   | `/risks`     | Create a risk assessment                                          | Safety (generic) or any user for their own PTW's row (`ptw_id` set) |
+| POST   | `/risks`     | Create a risk assessment                                          | HSE Engineer (generic) or any user for their own PTW's row (`ptw_id` set) |
 | PUT    | `/risks`     | Update a risk assessment                                          | same as POST  |
 | DELETE | `/risks`     | Delete a risk assessment                                          | same as POST  |
 
@@ -701,9 +713,12 @@ controls                    TEXT[]
 risks                       TEXT[]
 linked_ics                  TEXT[]
 approvals                   JSONB[]
+gas_tests                   JSONB[]
 isolations                  JSONB[]
 is_archived                 BOOLEAN NOT NULL DEFAULT FALSE
 ```
+
+`gas_tests` — ordered list of `PTW.GasTest` records (one per recorded initial gas test reading — see [Initial Gas Test](#initial-gas-test)); added 2026-09-07 via `dev-scripts/migrate_add_gas_tests_column.py`, append-only like `approvals`, never patched in place like `run_cycles` is.
 
 `linked_ics` — fully implemented PTW↔IC linkage (list of linked IC ids; see [Isolation Management](#isolation-management)). `run_cycles` replaced the old flat `performing`/`issuing`/`performing_timestamp`/`issuing_timestamp`/`close_performing`/`close_issuing`/`close_performing_timestamp`/`close_issuing_timestamp`/`hold_performing`/`hold_issuing`/`hold_performing_timestamp`/`hold_issuing_timestamp`/`keep_isolations` columns (see [Running Cycle](#2-running-cycle)); `dev-scripts/migrate_ptw_run_cycles.py` is the one-time migration that adds it, backfills it from those old columns, and drops them.
 
@@ -791,7 +806,7 @@ ptw_id         INTEGER                -- NULL = generic library entry; set = tha
 
 ## Client Architecture
 
-The desktop client is structured around role-based main windows. After login, `main.py` routes the user to the appropriate role-specific window class (`client/windows/`, e.g., `IssuingMainWindow`, `SafetyMainWindow`, `AdminMainWindow`, etc...), each subclassing the base `MainWindow` (`windows/MainWindow.py`).
+The desktop client is structured around role-based main windows. After login, `main.py` routes the user to the appropriate role-specific window class (`client/windows/`, e.g., `IssuingMainWindow`, `HSEMainWindow`, `AdminMainWindow`, etc...), each subclassing the base `MainWindow` (`windows/MainWindow.py`).
 
 ### Global Data Cache
 
@@ -829,7 +844,7 @@ The desktop client is structured around role-based main windows. After login, `m
 | `tables/TableUsers.py` | Admin user management table; context menu also has a write-only "Force Password Change" action (`must_change_password` isn't fetched/shown for other users, so there's no current value to display); supports bulk user import from Excel; also has `filterColumn(label, values)` (used by the Admin dashboard's department segments) |
 | `widgets/DonutChart.py` | Reusable donut-chart widget (`DonutChart`/`DonutSegment`) for the home-page dashboard — clickable/hoverable ring + legend, fixed categorical palette |
 | `reports/ImportUsersExcel.py` | Parses bulk-user Excel/CSV imports + DialogUsersPreview dialog |
-| `tables/TableRisks.py` | Generic risk assessment CRUD list (Safety admin tab); also embedded read-only+checkboxes inside `DialogSelectGenericRisks` |
+| `tables/TableRisks.py` | Generic risk assessment CRUD list (HSE admin tab); also embedded read-only+checkboxes inside `DialogSelectGenericRisks` |
 | `widgets/RiskPreview.py` | `DialogRiskItem` (single-item editor), `RiskItemsTable` (the flat table used for a PTW's risk assessment in all modes — add/delete/import/generic-pick, with dedup), `DialogSelectGenericRisks`, `RiskAssessmentPreview()` popup/embedded factory |
 | `tables/TableIsolations.py` | Embedded editable required-isolations list for a PTW form (`TablePTWIsolations`) — type/tag/description only. The old global all-isolation-points browser (`TableIsolationsBrowser`) was removed 2026-07-25 along with the registry it displayed. |
 | `tables/TableICs.py` | (renamed from `TableIsolationCertificates.py` 2026-07-25) IC list, one instance per tab (Requested/Under Review/Pending/Active/Sanctioned/Closed), mirrors `TablePTWs`; IC#/Status/Type/L.T./Requestor/Request Time/Requestor Dept./Execution Dept./Location/Equipment/Reason columns, L.T. rendered as an icon badge like Fast Track |
@@ -847,6 +862,7 @@ The desktop client is structured around role-based main windows. After login, `m
 | `dialogs/DialogUser.py` | Create/edit user dialog |
 | `dialogs/DialogIsolation.py` | Create/edit isolation dialog |
 | `dialogs/DialogSelectHeldICs.py` | Dual-mode linked-IC dialog for the PTW hold flow — PA selects which linked ICs stay held (`getHeldICIds()`), or a plain review of which ICs were kept |
+| `dialogs/DialogGasTest.py` | *(added 2026-09-07)* HSE Engineer's "Record Gas Test" dialog — one required percentage reading per `PTW.GAS_TEST_TYPES` entry plus an optional comment; `getReadings()`/`getComment()` return the collected fields for `ClientRequests.recordGasTestPTW`. See [Initial Gas Test](#initial-gas-test) |
 | `dialogs/DialogPtwAlarms.py` | Two-section, individually collapsible grouped popup for `MainWindow._checkPtwAlarms()` — 14-shift-validity-expired PTWs (View/Close/Close All) and run-cycle-shift-ended PTWs (View/Hold/Close), each row disabling its own acted-on button(s) in place on success; View opens its own `DialogPTW` with the busy overlay on this dialog rather than delegating to `MainWindow.viewPTW` |
 | `dialogs/DialogSettings.py` | App/session settings — profile fields, theme, and the close-behavior preference (below) |
 | `dialogs/DialogChangePassword.py` | *(added 2026-08-19)* Mandatory password-change prompt shown by `main.py` before the main window opens when `must_change_password` is set — no Cancel button; closing the window without accepting just leaves the login window showing |
@@ -895,7 +911,7 @@ All role-specific views are implemented as classes in `client/windows/` — one 
 - `UserMainWindow` — create PTWs, manage own permits. Has both a **Requested PTWs** tab (tracking-only — any PTW still `UNDER_REVIEW` that isn't currently this user's turn to act on) and an **Under Review** tab (actionable — this user's role+department is in the currently pending approval stage, e.g. a department rep on an `EX`-type permit). Also has Requested/Pending/Active/Sanctioned/Closed IC tabs (no Under Review — never populated for this role); the FAB on the Requested ICs tab creates a new IC
 - `CoordinatorMainWindow` — PTW approval coordination
 - `IssuingMainWindow` — run/hold/close confirmation. Also has Under Review/Pending/Active/Sanctioned/Closed IC tabs (no Requested — never populated for this role)
-- `SafetyMainWindow` — risk assessments, safety approvals
+- `HSEMainWindow` — risk assessments, safety approvals, and the **Gas Test** tab (records per-shift initial gas test readings — see [Initial Gas Test](#initial-gas-test))
 - `ManagerMainWindow(loggedUser, role)` — one shared class for `PDH`/`PGM`/`SOD`/`DFGM`; `main.py` passes the role label in, it's not four separate classes
 - `IsolatorMainWindow` — Pending (+ Complete Isolation) / Active (view-only) / Closing (+ Complete De-isolation) / Sanctioned IC tabs only, no PTW tabs; FAB is permanently hidden
 

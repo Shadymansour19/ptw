@@ -498,6 +498,12 @@ class PTW:
     SHIFT_DURATION_HOURS = 12
     VALIDITY_SHIFTS = 14
 
+    # How many hours before a shift starts an initial gas test reading may be taken and still
+    # be credited toward that (upcoming) shift — see gasTestTargetShift(). Recording is never
+    # blocked outside this window; it only decides which shift an early reading counts for.
+    INITIAL_GAS_TEST_WINDOW_HOURS = 1
+    GAS_TEST_TYPES = ['O2', 'H2S', 'LEL / Combustible Gas', 'CO', 'MeOH Vapor', 'Hydrogen']
+
     @staticmethod
     def shiftStart(dt: datetime) -> datetime:
         """Start (07:00 or 19:00) of the 12-hour shift containing dt."""
@@ -675,6 +681,44 @@ class PTW:
                 return None
             return PTW.shiftEnd(datetime.strptime(self.run_ia_timestamp, PTW.TIMESTAMP_FORMAT))
 
+    class GasTest:
+        """One recorded initial gas test: the HSE Engineer who took it (username), when
+        (timestamp), the shift-start it's credited toward (shift — resolved server-side via
+        gasTestTargetShift(), never trusted from the client), the individual gas readings, and
+        an optional comment. A fresh, independent entry per test — unlike RunCycle, nothing is
+        ever patched in place."""
+
+        def __init__(self, username: str = None, timestamp: str = None, shift: str = None,
+                     readings: list = None, comment: str = None):
+            """Initialize a gas test record with who recorded it, when, which shift it's
+            credited toward, its per-gas readings, and an optional comment."""
+            self.username = username
+            self.timestamp = timestamp
+            self.shift = shift
+            self.readings = list(readings) if readings else []
+            self.comment = comment
+
+        def setAll(self, data: dict):
+            """Bulk-update attributes from a dict, silently skipping unknown
+            keys and failed assignments. Returns self for chaining."""
+            for k,v in data.items():
+                if hasattr(self, k):
+                    try:
+                        setattr(self, k, v)
+                    except Exception as e:
+                        pass
+            return self
+
+        def isAcceptable(self) -> bool:
+            """Placeholder pass/fail criteria for this test's readings.
+            TODO: define real per-gas acceptable ranges; returns True unconditionally for now."""
+            return True
+
+        def isLate(self) -> bool:
+            """True if this test was recorded after the shift it's credited toward had
+            already started (still counts toward that shift — just flagged as late)."""
+            return bool(self.timestamp) and bool(self.shift) and self.timestamp > self.shift
+
 
     def __init__(self, data: dict = {}):
         """Initialize a PTW from an optional dict of stored/incoming values
@@ -707,6 +751,7 @@ class PTW:
         self.risks : list[str] = data.get('risks', [])
         self.linked_ics : list[str] = data.get('linked_ics', [])
         self.approvals : list[PTW.Approval] = [PTW.Approval().setAll(approval) for approval in data.get('approvals', [])]
+        self.gas_tests : list[PTW.GasTest] = [PTW.GasTest().setAll(gasTest) for gasTest in data.get('gas_tests', [])]
         # Not a `ptws` column either — __updateStatus() below recomputes this from
         # `approvals` every time, so persisting it would just be a stale duplicate.
         self.approval_status : PTW.ApprovalStatus = data.get('approval_status') or PTW.ApprovalStatus.UNDER_REVIEW
@@ -728,6 +773,7 @@ class PTW:
             self.approvals = [PTW.Approval().setAll(approval.__dict__) for approval in self.approvals]
             self.isolations = [Isolation().setAll(iso.__dict__) for iso in self.isolations]
             self.run_cycles = [PTW.RunCycle().setAll(cycle.__dict__) for cycle in self.run_cycles]
+            self.gas_tests = [PTW.GasTest().setAll(gasTest.__dict__) for gasTest in self.gas_tests]
         for k,v in data.items():
             if hasattr(self, k):
                 try:
@@ -737,6 +783,8 @@ class PTW:
                         self.isolations = [Isolation().setAll(iso) for iso in v]
                     elif k == 'run_cycles':
                         self.run_cycles = [PTW.RunCycle().setAll(cycle) for cycle in v]
+                    elif k == 'gas_tests':
+                        self.gas_tests = [PTW.GasTest().setAll(gasTest) for gasTest in v]
                     else:
                         setattr(self, k, v)
                 except Exception as e:
@@ -1113,7 +1161,7 @@ class PTW:
         """Build the ordered list of required-approver stages for this PTW's
         approval cycle: Coordinator (Prod); for Excavation permits, one
         parallel stage of a User from each affected department; Issuing (Prod)
-        and Safety (Safety) in parallel; and, for Hot Work/Confined Space
+        and HSE Engineer (HSE) in parallel; and, for Hot Work/Confined Space
         permits, PGM (Prod) then DFGM. Each stage must be fully satisfied
         (see _stageSatisfied()) before the next one counts."""
         requiredApprovers = [
@@ -1132,7 +1180,7 @@ class PTW:
             ])
         requiredApprovers.append([
             PTW.Approver(UserRoles.ISSUING, UserDepartments.PROD),
-            PTW.Approver(UserRoles.SAFETY, UserDepartments.SAFETY),
+            PTW.Approver(UserRoles.HSE_ENGINEER, UserDepartments.HSE),
         ])
         if self.type in [PTW.Types.HT, PTW.Types.CS]:
             requiredApprovers.extend([
@@ -1253,6 +1301,54 @@ class PTW:
         if pending < len(stages) and any(approver.matchesRoleDept(role, department) for approver in stages[pending]):
             return PTW.ApprovalStatus.UNDER_REVIEW
         return None
+
+    def requiresInitialGasTest(self) -> bool:
+        """True if this PTW's controls carry 'Initial Gas Test' (cascaded from hazards like
+        Electrical / Mechanical Spark) — the gate for every gas-test requirement below."""
+        return 'Initial Gas Test' in (self.controls or [])
+
+    @staticmethod
+    def gasTestTargetShift(now: datetime = None) -> datetime:
+        """Which shift-start a reading taken right now would be credited toward: the
+        upcoming shift once within INITIAL_GAS_TEST_WINDOW_HOURS of its start, otherwise
+        the shift already in progress."""
+        now = now or datetime.now()
+        curShiftStart = PTW.shiftStart(now)
+        nextShiftStart = curShiftStart + timedelta(hours=PTW.SHIFT_DURATION_HOURS)
+        windowStart = nextShiftStart - timedelta(hours=PTW.INITIAL_GAS_TEST_WINDOW_HOURS)
+        return nextShiftStart if now >= windowStart else curShiftStart
+
+    def gasTestForShift(self, shiftStart: datetime) -> 'PTW.GasTest':
+        """Most recent recorded gas test credited toward the given shift, or None."""
+        target = shiftStart.strftime(PTW.TIMESTAMP_FORMAT)
+        for gasTest in reversed(self.gas_tests or []):
+            if gasTest.shift == target:
+                return gasTest
+        return None
+
+    def hasAcceptableGasTestForShift(self, shiftStart: datetime = None) -> bool:
+        """True if this PTW doesn't require an initial gas test at all, or it does and an
+        acceptable one is already recorded for shiftStart (defaults to the shift a reading
+        taken right now would be credited toward — see gasTestTargetShift())."""
+        if not self.requiresInitialGasTest():
+            return True
+        shiftStart = shiftStart or PTW.gasTestTargetShift()
+        gasTest = self.gasTestForShift(shiftStart)
+        return gasTest is not None and gasTest.isAcceptable()
+
+    def needsGasTestNow(self) -> bool:
+        """True whenever this PTW requires an initial gas test and doesn't yet have an
+        acceptable one for the shift a reading taken right now would count toward,
+        regardless of whether its PA has actually requested to run this shift. Scoped to
+        APPROVED and not yet CLOSED: an under-review permit can't run yet regardless, and
+        a closed one never will again, so neither should keep demanding a fresh reading
+        every shift."""
+        return (
+            self.approval_status == PTW.ApprovalStatus.APPROVED
+            and self.running_status != PTW.RunningStatus.CLOSED
+            and self.requiresInitialGasTest()
+            and not self.hasAcceptableGasTestForShift()
+        )
 
     def canLinkIC(self) -> bool:
         """The PTW-side half of IC.canLinkPTW(ptw): this PTW must be approved, and not

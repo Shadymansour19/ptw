@@ -116,6 +116,17 @@ class PtwsDb:
                 )
             conn.commit()
 
+    def addGasTestPTW(self, ptwId: str, gasTest: PTW.GasTest):
+        """Append one GasTest record to a PTW's `gas_tests` JSONB[] column (`array_append`)
+        — a fresh, independent entry each time, never patched in place (unlike run_cycles)."""
+        with CommonDB.get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute(
+                    'UPDATE ptws SET gas_tests = array_append(gas_tests, %s::jsonb) WHERE id = %s',
+                    (json.dumps(gasTest.__dict__), ptwId)
+                )
+            conn.commit()
+
     def archivePTWs(self, ptwIds: list[str]):
         """Mark every given PTW id as archived (`is_archived = TRUE`) in a
         single UPDATE ... WHERE id IN (...). Doesn't touch running_status —

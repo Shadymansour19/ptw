@@ -25,6 +25,7 @@ from dialogs.DialogPTW import DialogPTW
 from dialogs.DialogUser import DialogUser
 from dialogs.DialogSelectHeldICs import DialogSelectHeldICs
 from dialogs.DialogConfirmRunRequest import DialogConfirmRunRequest
+from dialogs.DialogGasTest import DialogGasTest
 from dialogs.DialogPtwAlarms import DialogPtwAlarms
 from tables.TableUsers import TableUsers
 from tables.TableRisks import TableRisks
@@ -122,6 +123,7 @@ class MainWindow(QMainWindow):
         self.optionAcceptPTW = TablePTWs.MenuOption(t('Accept'), self.acceptPTW, qta.icon('fa6s.check'))
         self.optionExportPTW = TablePTWs.MenuOption(t('Export'), self.exportPTWs, qta.icon('fa6s.file-excel'), allAtOnce=True)
         self.optionPrintPTW = TablePTWs.MenuOption(t('Print'), self.printPTW, qta.icon('fa6s.print'))
+        self.optionRecordGasTestPTW = TablePTWs.MenuOption(t('Record Gas Test'), self.recordGasTestPTW, qta.icon('fa6s.gas-pump'))
         self.viewHeldICsOption = TablePTWs.MenuOption(t('View Held ICs'), self.viewHeldICs, qta.icon('fa6s.unlock-keyhole'))
         self.optionViewRequestorPTW = TablePTWs.MenuOption(t('View Requestor'), self.viewRequestorPTW, qta.icon('fa6s.user'))
         self.optionViewPerformingPTW = TablePTWs.MenuOption(t('View PA'), self.viewPerformingPTW, qta.icon('mdi6.account-hard-hat'))
@@ -176,6 +178,7 @@ class MainWindow(QMainWindow):
         self.tabRequestedPTWs = TablePTWs(self.stack, self.loggedUser, t("Requested PTWs"))
         self.tabUnderReviewPTWs = TablePTWs(self.stack, self.loggedUser, t("Under Review PTWs"))
         self.tabMeetingPTWs = TablePTWs(self.stack, self.loggedUser, t("PTW in Meeting"))
+        self.tabGasTestPTWs = TablePTWs(self.stack, self.loggedUser, t("Gas Test"))
         self.tabReturnedPTWs = TablePTWs(self.stack, self.loggedUser, t("Returned PTWs"))
         self.tabApprovedPTWs = TablePTWs(self.stack, self.loggedUser, t("Approved PTWs"))
         self.tabWaitingRunConfirmationPTWs = TablePTWs(self.stack, self.loggedUser, t("Waiting Run Confirmation PTWs"))
@@ -236,6 +239,7 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.tabRequestedPTWs)
         self.stack.addWidget(self.tabUnderReviewPTWs)
         self.stack.addWidget(self.tabMeetingPTWs)
+        self.stack.addWidget(self.tabGasTestPTWs)
         self.stack.addWidget(self.tabReturnedPTWs)
         self.stack.addWidget(self.tabApprovedPTWs)
         self.stack.addWidget(self.tabWaitingRunConfirmationPTWs)
@@ -283,6 +287,7 @@ class MainWindow(QMainWindow):
         self.btnRequestedPTWs = QPushButton(qta.icon('fa6s.paper-plane'), "")
         self.btnUnderReviewPTWs = QPushButton(qta.icon('fa6s.magnifying-glass-chart'), "")
         self.btnMeetingPTWs = QPushButton(qta.icon('fa6s.people-group'), "")
+        self.btnGasTestPTWs = QPushButton(qta.icon('fa6s.gas-pump'), "")
         self.btnReturnedPTWs = QPushButton(qta.icon('fa5s.undo'), "")
         self.btnApprovedPTWs = QPushButton(qta.icon('fa6s.check'), "")
         self.btnWaitingRunConfirmationPTWs = QPushButton(qta.icon('fa6.clock'), "")
@@ -317,6 +322,7 @@ class MainWindow(QMainWindow):
         self.btnRequestedPTWs.setToolTip(t("Requested PTWs"))
         self.btnUnderReviewPTWs.setToolTip(t("Under Review PTWs"))
         self.btnMeetingPTWs.setToolTip(t("PTW in Meeting"))
+        self.btnGasTestPTWs.setToolTip(t("Gas Test"))
         self.btnReturnedPTWs.setToolTip(t("Returned PTWs"))
         self.btnApprovedPTWs.setToolTip(t("Approved PTWs"))
         self.btnWaitingRunConfirmationPTWs.setToolTip(t("Waiting Run Confirmation PTWs"))
@@ -355,6 +361,7 @@ class MainWindow(QMainWindow):
             self.btnRequestedPTWs:              self.tabRequestedPTWs,
             self.btnUnderReviewPTWs:            self.tabUnderReviewPTWs,
             self.btnMeetingPTWs:                self.tabMeetingPTWs,
+            self.btnGasTestPTWs:                self.tabGasTestPTWs,
             self.btnReturnedPTWs:               self.tabReturnedPTWs,
             self.btnApprovedPTWs:               self.tabApprovedPTWs,
             self.btnWaitingRunConfirmationPTWs: self.tabWaitingRunConfirmationPTWs,
@@ -1064,6 +1071,16 @@ class MainWindow(QMainWindow):
         ia = self.loggedUser.getUsername()
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         ClientRequests.runResponsePTW(self.loggedUser, ptw.id, ia, ts, False, comment, callback=self._on_request_done_generic)
+
+    def recordGasTestPTW(self, row: int, ptw: PTW):
+        """Open DialogGasTest so the HSE Engineer can record initial gas test readings
+        (username/timestamp are stamped server-side) for `ptw`'s current shift."""
+        dlg = DialogGasTest(self, ptw)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+        ClientRequests.recordGasTestPTW(self.loggedUser, ptw.id, dlg.getReadings(), ts, dlg.getComment(), callback=self._on_request_done_generic)
 
     def requestToClsPTW(self, row: int, ptw: PTW, callback=None):
         """Prompt for confirmation and an optional comment, then send a close request
@@ -1776,10 +1793,12 @@ class MainWindow(QMainWindow):
                 "Use the <b>Under Review</b> tab to review permits waiting for your review."
                 "Use the <b>Waiting Run/Hold/Close Confirmation</b> tabs to review permits waiting your coordination."
             ),
-            UserRoles.SAFETY: t(
-                "As a <b>Safety Officer</b>, you review permits for safety compliance, "
-                "manage associated risk assessments, and ensure that all necessary precautions are in place."
+            UserRoles.HSE_ENGINEER: t(
+                "As an <b>HSE Engineer</b>, you review permits for safety compliance, "
+                "manage associated risk assessments, and ensure that all necessary precautions are in place. "
+                "You also record per-shift initial gas test readings for permits that require them."
                 "Use the <b>Risks</b> tab to manage risk assessment records."
+                "Use the <b>Gas Test</b> tab to record initial gas test readings."
                 "Use the <b>Under Review</b> tab to review permits waiting for your review."
             ),
             UserRoles.ADMIN: t(
@@ -1888,6 +1907,7 @@ class MainWindow(QMainWindow):
             self.tabRequestedPTWs,
             self.tabUnderReviewPTWs,
             self.tabMeetingPTWs,
+            self.tabGasTestPTWs,
             self.tabApprovedPTWs,
             self.tabReturnedPTWs,
             self.tabWaitingRunConfirmationPTWs,
@@ -1924,12 +1944,15 @@ class MainWindow(QMainWindow):
 
     def _addPTWToGUI(self, ptw: PTW):
         """Route ptw into its (single, exclusive) status tab, then additionally drop it into
-        the 'PTW in Meeting' overlay tab if it qualifies (see PTW.isInMeeting) — that tab isn't
-        part of the exclusive routing above, a PTW sits in it *alongside* whichever tab
-        _ptwTargetTab() picked."""
+        the 'PTW in Meeting' overlay tab if it qualifies (see PTW.isInMeeting) and/or the
+        'Gas Test' overlay tab if it still needs an initial gas test recorded for the current
+        shift (see PTW.needsGasTestNow) — neither tab is part of the exclusive routing above,
+        a PTW sits in them *alongside* whichever tab _ptwTargetTab() picked."""
         self._ptwTargetTab(ptw).addPTWToGUI(ptw)
         if ptw.isInMeeting():
             self.tabMeetingPTWs.addPTWToGUI(ptw)
+        if ptw.needsGasTestNow():
+            self.tabGasTestPTWs.addPTWToGUI(ptw)
 
     def _removePTWFromTabs(self, ptwId):
         """Remove the PTW with id `ptwId` from every PTW tab it might currently be

@@ -32,13 +32,14 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 ## Features
 
 - **Home dashboard** — live donut charts summarizing PTWs in the approval cycle and Running PTWs by location (Users by Department for Admins); click a segment to jump straight to that tab, filtered where relevant
-- **Multi-stage approval workflow** — Coordinator → Issuing → Safety → Management chain (PDH → PGM → SOD → DFGM)
+- **Multi-stage approval workflow** — Coordinator → Issuing → HSE Engineer → Management chain (PDH → PGM → SOD → DFGM)
 - **Full running lifecycle** — Run / Hold / Close with two-party confirmation (Performing Authority + Issuing Authority)
 - **Equipment isolation management** — a PTW declares what isolations it needs (type/tag/description); an **IC (Isolation Certificate)** is the actual approval + physical-execution document, linked to the PTW — a PTW can't run unless every linked IC is confirmed isolated
 - **Isolation Certificates (ICs)** — formal isolation request documents (type, location, equipment, reason, isolation items) with their own staged approval chain (Issuing, plus PDH→PGM→SOD→DFGM for a PSIC — a "Protective System IC", any IC type flagged as protecting a safety system — this manager approval lives only here, not duplicated on the PTW), a full isolate/de-isolate execution cycle (request → Issuing confirms → Isolator carries out, both directions), their own Requested/Under Review/Pending/Active/Sanctioned/Closed lifecycle, color-coded by isolation type (Mechanical=gray, Electrical=yellow, Self=green, Other=neutral gray — a PSIC overrides this and renders red, same as the old `Protective System` type used to), a two-pane approval/isolation history timeline, bidirectional PTW↔IC linking (link and unlink from either side), and a dedicated Isolator role window *(sanction-for-test and re-isolate cycles not yet implemented)*
 - **P&ID / Wiring highlighting** — attach diagrams (PDF or scanned image) to an IC and every isolation item's tag is automatically located and highlighted — red for Open, green for Closed — using native PDF text search with an OCR fallback (Tesseract) for scanned pages/images with no text layer; highlights are burned permanently into the file (visible in any external viewer, not just this app), can be manually added/adjusted/deleted with live drag-and-resize, and stay in sync with the items list via a one-click Sync
 - **Color-coded permit types** — Cold Work (blue), Spark (yellow), Hot Work (red), HydroCarbon (black), Excavation (gray), Confined Space (green)
-- **Risk assessment library** — Safety team maintains a reusable generic risk assessment library; each PTW gets its own editable, deduplicated risk item table — built by adding items manually, pulling from the generic library, or importing an Excel/CSV file — that becomes its permanent risk record, carried over automatically on re-request
+- **Risk assessment library** — HSE team maintains a reusable generic risk assessment library; each PTW gets its own editable, deduplicated risk item table — built by adding items manually, pulling from the generic library, or importing an Excel/CSV file — that becomes its permanent risk record, carried over automatically on re-request
+- **Initial gas test gate** — for a PTW requiring an initial gas test, a dedicated HSE Engineer records per-shift O2/H2S/LEL/CO/MeOH Vapor/Hydrogen readings; a run request can't be submitted or accepted for a shift without an acceptable reading recorded for it
 - **PDF permit reports** — Printable PDF generation for each PTW
 - **Excel export** — Export the PTW list to a formatted, color-coded `.xlsx` spreadsheet
 - **Real-time notifications** — Server-Sent Events (SSE) push PTW changes to all connected clients instantly; no polling required. Closing the window prompts to keep running in the system tray instead of quitting, so notifications keep arriving in the background — the choice can be remembered (skipping the prompt on later closes) and changed anytime in Settings; reopen from the tray icon straight back into the same session, no re-login needed
@@ -95,7 +96,7 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 | **User** | Creates PTWs; requests run, hold, and close |
 | **Coordinator** | Reviews and approves PTWs in the coordination stage |
 | **Issuing** | Authorizes execution; accepts/rejects run, hold, close confirmations |
-| **Safety** | Safety approvals; creates and manages risk assessments |
+| **HSE Engineer** | Safety approvals; creates and manages risk assessments; records per-shift initial gas test readings |
 | **PDH** | Production/Plant Department Head approval |
 | **PGM** | Production General Manager approval |
 | **SOD** | System/Operation Director approval |
@@ -111,7 +112,7 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 ### Approval Cycle
 
 ```text
-Coordinator → Issuing → Safety → [PDH → PGM → SOD → DFGM]
+Coordinator → Issuing → HSE Engineer → [PDH → PGM → SOD → DFGM]
 ```
 
 **Statuses:** `UNDER_REVIEW` → `APPROVED` / `RETURNED` / `REJECTED`
@@ -206,7 +207,7 @@ ptw/
 │   ├── windows/                 # Main window classes — one file per role, all subclass MainWindow
 │   │   ├── MainWindow.py        #   Base class: chrome, PTW/IC action handlers, SSE sync, home dashboard
 │   │   ├── UserMainWindow.py    #   Requestor (PA) role window
-│   │   └── ...                  #   GuestMainWindow, CoordinatorMainWindow, IssuingMainWindow, SafetyMainWindow, ManagerMainWindow, AdminMainWindow, IsolatorMainWindow
+│   │   └── ...                  #   GuestMainWindow, CoordinatorMainWindow, IssuingMainWindow, HSEMainWindow, ManagerMainWindow, AdminMainWindow, IsolatorMainWindow
 │   ├── GlobalData.py            # Client-side data cache
 │   ├── models/                  # Data model classes
 │   │   ├── PTW.py               #   Client-side data models

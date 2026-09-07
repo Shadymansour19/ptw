@@ -47,3 +47,4 @@ class SSEAction(enum.StrEnum):
     DEISOLATED = 'deisolated'
     LINKED = 'linked'
     UNLINKED = 'unlinked'
+    GAS_TEST_RECORDED = 'gas test recorded'
