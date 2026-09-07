@@ -21,6 +21,7 @@ from windows.UserMainWindow import UserMainWindow
 from windows.CoordinatorMainWindow import CoordinatorMainWindow
 from windows.IssuingMainWindow import IssuingMainWindow
 from windows.HSEMainWindow import HSEMainWindow
+from windows.GasTesterMainWindow import GasTesterMainWindow
 from windows.ManagerMainWindow import ManagerMainWindow
 from windows.AdminMainWindow import AdminMainWindow
 from windows.IsolatorMainWindow import IsolatorMainWindow
@@ -129,6 +130,8 @@ def _showMainWindow(user):
             mainWindow = IssuingMainWindow(user)
         elif user.getRole() == UserRoles.HSE_ENGINEER:
             mainWindow = HSEMainWindow(user)
+        elif user.getRole() == UserRoles.GAS_TESTER:
+            mainWindow = GasTesterMainWindow(user)
         elif user.getRole() == UserRoles.PGM:
             mainWindow = ManagerMainWindow(user, "PGM")
         elif user.getRole() == UserRoles.PDH:

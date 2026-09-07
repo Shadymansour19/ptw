@@ -1795,11 +1795,14 @@ class MainWindow(QMainWindow):
             ),
             UserRoles.HSE_ENGINEER: t(
                 "As an <b>HSE Engineer</b>, you review permits for safety compliance, "
-                "manage associated risk assessments, and ensure that all necessary precautions are in place. "
-                "You also record per-shift initial gas test readings for permits that require them."
+                "manage associated risk assessments, and ensure that all necessary precautions are in place."
                 "Use the <b>Risks</b> tab to manage risk assessment records."
-                "Use the <b>Gas Test</b> tab to record initial gas test readings."
                 "Use the <b>Under Review</b> tab to review permits waiting for your review."
+            ),
+            UserRoles.GAS_TESTER: t(
+                "As a <b>Gas Tester</b>, you record initial gas test readings (O2, H2S, LEL, CO, "
+                "MeOH Vapor, Hydrogen, etc.) for every permit that requires one, once per shift."
+                "Use the <b>Gas Test</b> tab to see every permit awaiting a reading and record one."
             ),
             UserRoles.ADMIN: t(
                 "As an <b>Administrator</b>, you manage system users and their access roles. "

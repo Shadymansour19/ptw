@@ -53,14 +53,15 @@ Each PTW is classified by the nature of the work. The type drives visual theming
 
 ## User Roles
 
-The system defines 11 roles with distinct permissions:
+The system defines 12 roles with distinct permissions:
 
 | Role        | Description                                                    |
 |-------------|----------------------------------------------------------------|
 | User        | Creates PTWs; requests run, hold, close                        |
 | Coordinator | Reviews and approves PTWs in the coordination stage            |
 | Issuing     | Authorizes PTW execution; accepts/rejects run, hold, close     |
-| HSE Engineer | Reviews PTWs from a safety perspective; manages risk assessments; records per-shift initial gas test readings |
+| HSE Engineer | Reviews PTWs from a safety perspective; manages risk assessments |
+| Gas Tester  | Records per-shift initial gas test readings for permits that require them |
 | PDH         | Plant/Department Head — approval authority                     |
 | PGM         | Production General Manager — approval authority                  |
 | SOD         | System/Operation Director — approval authority                 |
@@ -220,14 +221,14 @@ Dismissing the dialog (its only bottom button is `OK`) snoozes the *next* popup 
 
 ### Initial Gas Test
 
-**Added 2026-09-07.** Gates the Run lifecycle on a per-shift gas reading recorded by a dedicated **HSE Engineer** role — separate from, and layered on top of, the linked-IC/validity gates above.
+**Added 2026-09-07.** Gates the Run lifecycle on a per-shift gas reading recorded by a dedicated **Gas Tester** role (paired with the `HSE` department, but distinct from `HSE Engineer` — that role keeps only its original approval-chain/risk-assessment scope, no gas-test access) — separate from, and layered on top of, the linked-IC/validity gates above.
 
 - **Gate**: `PTW.requiresInitialGasTest()` — `True` iff `'Initial Gas Test'` is in `ptw.controls` (the existing `ALL_CONTROLS` entry, cascaded from hazards like `Electrical / Mechanical Spark`; this is not a separate Hazards-tab checkbox).
 - **Per-shift, not once-per-permit**: `PTW.gasTestTargetShift(now)` resolves which shift-start a reading taken right now would be credited toward — the *upcoming* shift once within `PTW.INITIAL_GAS_TEST_WINDOW_HOURS` (1, configurable) of its start, otherwise the shift already in progress. Recording is never blocked outside that window — a reading taken after its target shift already started is simply flagged **late** (`GasTest.isLate()`), never rejected.
-- **Recording is independent of run requests**: any PTW requiring this must have a reading recorded for the current shift even if its PA never requests to run that shift at all — `PTW.needsGasTestNow()` is the overlay predicate (mirrors `isInMeeting()`) that puts a PTW into the HSE Engineer's **Gas Test** tab (`MainWindow.tabGasTestPTWs`) regardless of running status.
+- **Recording is independent of run requests**: any PTW requiring this must have a reading recorded for the current shift even if its PA never requests to run that shift at all — `PTW.needsGasTestNow()` is the overlay predicate (mirrors `isInMeeting()`) that puts a PTW into the Gas Tester's **Gas Test** tab (`MainWindow.tabGasTestPTWs`) regardless of running status.
 - **Acceptance criteria — deliberately deferred**: `GasTest.isAcceptable()` is a stub that always returns `True`. Real per-gas thresholds (O2/H2S/LEL/CO/MeOH Vapor/Hydrogen — `PTW.GAS_TEST_TYPES`) are TODO; the gate plumbing itself doesn't need to change once they're defined.
 - **Enforcement**: both `POST /ptws/run-request` (PA requesting) and the accept branch of `POST /ptws/run` (IA confirming) independently 403 unless `ptw.hasAcceptableGasTestForShift()` — same pattern as the linked-IC/validity checks, re-evaluated fresh at each step. Rejecting a run request is never blocked by this.
-- **Recording**: `POST /ptws/gas-test`, `HSE_ENGINEER` role only — body is `{ptw-id, readings: [{gas, percentage}, ...], timestamp, comment}`. The server resolves and stamps `shift` itself from `timestamp` (never trusted from the client); `PtwsDb.addGasTestPTW` appends a fresh `PTW.GasTest` to the `gas_tests JSONB[]` column (one independent entry per test, same append-only pattern as `approvals` — nothing is ever patched in place, unlike `run_cycles`). UI: `DialogGasTest` collects one required percentage per `GAS_TEST_TYPES` entry plus an optional comment; `DialogPTW`'s History tab gains a third Timeline pane (`_buildGasTestTimelinePane`) once a PTW requires or already has a gas test recorded.
+- **Recording**: `POST /ptws/gas-test`, `GAS_TESTER` role only — body is `{ptw-id, readings: [{gas, percentage}, ...], timestamp, comment}`. The server resolves and stamps `shift` itself from `timestamp` (never trusted from the client); `PtwsDb.addGasTestPTW` appends a fresh `PTW.GasTest` to the `gas_tests JSONB[]` column (one independent entry per test, same append-only pattern as `approvals` — nothing is ever patched in place, unlike `run_cycles`). UI: `DialogGasTest` collects one required percentage per `GAS_TEST_TYPES` entry plus an optional comment; `DialogPTW`'s History tab gains a third Timeline pane (`_buildGasTestTimelinePane`) once a PTW requires or already has a gas test recorded.
 
 ---
 
@@ -552,7 +553,7 @@ New-user invitation email (`POST /users`) and the password-reset verification em
 | POST   | `/ptws/approvals`           | Submit an approval action                  |
 | POST   | `/ptws/run-request`         | PA requests to start work (403s if any linked IC isn't `Active`, or the PTW requires an initial gas test with none acceptable for the current shift — see [Run safety gate](#ptwic-linkage) / [Initial Gas Test](#initial-gas-test)) |
 | POST   | `/ptws/run`                 | IA accepts or rejects run request (accept 403s under the same linked-IC and gas-test gates) |
-| POST   | `/ptws/gas-test`            | HSE Engineer records an initial gas test reading (400s if the PTW doesn't require one — see [Initial Gas Test](#initial-gas-test)) |
+| POST   | `/ptws/gas-test`            | Gas Tester records an initial gas test reading (400s if the PTW doesn't require one — see [Initial Gas Test](#initial-gas-test)) |
 | POST   | `/ptws/hold-request`        | PA requests to hold work                   |
 | POST   | `/ptws/hold`                | IA accepts or rejects hold request         |
 | POST   | `/ptws/close-request`       | PA requests to close permit                |
@@ -862,7 +863,7 @@ The desktop client is structured around role-based main windows. After login, `m
 | `dialogs/DialogUser.py` | Create/edit user dialog |
 | `dialogs/DialogIsolation.py` | Create/edit isolation dialog |
 | `dialogs/DialogSelectHeldICs.py` | Dual-mode linked-IC dialog for the PTW hold flow — PA selects which linked ICs stay held (`getHeldICIds()`), or a plain review of which ICs were kept |
-| `dialogs/DialogGasTest.py` | *(added 2026-09-07)* HSE Engineer's "Record Gas Test" dialog — one required percentage reading per `PTW.GAS_TEST_TYPES` entry plus an optional comment; `getReadings()`/`getComment()` return the collected fields for `ClientRequests.recordGasTestPTW`. See [Initial Gas Test](#initial-gas-test) |
+| `dialogs/DialogGasTest.py` | *(added 2026-09-07)* Gas Tester's "Record Gas Test" dialog — one required percentage reading per `PTW.GAS_TEST_TYPES` entry plus an optional comment; `getReadings()`/`getComment()` return the collected fields for `ClientRequests.recordGasTestPTW`. See [Initial Gas Test](#initial-gas-test) |
 | `dialogs/DialogPtwAlarms.py` | Two-section, individually collapsible grouped popup for `MainWindow._checkPtwAlarms()` — 14-shift-validity-expired PTWs (View/Close/Close All) and run-cycle-shift-ended PTWs (View/Hold/Close), each row disabling its own acted-on button(s) in place on success; View opens its own `DialogPTW` with the busy overlay on this dialog rather than delegating to `MainWindow.viewPTW` |
 | `dialogs/DialogSettings.py` | App/session settings — profile fields, theme, and the close-behavior preference (below) |
 | `dialogs/DialogChangePassword.py` | *(added 2026-08-19)* Mandatory password-change prompt shown by `main.py` before the main window opens when `must_change_password` is set — no Cancel button; closing the window without accepting just leaves the login window showing |
@@ -911,7 +912,8 @@ All role-specific views are implemented as classes in `client/windows/` — one 
 - `UserMainWindow` — create PTWs, manage own permits. Has both a **Requested PTWs** tab (tracking-only — any PTW still `UNDER_REVIEW` that isn't currently this user's turn to act on) and an **Under Review** tab (actionable — this user's role+department is in the currently pending approval stage, e.g. a department rep on an `EX`-type permit). Also has Requested/Pending/Active/Sanctioned/Closed IC tabs (no Under Review — never populated for this role); the FAB on the Requested ICs tab creates a new IC
 - `CoordinatorMainWindow` — PTW approval coordination
 - `IssuingMainWindow` — run/hold/close confirmation. Also has Under Review/Pending/Active/Sanctioned/Closed IC tabs (no Requested — never populated for this role)
-- `HSEMainWindow` — risk assessments, safety approvals, and the **Gas Test** tab (records per-shift initial gas test readings — see [Initial Gas Test](#initial-gas-test))
+- `HSEMainWindow` — risk assessments, safety approvals
+- `GasTesterMainWindow` — a single **Gas Test** tab only (records per-shift initial gas test readings — see [Initial Gas Test](#initial-gas-test)); no other PTW/IC tabs, FAB permanently hidden
 - `ManagerMainWindow(loggedUser, role)` — one shared class for `PDH`/`PGM`/`SOD`/`DFGM`; `main.py` passes the role label in, it's not four separate classes
 - `IsolatorMainWindow` — Pending (+ Complete Isolation) / Active (view-only) / Closing (+ Complete De-isolation) / Sanctioned IC tabs only, no PTW tabs; FAB is permanently hidden
 

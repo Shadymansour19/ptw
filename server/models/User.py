@@ -7,12 +7,13 @@ import enum
 
 
 class UserRoles(enum.StrEnum):
-    """The 11 permission roles a user account can hold, enforced by the API layer for access control."""
+    """The 12 permission roles a user account can hold, enforced by the API layer for access control."""
 
     USER = 'User'
     COORDINATOR = 'Coordinator'
     ISSUING = 'Issuing'
     HSE_ENGINEER = 'HSE Engineer'
+    GAS_TESTER = 'Gas Tester'
     PDH = 'PDH'
     PGM = 'PGM'
     SOD = 'SOD'

@@ -682,7 +682,7 @@ class PTW:
             return PTW.shiftEnd(datetime.strptime(self.run_ia_timestamp, PTW.TIMESTAMP_FORMAT))
 
     class GasTest:
-        """One recorded initial gas test: the HSE Engineer who took it (username), when
+        """One recorded initial gas test: the Gas Tester who took it (username), when
         (timestamp), the shift-start it's credited toward (shift — resolved server-side via
         gasTestTargetShift(), never trusted from the client), the individual gas readings, and
         an optional comment. A fresh, independent entry per test — unlike RunCycle, nothing is

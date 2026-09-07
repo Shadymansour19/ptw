@@ -39,14 +39,14 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 - **P&ID / Wiring highlighting** — attach diagrams (PDF or scanned image) to an IC and every isolation item's tag is automatically located and highlighted — red for Open, green for Closed — using native PDF text search with an OCR fallback (Tesseract) for scanned pages/images with no text layer; highlights are burned permanently into the file (visible in any external viewer, not just this app), can be manually added/adjusted/deleted with live drag-and-resize, and stay in sync with the items list via a one-click Sync
 - **Color-coded permit types** — Cold Work (blue), Spark (yellow), Hot Work (red), HydroCarbon (black), Excavation (gray), Confined Space (green)
 - **Risk assessment library** — HSE team maintains a reusable generic risk assessment library; each PTW gets its own editable, deduplicated risk item table — built by adding items manually, pulling from the generic library, or importing an Excel/CSV file — that becomes its permanent risk record, carried over automatically on re-request
-- **Initial gas test gate** — for a PTW requiring an initial gas test, a dedicated HSE Engineer records per-shift O2/H2S/LEL/CO/MeOH Vapor/Hydrogen readings; a run request can't be submitted or accepted for a shift without an acceptable reading recorded for it
+- **Initial gas test gate** — for a PTW requiring an initial gas test, a dedicated Gas Tester role records per-shift O2/H2S/LEL/CO/MeOH Vapor/Hydrogen readings; a run request can't be submitted or accepted for a shift without an acceptable reading recorded for it
 - **PDF permit reports** — Printable PDF generation for each PTW
 - **Excel export** — Export the PTW list to a formatted, color-coded `.xlsx` spreadsheet
 - **Real-time notifications** — Server-Sent Events (SSE) push PTW changes to all connected clients instantly; no polling required. Closing the window prompts to keep running in the system tray instead of quitting, so notifications keep arriving in the background — the choice can be remembered (skipping the prompt on later closes) and changed anytime in Settings; reopen from the tray icon straight back into the same session, no re-login needed
 - **Archived permits** — Closed PTWs can be archived manually, or automatically 7 days after closing via a server-side background sweep; archived data is fetched on-demand only to reduce server overhead
 - **File attachments** — Per-permit document uploads (medical certificates, tool checklists, technical drawings)
 - **MIWI documents** — Per-department Maintenance & Work Instruction PDFs referenced across permits; approver roles can view across all departments, other roles are confined to their own
-- **Role-based UI** — Each of 11 roles gets a tailored interface showing only relevant actions and data
+- **Role-based UI** — Each of 12 roles gets a tailored interface showing only relevant actions and data
 - **Guest access** — Anyone can log in as a Guest (name + free-text department, no account needed) to create and track their own PTWs
 - **Invitation email** — New users get an emailed username + auto-generated password on account creation
 - **Forced password change** — every new account (including the first-boot admin) must change its auto-generated password on first login, gated client-side before the main window opens; an admin can also force this on an existing account at any time
@@ -96,7 +96,8 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 | **User** | Creates PTWs; requests run, hold, and close |
 | **Coordinator** | Reviews and approves PTWs in the coordination stage |
 | **Issuing** | Authorizes execution; accepts/rejects run, hold, close confirmations |
-| **HSE Engineer** | Safety approvals; creates and manages risk assessments; records per-shift initial gas test readings |
+| **HSE Engineer** | Safety approvals; creates and manages risk assessments |
+| **Gas Tester** | Records per-shift initial gas test readings for permits that require them |
 | **PDH** | Production/Plant Department Head approval |
 | **PGM** | Production General Manager approval |
 | **SOD** | System/Operation Director approval |
@@ -207,7 +208,7 @@ ptw/
 │   ├── windows/                 # Main window classes — one file per role, all subclass MainWindow
 │   │   ├── MainWindow.py        #   Base class: chrome, PTW/IC action handlers, SSE sync, home dashboard
 │   │   ├── UserMainWindow.py    #   Requestor (PA) role window
-│   │   └── ...                  #   GuestMainWindow, CoordinatorMainWindow, IssuingMainWindow, HSEMainWindow, ManagerMainWindow, AdminMainWindow, IsolatorMainWindow
+│   │   └── ...                  #   GuestMainWindow, CoordinatorMainWindow, IssuingMainWindow, HSEMainWindow, GasTesterMainWindow, ManagerMainWindow, AdminMainWindow, IsolatorMainWindow
 │   ├── GlobalData.py            # Client-side data cache
 │   ├── models/                  # Data model classes
 │   │   ├── PTW.py               #   Client-side data models

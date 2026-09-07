@@ -457,20 +457,20 @@ def runPTW():
 def recordGasTestPTW():
     """Record an initial gas test reading for a PTW.
 
-    POST, ``HSE_ENGINEER`` role only. Body carries ``ptw-id``, ``readings``
+    POST, ``GAS_TESTER`` role only. Body carries ``ptw-id``, ``readings``
     (a list of ``{"gas": ..., "percentage": ...}`` entries), ``timestamp``,
     and an optional ``comment``. 400s if the PTW doesn't require an initial
     gas test at all (nothing in ``controls`` for 'Initial Gas Test'). The
     shift this reading is credited toward is resolved server-side from
     ``timestamp`` (see PTW.gasTestTargetShift) — never trusted from the
     client. Broadcasts a ``gas test recorded`` SSE event to USER, ISSUING,
-    and HSE_ENGINEER roles and responds with ``{"success": True}``.
+    and GAS_TESTER roles and responds with ``{"success": True}``.
     """
     user = getVerifiedUser(request.authorization)
     if user is None:
         log.warning("POST /ptws/gas-test unauthorized (ip=%s)", request.remote_addr)
         return jsonify({"success": False, "error": "Unauthorized"}), 401
-    if user.getRole() != UserRoles.HSE_ENGINEER:
+    if user.getRole() != UserRoles.GAS_TESTER:
         log.warning("POST /ptws/gas-test: forbidden for role='%s' user='%s'", user.getRole(), user.getUsername())
         return jsonify({"success": False, "error": "Forbidden"}), 403
     payload = request.get_json(silent=True) or {}
@@ -496,7 +496,7 @@ def recordGasTestPTW():
         gasTest = PTW.GasTest(username=user.getUsername(), timestamp=ts, shift=shift, readings=readings, comment=comment)
         ptwDB.addGasTestPTW(ptwId, gasTest)
         syncPtwCache(ptwId)
-        sse.broadcast(SSEObject.PTW, ptwId, SSEAction.GAS_TEST_RECORDED, user.getUsername(), roles=[UserRoles.USER, UserRoles.ISSUING, UserRoles.HSE_ENGINEER])
+        sse.broadcast(SSEObject.PTW, ptwId, SSEAction.GAS_TEST_RECORDED, user.getUsername(), roles=[UserRoles.USER, UserRoles.ISSUING, UserRoles.GAS_TESTER])
         log.info("PTW gas test recorded: id=%s by='%s'", ptwId, user.getUsername())
         return jsonify({"success": True})
     except Exception as e:

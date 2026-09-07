@@ -1,5 +1,5 @@
-"""Main window for the HSE Engineer role - reviews PTWs from a safety perspective, manages
-risk assessments, and records per-shift initial gas test readings."""
+"""Main window for the HSE Engineer role - reviews PTWs from a safety perspective and manages
+risk assessments."""
 
 from PyQt6.QtGui import QKeySequence, QShortcut
 import qtawesome as qta
@@ -10,9 +10,8 @@ from helper.i18n import t
 
 class HSEMainWindow(MainWindow):
     """HSE Engineer role window: Under Review/Meeting/Running PTW tabs (with safety-specific
-    accept/request-edits options) plus a Risks tab for managing risk assessments and a Gas
-    Test tab for recording initial gas test readings. No IC tabs. The FAB (and Ctrl+N) opens
-    the new-risk-assessment dialog instead of a PTW."""
+    accept/request-edits options) plus a Risks tab for managing risk assessments. No IC
+    tabs. The FAB (and Ctrl+N) opens the new-risk-assessment dialog instead of a PTW."""
 
     def __init__(self, loggedUser):
         """Build the HSE window: wire PTW tab options, sidebar/topbar, and the
@@ -23,16 +22,15 @@ class HSEMainWindow(MainWindow):
         self.tabUnderReviewPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestEditsPTW, self.optionAcceptPTW])
         self.tabMeetingPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRequestEditsPTW, self.optionAcceptPTW])
         self.tabRunningPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionViewPerformingPTW, self.optionPrintPTW])
-        self.tabGasTestPTWs.addOptions([self.optionViewPTW, self.optionViewRequestorPTW, self.optionRecordGasTestPTW])
 
         self.setAvailableTabs(
             [
                 [self.btnWelcome],
-                [self.btnUnderReviewPTWs, self.btnMeetingPTWs, self.btnRunningPTWs, self.btnGasTestPTWs],
+                [self.btnUnderReviewPTWs, self.btnMeetingPTWs, self.btnRunningPTWs],
                 [self.btnRisks],
             ],
             {
-                'PTWs': [self.btnUnderReviewPTWs, self.btnMeetingPTWs, self.btnRunningPTWs, self.btnGasTestPTWs],
+                'PTWs': [self.btnUnderReviewPTWs, self.btnMeetingPTWs, self.btnRunningPTWs],
                 'Risks': [self.btnRisks],
                 'View': [self.btnWelcome, *self._footerButtons()],
             },
