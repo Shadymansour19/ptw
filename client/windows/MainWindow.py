@@ -56,6 +56,17 @@ from helper.i18n import t
 
 SETTINGS_CLOSE_BEHAVIOR_KEY = "app/closeBehavior"
 
+# IC statuses meaning a tag is already committed to isolation elsewhere - approved
+# onward and not yet Closed (see MainWindow.acceptIC/_findTagConflicts): Requested
+# and Returned are excluded since those ICs haven't even been approved yet, and
+# Closed is excluded since that tag is free again. Deisolate Confirming/Closing/
+# Sanctioned are included because the tag is still physically locked (or expected
+# to be re-isolated, for Sanctioned) until the IC actually reaches Closed.
+_TAG_CONFLICT_STATUSES = {
+    IC.Status.APPROVED, IC.Status.ISOLATE_CONFIRMING, IC.Status.PENDING, IC.Status.ACTIVE,
+    IC.Status.DEISOLATE_CONFIRMING, IC.Status.CLOSING, IC.Status.SANCTIONED,
+}
+
 
 class MainWindow(QMainWindow):
     """Base main-window class that every role-specific window subclasses.
@@ -1216,6 +1227,44 @@ class MainWindow(QMainWindow):
         finally:
             self._refreshOverlay.hideBusy()
 
+    def _findTagConflicts(self, ic: IC) -> dict:
+        """Return {tag: [otherIc, ...]} for every isolation item tag in `ic` that
+        also appears on a different IC currently in `_TAG_CONFLICT_STATUSES` -
+        i.e. already isolated, or on its way there/back, somewhere else."""
+        tags = {item.tag for item in ic.items if item.tag}
+        conflicts: dict = {}
+        for otherIc in globalData.ics.values():
+            if otherIc.id == ic.id or otherIc.getStatus() not in _TAG_CONFLICT_STATUSES:
+                continue
+            for item in otherIc.items:
+                if item.tag in tags:
+                    conflicts.setdefault(item.tag, []).append(otherIc)
+        return conflicts
+
+    def _confirmNoTagConflicts(self, ic: IC) -> bool:
+        """Warn Issuing, before accepting `ic`, if any of its tags are already
+        isolated or in progress on another IC - so a duplicate isolation isn't
+        approved when linking the existing IC to the PTW would do instead.
+        Returns True if there's nothing to warn about or the user chooses to
+        proceed anyway, False if they cancel."""
+        conflicts = self._findTagConflicts(ic)
+        if not conflicts:
+            return True
+        lines = [
+            t('Tag "{0}" — already {1} on IC #{2}').format(tag, t(otherIc.getStatus().value), otherIc.id)
+            for tag, otherIcs in conflicts.items()
+            for otherIc in otherIcs
+        ]
+        warnBox = QMessageBox(
+            QMessageBox.Icon.Warning, t('Possible Duplicate Isolation'),
+            t('IC #{0} isolates tag(s) already isolated or in progress on another IC:\n\n{1}\n\n'
+              'Consider linking the existing IC to this PTW instead of approving a duplicate '
+              'isolation. Approve anyway?').format(ic.id, "\n".join(lines)),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, self,
+        )
+        warnBox.setDefaultButton(QMessageBox.StandardButton.No)
+        return warnBox.exec() == QMessageBox.StandardButton.Yes
+
     def acceptIC(self, row: int, ic: IC):
         """Confirm and, if confirmed, record an irreversible approval for `ic` on its
         approval chain. Two roles get a richer flow instead of the plain Yes/No confirm:
@@ -1223,13 +1272,18 @@ class MainWindow(QMainWindow):
         (DialogDefinePsicTerms, whose own OK button is the confirmation - no separate
         "define terms" action exists outside the approval chain); Issuing's approval
         offers a "Mark as PSIC" checkbox, since Issuing is the only role that may flag an
-        IC as PSIC in the first place."""
+        IC as PSIC in the first place, and is gated by `_confirmNoTagConflicts` first,
+        since Issuing is also the one role in a position to link an existing IC to the
+        PTW instead of approving a duplicate isolation of the same tag."""
         if self.loggedUser.getRole() == UserRoles.COORDINATOR and ic.is_psic:
             dlg = DialogDefinePsicTerms(self, ic)
             if dlg.exec() != QDialog.DialogCode.Accepted:
                 return
             approval = IC.Approval(IC.ApprovalActions.APPROVED, self.loggedUser.getUsername(), datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
             ClientRequests.updateApprovalIC(self.loggedUser, ic.id, approval, psic_terms=dlg.getTerms(), callback=self._on_request_done_generic)
+            return
+
+        if self.loggedUser.getRole() == UserRoles.ISSUING and not self._confirmNoTagConflicts(ic):
             return
 
         box = QMessageBox(
