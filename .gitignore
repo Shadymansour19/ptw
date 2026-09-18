@@ -50,3 +50,6 @@ client/qr-summery-*.png
 # One-off dev/maintenance scripts, local only — not for the repo
 # (server/dev-scripts/ is a separate, tracked folder for scripts meant to ship with the repo)
 /dev-scripts/
+
+# pytest
+.pytest_cache/
