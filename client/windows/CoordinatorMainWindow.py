@@ -56,6 +56,7 @@ class CoordinatorMainWindow(MainWindow):
         self.tabClosingICs.addOptions([self.optionViewIC, self.optionPrintIC])
         self.tabSanctionedICs.addOptions([self.optionViewIC, self.optionPrintIC])
         self.tabClosedICs.addOptions([self.optionViewIC, self.optionPrintIC])
+        self.tabEquipmentStatus.addOptions([self.optionViewEquipmentStatus])
 
         self._icTabs = [
             self.btnCertUnderReview, self.btnCertApproved, self.btnCertIsolateConfirming, self.btnCertPending,
@@ -64,6 +65,7 @@ class CoordinatorMainWindow(MainWindow):
         self._icTabsWidgets = [
             self.tabUnderReviewICs, self.tabApprovedICs, self.tabIsolateConfirmingICs, self.tabPendingICs,
             self.tabActiveICs, self.tabDeisolateConfirmingICs, self.tabClosingICs, self.tabSanctionedICs, self.tabClosedICs,
+            self.tabEquipmentStatus,
         ]
 
         self.setAvailableTabs(
@@ -79,7 +81,7 @@ class CoordinatorMainWindow(MainWindow):
                     None,
                     self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs, self.btnArchivedPTWs,
                 ],
-                'ICs': self._icTabs,
+                'ICs': [*self._icTabs, None, self.btnEquipmentStatus],
                 'View': [self.btnWelcome, *self._footerButtons()],
             },
         )

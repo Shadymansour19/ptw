@@ -33,13 +33,14 @@ class ManagerMainWindow(MainWindow):
         # Managers are only ever involved in a PSIC's approval
         # chain (after Issuing), so Under Review is the only IC tab they need.
         self.tabUnderReviewICs.addOptions([self.optionViewIC, self.optionPrintIC, self.optionAcceptIC, self.optionRequestEditsIC])
+        self.tabEquipmentStatus.addOptions([self.optionViewEquipmentStatus])
 
         self.setAvailableTabs(
             [
                 [self.btnWelcome],
                 [self.btnUnderReviewPTWs, self.btnReturnedPTWs, self.btnApprovedPTWs],
                 [self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs],
-                [self.btnCertUnderReview],
+                [self.btnCertUnderReview, self.btnEquipmentStatus],
             ],
             {
                 'PTWs': [
@@ -47,7 +48,7 @@ class ManagerMainWindow(MainWindow):
                     None,
                     self.btnRunningPTWs, self.btnHeldPTWs, self.btnClosedPTWs,
                 ],
-                'ICs': [self.btnCertUnderReview],
+                'ICs': [self.btnCertUnderReview, None, self.btnEquipmentStatus],
                 'View': [self.btnWelcome, *self._footerButtons()],
             },
         )
@@ -61,7 +62,7 @@ class ManagerMainWindow(MainWindow):
         archived PTWs the first time that tab is opened."""
         super().stackTabChanged()
         tab = self.stack.currentWidget()
-        self.btnFAB.setVisible(tab != self.tabWelcome and tab != self.tabUnderReviewICs)
+        self.btnFAB.setVisible(tab != self.tabWelcome and tab != self.tabUnderReviewICs and tab != self.tabEquipmentStatus)
         if tab == self.tabArchivedPTWs and not globalData.archivedPTWs:
             self.refreshArchivedPTWs()
 

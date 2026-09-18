@@ -30,7 +30,9 @@ from dialogs.DialogPtwAlarms import DialogPtwAlarms
 from tables.TableUsers import TableUsers
 from tables.TableRisks import TableRisks
 from tables.TableICs import TableICs
+from tables.TableEquipmentStatus import TableEquipmentStatus
 from dialogs.DialogIC import DialogIC
+from dialogs.DialogEquipmentStatus import DialogEquipmentStatus
 from dialogs.DialogCompleteIsolation import DialogCompleteIsolation
 from dialogs.DialogDefinePsicTerms import DialogDefinePsicTerms
 from models.Isolation import IC
@@ -169,6 +171,7 @@ class MainWindow(QMainWindow):
             t('Link to IC'), self.linkICToPTW, qta.icon('mdi.link-variant'),
             visibleFor=lambda ptw: ptw.canLinkIC(),
         )
+        self.optionViewEquipmentStatus = TablePTWs.MenuOption(t('View'), self.viewEquipmentStatus, qta.icon('fa6.eye'))
 
         self.stack = QStackedWidget()
         self.stack.setAutoFillBackground(False)
@@ -200,6 +203,7 @@ class MainWindow(QMainWindow):
         self.tabClosingICs = TableICs(self.stack, self.loggedUser, t("Closing ICs"))
         self.tabSanctionedICs = TableICs(self.stack, self.loggedUser, t("Sanctioned ICs"))
         self.tabClosedICs = TableICs(self.stack, self.loggedUser, t("Closed ICs"))
+        self.tabEquipmentStatus = TableEquipmentStatus(self.stack, self.loggedUser, t("Equipment Status"))
         self.tabServerLogs = TabServerLogs(self.stack, self.loggedUser, t("Server Logs"))
         self.tabBackups = TableBackups(self.stack, self.loggedUser, t("Backups"))
 
@@ -261,6 +265,7 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.tabClosingICs)
         self.stack.addWidget(self.tabSanctionedICs)
         self.stack.addWidget(self.tabClosedICs)
+        self.stack.addWidget(self.tabEquipmentStatus)
         self.stack.addWidget(self.tabServerLogs)
         self.stack.addWidget(self.tabBackups)
 
@@ -313,6 +318,7 @@ class MainWindow(QMainWindow):
         self.btnCertClosing = QPushButton(qta.icon('mdi6.lock-open-variant-outline'), "")
         self.btnCertSanctioned = QPushButton(qta.icon('fa6s.flask'), "")
         self.btnCertClosed = QPushButton(qta.icon('fa6s.lock-open'), "")
+        self.btnEquipmentStatus = QPushButton(qta.icon('fa6s.tags'), "")
         self.btnLanguage = QPushButton(qta.icon('fa5s.language'), "")
         self.btnTheme = QPushButton(qta.icon('fa6s.circle-half-stroke'), "")
         self.btnServerLogs = QPushButton(qta.icon('fa6s.file-lines'), "")
@@ -347,6 +353,7 @@ class MainWindow(QMainWindow):
         self.btnCertClosing.setToolTip(t("Closing ICs"))
         self.btnCertSanctioned.setToolTip(t("Sanctioned ICs"))
         self.btnCertClosed.setToolTip(t("Closed ICs"))
+        self.btnEquipmentStatus.setToolTip(t("Equipment Status"))
         # Intentionally NOT run through t(): this label always names the *target* language in
         # that language's own script (Latin "English" / Arabic "حول إلى العربية"), regardless
         # of which language is currently active - wrapping it would translate it into the
@@ -383,6 +390,7 @@ class MainWindow(QMainWindow):
             self.btnCertClosing:                self.tabClosingICs,
             self.btnCertSanctioned:             self.tabSanctionedICs,
             self.btnCertClosed:                 self.tabClosedICs,
+            self.btnEquipmentStatus:            self.tabEquipmentStatus,
             self.btnServerLogs:                 self.tabServerLogs,
             self.btnBackups:                    self.tabBackups,
             self.btnRefresh:                    None,
@@ -1186,6 +1194,13 @@ class MainWindow(QMainWindow):
     def viewIC(self, row: int, ic: IC):
         """Open a read-only `DialogIC` for `ic`."""
         dlg = DialogIC(self, self.loggedUser, ic, False, True, t("IC — {0}").format(ic.type))
+        dlg.exec()
+
+    def viewEquipmentStatus(self, row: int, rowData: 'TableEquipmentStatus._EquipmentRow'):
+        """Open the aggregated equipment/tag detail dialog for `rowData`, wiring
+        this window's own viewIC/printIC as the View/Print action for each of
+        its linked ICs."""
+        dlg = DialogEquipmentStatus(self, rowData, self.viewIC, self.printIC)
         dlg.exec()
 
     def printIC(self, row: int, ic: IC):
@@ -2047,6 +2062,7 @@ class MainWindow(QMainWindow):
                     tab.addICToGUI(ic)
             else:
                 globalData.removeIC(icId)   # no longer visible to us / gone
+            self.tabEquipmentStatus.refresh(globalData.ics)
 
         ClientRequests.getICById(self.loggedUser, icId, callback=on_done)
 
@@ -2118,6 +2134,8 @@ class MainWindow(QMainWindow):
 
         for tab in tabs:
             tab.sort()
+
+        self.tabEquipmentStatus.refresh(globalData.ics)
 
     def refreshArchivedPTWs(self):
         """Fetch archived PTWs from the server (on demand) and repopulate the

@@ -43,6 +43,7 @@ class IssuingMainWindow(MainWindow):
         self.tabClosingICs.addOptions([self.optionViewIC, self.optionPrintIC])
         self.tabSanctionedICs.addOptions([self.optionViewIC, self.optionPrintIC])
         self.tabClosedICs.addOptions([self.optionViewIC, self.optionPrintIC])
+        self.tabEquipmentStatus.addOptions([self.optionViewEquipmentStatus])
 
         # no Requested button here: a single-stage (non-PSIC) ic never routes to
         # tabCertRequested for the Issuing viewer once they've acted — it goes straight to
@@ -55,6 +56,7 @@ class IssuingMainWindow(MainWindow):
         self._icTabsWidgets = [
             self.tabUnderReviewICs, self.tabApprovedICs, self.tabIsolateConfirmingICs, self.tabPendingICs,
             self.tabActiveICs, self.tabDeisolateConfirmingICs, self.tabClosingICs, self.tabSanctionedICs, self.tabClosedICs,
+            self.tabEquipmentStatus,
         ]
 
         self.setAvailableTabs(
@@ -71,7 +73,7 @@ class IssuingMainWindow(MainWindow):
                     self.btnWaitingRunConfirmationPTWs, self.btnRunningPTWs, self.btnWaitingHldConfirmationPTWs,
                     self.btnHeldPTWs, self.btnWaitingClsConfirmationPTWs, self.btnClosedPTWs, self.btnArchivedPTWs,
                 ],
-                'ICs': self._icTabs,
+                'ICs': [*self._icTabs, None, self.btnEquipmentStatus],
                 'View': [self.btnWelcome, *self._footerButtons()],
             },
         )
