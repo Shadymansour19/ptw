@@ -1074,7 +1074,7 @@ class PTW:
         docs = ['toolbox', 'audit']
         if 'Initial Gas Test' in self.controls:
             docs.append('gas-test')
-        if self.type in [PTW.Types.HT, PTW.Types.SP]:
+        if self.type == PTW.Types.HT:
             docs.append('swc-hot-work')
         if self.type == PTW.Types.CS:
             docs.append('swc-confined-space')
