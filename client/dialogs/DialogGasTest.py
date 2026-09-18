@@ -1,9 +1,11 @@
-"""HSE Engineer's "Record Gas Test" dialog.
+"""Gas Tester's "Record Gas Test" dialog.
 
-Shown when an HSE Engineer records an initial gas test reading for a PTW (see
-MainWindow.recordGasTestPTW) - one row per PTW.GAS_TEST_TYPES entry, each a required
-percentage reading, plus an optional comment. The caller submits the collected readings
-via ClientRequests.recordGasTestPTW; username/timestamp are stamped server-side.
+Shown when a Gas Tester records an initial gas test reading for one or more PTWs at once
+(see MainWindow.recordGasTestPTW) - one row per PTW.GAS_TEST_TYPES entry, each a required
+percentage reading, plus an optional comment. Entered once regardless of how many PTWs are
+selected - one reading recorded once is credited to every one of them, since they were
+tested together. The caller submits the collected readings for the whole selection via
+ClientRequests.recordGasTestPTW; username/timestamp are stamped server-side.
 """
 
 from PyQt6.QtCore import Qt
@@ -16,19 +18,26 @@ from helper.i18n import t
 
 class DialogGasTest(QDialog):
     """Plain (non-tabbed) dialog collecting one gas-percentage reading per
-    PTW.GAS_TEST_TYPES entry, plus an optional comment. accept() requires every
-    reading to actually be entered (not left at its default) before closing."""
+    PTW.GAS_TEST_TYPES entry, plus an optional comment, for a whole selection of PTWs at
+    once. accept() requires every reading to actually be entered (not left at its
+    default) before closing."""
 
-    def __init__(self, parent, ptw: PTW):
+    def __init__(self, parent, ptws: list[PTW]):
         """Build the form: one required percentage spinbox per gas type, and an
-        optional comment field."""
+        optional comment field, labeled with every selected PTW's id."""
         super().__init__(parent)
-        self.ptw = ptw
-        self.setWindowTitle(t("Record Gas Test") + f" — PTW #{ptw.id}")
+        self.ptws = ptws
+        ids = ', '.join(f"#{ptw.id}" for ptw in ptws)
+        self.setWindowTitle(t("Record Gas Test") + f" — PTW {ids}")
         self.setModal(True)
 
         lyt = QVBoxLayout(self)
-        lyt.addWidget(QLabel(t("Record the initial gas test readings for PTW#{0}.").format(ptw.id)))
+        if len(ptws) == 1:
+            lbl = QLabel(t("Record the initial gas test readings for PTW#{0}.").format(ptws[0].id))
+        else:
+            lbl = QLabel(t("Record the same initial gas test readings for PTWs {0}.").format(ids))
+        lbl.setWordWrap(True)
+        lyt.addWidget(lbl)
 
         form = QFormLayout()
         form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)

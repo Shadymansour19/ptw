@@ -125,7 +125,7 @@ class MainWindow(QMainWindow):
         self.optionAcceptPTW = TablePTWs.MenuOption(t('Accept'), self.acceptPTW, qta.icon('fa6s.check'))
         self.optionExportPTW = TablePTWs.MenuOption(t('Export'), self.exportPTWs, qta.icon('fa6s.file-excel'), allAtOnce=True)
         self.optionPrintPTW = TablePTWs.MenuOption(t('Print'), self.printPTW, qta.icon('fa6s.print'))
-        self.optionRecordGasTestPTW = TablePTWs.MenuOption(t('Record Gas Test'), self.recordGasTestPTW, qta.icon('fa6s.gas-pump'))
+        self.optionRecordGasTestPTW = TablePTWs.MenuOption(t('Record Gas Test'), self.recordGasTestPTW, qta.icon('fa6s.gas-pump'), allAtOnce=True)
         self.viewHeldICsOption = TablePTWs.MenuOption(t('View Held ICs'), self.viewHeldICs, qta.icon('fa6s.unlock-keyhole'))
         self.optionViewRequestorPTW = TablePTWs.MenuOption(t('View Requestor'), self.viewRequestorPTW, qta.icon('fa6s.user'))
         self.optionViewPerformingPTW = TablePTWs.MenuOption(t('View PA'), self.viewPerformingPTW, qta.icon('mdi6.account-hard-hat'))
@@ -1080,15 +1080,19 @@ class MainWindow(QMainWindow):
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         ClientRequests.runResponsePTW(self.loggedUser, ptw.id, ia, ts, False, comment, callback=self._on_request_done_generic)
 
-    def recordGasTestPTW(self, row: int, ptw: PTW):
-        """Open DialogGasTest so the HSE Engineer can record initial gas test readings
-        (username/timestamp are stamped server-side) for `ptw`'s current shift."""
-        dlg = DialogGasTest(self, ptw)
+    def recordGasTestPTW(self, rows: list, ptws: list[PTW]):
+        """Open DialogGasTest once for every selected PTW and, on confirm, submit the
+        single set of readings entered there for all of them in one bulk request
+        (username/timestamp are stamped server-side) — so recording one reading for a
+        batch of PTWs tested together doesn't mean re-entering the same values per PTW."""
+        if not ptws:
+            return
+        dlg = DialogGasTest(self, ptws)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
 
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        ClientRequests.recordGasTestPTW(self.loggedUser, ptw.id, dlg.getReadings(), ts, dlg.getComment(), callback=self._on_request_done_generic)
+        ClientRequests.recordGasTestPTW(self.loggedUser, [ptw.id for ptw in ptws], dlg.getReadings(), ts, dlg.getComment(), callback=self._on_request_done_generic)
 
     def requestToClsPTW(self, row: int, ptw: PTW, callback=None):
         """Prompt for confirmation and an optional comment, then send a close request

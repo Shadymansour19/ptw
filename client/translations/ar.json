@@ -408,6 +408,7 @@
     "Gas Test Timeline": "سجل اختبار الغاز",
     "There's no gas test history at the moment": "لا يوجد سجل لاختبار الغاز في الوقت الحالي",
     "Record the initial gas test readings for PTW#{0}.": "سجّل قراءات اختبار الغاز الأولي لتصريح العمل رقم {0}.",
+    "Record the same initial gas test readings for PTWs {0}.": "سجّل نفس قراءات اختبار الغاز الأولي لتصاريح العمل {0}.",
     "Comment (optional):": "تعليق (اختياري):",
     "Please enter a reading for every gas.": "يرجى إدخال قراءة لكل غاز.",
     "PDH": "PDH",

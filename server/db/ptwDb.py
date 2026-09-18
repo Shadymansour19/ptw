@@ -116,14 +116,18 @@ class PtwsDb:
                 )
             conn.commit()
 
-    def addGasTestPTW(self, ptwId: str, gasTest: PTW.GasTest):
-        """Append one GasTest record to a PTW's `gas_tests` JSONB[] column (`array_append`)
-        — a fresh, independent entry each time, never patched in place (unlike run_cycles)."""
+    def addGasTestPTWs(self, ptwIds: list[str], gasTest: PTW.GasTest):
+        """Append the same GasTest record to every given PTW's `gas_tests` JSONB[] column
+        in a single `UPDATE ... WHERE id IN (...)` (`array_append`) — a fresh, independent
+        entry each time, never patched in place (unlike run_cycles). One reading recorded
+        once is credited to every selected PTW at once (see server/routes/ptws.py:
+        recordGasTestPTW)."""
         with CommonDB.get_conn() as conn:
+            placeholders = ', '.join(['%s'] * len(ptwIds))
             with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 cursor.execute(
-                    'UPDATE ptws SET gas_tests = array_append(gas_tests, %s::jsonb) WHERE id = %s',
-                    (json.dumps(gasTest.__dict__), ptwId)
+                    f'UPDATE ptws SET gas_tests = array_append(gas_tests, %s::jsonb) WHERE id IN ({placeholders})',
+                    (json.dumps(gasTest.__dict__), *ptwIds)
                 )
             conn.commit()
 

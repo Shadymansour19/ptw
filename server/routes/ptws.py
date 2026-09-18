@@ -455,16 +455,19 @@ def runPTW():
 
 @ptwsBp.route("/ptws/gas-test", methods=["POST"])
 def recordGasTestPTW():
-    """Record an initial gas test reading for a PTW.
+    """Record the same initial gas test reading for one or more PTWs at once.
 
-    POST, ``GAS_TESTER`` role only. Body carries ``ptw-id``, ``readings``
+    POST, ``GAS_TESTER`` role only. Body carries ``ptw-ids`` (a list — one
+    reading recorded once is credited to every id in it), ``readings``
     (a list of ``{"gas": ..., "percentage": ...}`` entries), ``timestamp``,
-    and an optional ``comment``. 400s if the PTW doesn't require an initial
-    gas test at all (nothing in ``controls`` for 'Initial Gas Test'). The
-    shift this reading is credited toward is resolved server-side from
-    ``timestamp`` (see PTW.gasTestTargetShift) — never trusted from the
-    client. Broadcasts a ``gas test recorded`` SSE event to USER, ISSUING,
-    and GAS_TESTER roles and responds with ``{"success": True}``.
+    and an optional ``comment``. 400s if any given PTW doesn't require an
+    initial gas test at all (nothing in ``controls`` for 'Initial Gas
+    Test'). The shift this reading is credited toward is resolved
+    server-side from ``timestamp`` (see PTW.gasTestTargetShift) — never
+    trusted from the client, and the same for every PTW since it's the one
+    reading recorded once. Broadcasts a ``gas test recorded`` SSE event per
+    id to USER, ISSUING, and GAS_TESTER roles and responds with
+    ``{"success": True}``.
     """
     user = getVerifiedUser(request.authorization)
     if user is None:
@@ -474,33 +477,34 @@ def recordGasTestPTW():
         log.warning("POST /ptws/gas-test: forbidden for role='%s' user='%s'", user.getRole(), user.getUsername())
         return jsonify({"success": False, "error": "Forbidden"}), 403
     payload = request.get_json(silent=True) or {}
-    ptwId = payload.get('ptw-id')
+    ptwIds = payload.get('ptw-ids')
     readings = payload.get('readings')
     ts = payload.get('timestamp')
     comment = payload.get('comment')
-    if ptwId is None or not readings or ts is None:
+    if not ptwIds or not readings or ts is None:
         log.warning("POST /ptws/gas-test: missing required fields (user='%s')", user.getUsername())
         return jsonify({"success": False, "error": "Missing required fields"}), 400
 
-    ptw = globalData.allPTWs.get(ptwId)
-    if ptw is None:
-        log.warning("POST /ptws/gas-test: PTW #%s not found in active PTWs", ptwId)
-        return jsonify({"success": False, "error": f"PTW# {ptwId} not found"}), 400
-
-    if not ptw.requiresInitialGasTest():
-        log.warning("POST /ptws/gas-test: forbidden — PTW #%s does not require an initial gas test", ptwId)
-        return jsonify({"success": False, "error": f"PTW #{ptwId} does not require an initial gas test"}), 400
+    for ptwId in ptwIds:
+        ptw = globalData.allPTWs.get(ptwId)
+        if ptw is None:
+            log.warning("POST /ptws/gas-test: PTW #%s not found in active PTWs", ptwId)
+            return jsonify({"success": False, "error": f"PTW# {ptwId} not found"}), 400
+        if not ptw.requiresInitialGasTest():
+            log.warning("POST /ptws/gas-test: forbidden — PTW #%s does not require an initial gas test", ptwId)
+            return jsonify({"success": False, "error": f"PTW #{ptwId} does not require an initial gas test"}), 400
 
     try:
         shift = PTW.gasTestTargetShift(datetime.strptime(ts, PTW.TIMESTAMP_FORMAT)).strftime(PTW.TIMESTAMP_FORMAT)
         gasTest = PTW.GasTest(username=user.getUsername(), timestamp=ts, shift=shift, readings=readings, comment=comment)
-        ptwDB.addGasTestPTW(ptwId, gasTest)
-        syncPtwCache(ptwId)
-        sse.broadcast(SSEObject.PTW, ptwId, SSEAction.GAS_TEST_RECORDED, user.getUsername(), roles=[UserRoles.USER, UserRoles.ISSUING, UserRoles.GAS_TESTER])
-        log.info("PTW gas test recorded: id=%s by='%s'", ptwId, user.getUsername())
+        ptwDB.addGasTestPTWs(ptwIds, gasTest)
+        for ptwId in ptwIds:
+            syncPtwCache(ptwId)
+            sse.broadcast(SSEObject.PTW, ptwId, SSEAction.GAS_TEST_RECORDED, user.getUsername(), roles=[UserRoles.USER, UserRoles.ISSUING, UserRoles.GAS_TESTER])
+        log.info("PTW gas test recorded: ids=%s by='%s'", ptwIds, user.getUsername())
         return jsonify({"success": True})
     except Exception as e:
-        log.error("POST /ptws/gas-test failed for PTW #%s: %s", ptwId, e, exc_info=True)
+        log.error("POST /ptws/gas-test failed for PTWs #%s: %s", ptwIds, e, exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 400
 
 
