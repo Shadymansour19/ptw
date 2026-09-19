@@ -9,14 +9,24 @@ tests/
   common/ptw_test_db.py   throwaway-database bootstrap + the fixed test users (server context)
   common/live_server.py   test-only server process the client contract tests spawn
   server/                 rootdir for the server half   ->  pytest tests/server
-    unit/                 pure domain logic, no database
-    api/                  Flask test client against a throwaway PostgreSQL database
-                          (auth, permissions, PTW lifecycle, IC lifecycle + auto de-isolation, mail, SSE)
+    unit/                 pure domain logic, no database (approval chain, run cycle, gas test,
+                          validation, IC status, model round-trips, small model pieces)
+    api/                  Flask test client against a throwaway PostgreSQL database (auth,
+                          permission matrix, PTW lifecycle, IC lifecycle + auto de-isolation,
+                          risk assessments, user accounts, password reset, attachments/MIWI,
+                          admin logs + backups (real pg_dump), mail, SSE)
   client/                 rootdir for the client half   ->  pytest tests/client
-    unit/                 client/server model parity, i18n, spreadsheet import
-    gui/                  role windows, tab routing, DialogPTW (headless Qt)
-    reports/              PDF and Excel generation, read back with pypdf / openpyxl
-    contract/             the real client request layer + SSE listener against a live test server
+    unit/                 client/server model parity, i18n, spreadsheet import, Arabic text
+                          shaping, the async request worker, OCR bundle resolution
+    gui/                  role windows + per-tab menu options, tab routing, every dialog
+                          (PTW/IC/gas test/users/settings/alarms/...), MainWindow's action
+                          handlers (run/hold/close/gas-test/approve/IC lifecycle/linking),
+                          alarms, SSE patching, login window + role routing, tables, widgets
+                          - all headless Qt
+    reports/              PDF and Excel generation (permit, IC, MOS, risk assessment, QR
+                          codes), read back with pypdf / openpyxl
+    contract/             the real client request layer + SSE listener + cache refresh
+                          against a live test server
   run_all.sh              runs both halves
 ```
 
@@ -27,8 +37,10 @@ tests/run_all.sh                      # everything
 pytest tests/server                   # server only (unit + api)
 pytest tests/server/unit              # no database needed
 QT_QPA_PLATFORM=offscreen pytest tests/client
-pytest tests/client -m gui            # only widget tests
+pytest tests/client -m gui            # only headless-Qt tests
 ```
+
+Coverage (`--cov=server` / `--cov=client`): server 85%, client 79%.
 
 Running `pytest` from the repo root fails on purpose with a message explaining the split.
 
@@ -79,9 +91,37 @@ These flip to a hard failure the moment the bug is fixed, so the marker gets rem
   `ClientRequests.returnPTW` posts to `/ptws/return`, a route the server does not have.
   Nothing in the GUI calls it (returns go through `updateApprovalPTW`); delete it or add
   the route.
+- `tests/server/api/test_risks.py::TestGenericLibrary::test_hse_creates_updates_deletes`
+  `RisksDb.updateRiskAssessmentFromDict` deletes old rows with
+  `WHERE title = %s AND ptw_id = %s`; for a library assessment `ptw_id` is `NULL`, and
+  `= NULL` never matches in SQL, so nothing is deleted and every edit *appends* its items
+  instead of replacing them - a library assessment grows every time it's saved. Needs
+  `ptw_id IS NOT DISTINCT FROM %s` (or a separate `IS NULL` branch).
+- `tests/client/gui/test_tables.py::TestTableAttachments::test_default_attachment_lists_are_independent_between_instances`
+  `TableAttachments.__init__`'s `attachments: list[Attachment] = []` parameter is a shared
+  mutable default, so attachments staged in one instance built without an explicit
+  `attachments=` argument leak into every later instance built the same way.
+- `tests/client/reports/test_more_reports.py::TestQrHelpers::test_oversized_payload_degrades_error_correction_then_truncates`
+  `ReportGenerator._qrWithLogoFromRows` (`client/reports/ReportGenerator.py:100`) only
+  catches `qrcode.exceptions.DataOverflowError` in its three-tier fallback, but the
+  installed qrcode 8.2 raises a plain `ValueError` from `QRCode.best_fit()` first - so an
+  oversized payload (e.g. a very long Arabic description) crashes the report instead of
+  degrading the QR code as documented.
+
+## Also found, not xfail-tracked (pre-existing, not exercised by a specific test)
+
+- `ReportGenerator._makeQrWithLogo` / `_makeQrWithLogoIC` write the QR code PNG with
+  `tempfile.NamedTemporaryFile(delete=False, ...)` and never remove it after embedding it
+  in the PDF - every report generated, in production too, leaks one PNG into the OS temp
+  directory.
 
 ## Not covered here (and why)
 
 - Windows-only paths (keyring, `.ps1` scripts, Nuitka/PyInstaller builds): need a Windows runner.
 - Real SMTP delivery, the nginx/TLS layer, SSE reconnect after a server restart: deployment/staging checks.
+- `WidgetPidWiring`'s own upload/OCR/highlight-burn pipeline (only `PidWiringHighlighter`'s
+  pure geometry/colour logic is covered): needs real PDFs/images and a display.
+- A handful of MainWindow view/print delegating methods (`viewPTW`, `printPTW`,
+  `exportPTWs`, ...) that open `DialogPTW`/`DialogIC`/`ReportGenerator` rather than making
+  a request: the dialogs and report generation they delegate to are covered directly.
 - Whether the UI *looks* right: tests assert structure and routing, not pixels.

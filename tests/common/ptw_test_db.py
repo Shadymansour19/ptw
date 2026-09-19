@@ -143,8 +143,11 @@ def reset_tables(core, globalData):
     import shutil
     _exec('TRUNCATE ptws, ics, risks RESTART IDENTITY')
     import paths
-    for d in (paths.PTWS_DIR, paths.ICS_DIR):
+    for d in (paths.PTWS_DIR, paths.ICS_DIR, paths.MIWI_DIR, paths.BACKUP_DIR):
         shutil.rmtree(d, ignore_errors=True)
+    # paths.py creates these at import, so the server can assume they exist - keep that true.
+    for d in (paths.PTWS_DIR, paths.ICS_DIR, paths.MIWI_DIR):
+        os.makedirs(d, exist_ok=True)
     err = globalData.refresh(core.userDB, core.ptwDB, core.icDB)
     if err:
         raise RuntimeError(err)
