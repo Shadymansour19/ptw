@@ -91,9 +91,19 @@ class AdminMainWindow(MainWindow):
         self._homeContentLayout.addLayout(row, 1)
         self.updateHomeDashboard()
 
+    # Class-level default so updateHomeDashboard() can be called before buildHomePage()
+    # has created the chart: the base MainWindow.__init__ kicks off refreshGUI(), whose
+    # server callback calls updateHomeDashboard() - normally after this __init__ has
+    # finished, but a reply that lands while the busy overlay pumps the event loop can
+    # arrive earlier. buildHomePage() repeats the update once the chart exists.
+    _homeUsersChart: DonutChart | None = None
+
     def updateHomeDashboard(self):
         """Recompute per-department user counts and refresh the home donut's segments,
-        each clickable to jump to the filtered Users tab."""
+        each clickable to jump to the filtered Users tab. No-op until buildHomePage() has
+        created the chart (see the class attribute above)."""
+        if self._homeUsersChart is None:
+            return
         counts = Counter(u.getDepartment() for u in globalData.allUsers.values() if u.getDepartment())
         self._homeUsersChart.setSegments([
             DonutSegment(t(dept), counts[dept], DEPARTMENT_COLOR_CYCLE[i % len(DEPARTMENT_COLOR_CYCLE)],

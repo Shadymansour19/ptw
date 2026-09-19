@@ -180,7 +180,8 @@ class UsersDb:
         field if present.
 
         Returns:
-            None on success, or the caught exception on failure.
+            None on success, or the error message (a str - routes/users.py puts it
+            straight into a JSON response, so it must never be the Exception itself).
         """
         try:
             userDict = dict(userDict)
@@ -190,7 +191,7 @@ class UsersDb:
                 CommonDB.addRecordFromDict(conn, 'users', userDict)
             return None
         except Exception as e:
-            return e
+            return str(e)
 
     def updateUserFromDict(self, userDict: dict):
         """Update an existing user row (matched by 'username') from a plain
@@ -198,7 +199,7 @@ class UsersDb:
         from the update) if absent/falsy.
 
         Returns:
-            None on success, or the caught exception on failure.
+            None on success, or the error message (a str, same reasoning as addUserFromDict).
         """
         try:
             userDict = dict(userDict)
@@ -210,7 +211,7 @@ class UsersDb:
                 CommonDB.updateRecordFromDict(conn, 'users', userDict, 'username')
             return None
         except Exception as e:
-            return e
+            return str(e)
 
     def addUser(self, user: User):
         """Insert a new user row from a User object, hashing its password.

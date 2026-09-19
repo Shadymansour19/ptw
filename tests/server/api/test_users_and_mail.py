@@ -55,12 +55,6 @@ def test_no_email_means_no_invitation(client, server, sent_mail):
     server.userDB.deleteUser(server.userDB.getSecuredUser('quiet'))
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "Known bug: UsersDb.addUserFromDict returns the Exception *object*, and routes/users.py "
-    "puts it straight into jsonify(), which raises 'Object of type Exception is not JSON "
-    "serializable' -> the admin gets a 400 with that message instead of the documented 200 + "
-    "DB error string. Fix by returning str(e) (or jsonify str(err)); this test then passes and "
-    "strict=True will flag the marker for removal."))
 def test_duplicate_username_is_reported_not_raised(client):
     body = {'username': 'coord', 'password': 'x', 'name': 'Dup', 'role': 'User', 'department': 'Mech', 'email': ''}
     r = client.post('/users', json=body, headers=auth('admin'))

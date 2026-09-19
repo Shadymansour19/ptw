@@ -5,6 +5,7 @@ Mixed into ``ClientRequests`` (see ``network/clientRequests.py``).
 """
 
 from network.requestConfig import SERVER_URL, VERIFY, TIMEOUT, FILE_TIMEOUT, extractError
+import os
 import requests
 import tempfile
 from network.RequestWorker import async_request
@@ -79,6 +80,10 @@ class DocumentRequests:
         Returns an error string, or None on success.
         """
         response = None
+        # Without a filename in the multipart part, `requests` sends it as a plain form field
+        # and the server answers "No file part in the request" - so fall back to the file's
+        # own basename rather than ever sending None.
+        savename = savename or os.path.basename(filePath)
         try:
             with open(filePath, 'rb') as f:
                 files = {'miwi': (savename, f, 'application/pdf')}

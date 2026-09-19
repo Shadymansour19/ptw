@@ -7,6 +7,7 @@ purpose, update the snapshot here in the same commit - that's the point of the t
 
 import pytest
 
+from GlobalData import globalData
 from models.User import UserRoles, UserDepartments
 from conftest import make_user
 
@@ -171,6 +172,21 @@ class TestRoleSpecificShape:
         assert shown >= set(known_users), shown
         assert w.tabServerLogs._statusLabel.text() == 'No log files found.'
         assert w.tabBackups.tbl.rowCount() == 0
+
+    def test_admin_window_survives_a_refresh_reply_during_construction(self, offline_window, known_users, monkeypatch):
+        """Regression: the refresh callback used to call updateHomeDashboard() before
+        buildHomePage() had created the Users chart. Deliver the reply synchronously,
+        mid-constructor, and the window must still build and populate."""
+        from windows.AdminMainWindow import AdminMainWindow
+
+        def immediate_refresh(*args, callback=None, **kwargs):
+            if callback is not None:
+                callback(None, None)
+
+        monkeypatch.setattr(globalData, 'refresh', immediate_refresh)
+        w = offline_window(AdminMainWindow, make_user('root', UserRoles.ADMIN, 'Admin'))
+        assert w._homeUsersChart is not None
+        assert w.tabAllUsers.tbl.rowCount() >= len(known_users)
 
     def test_window_titles_name_the_role(self, offline_window):
         from windows.UserMainWindow import UserMainWindow

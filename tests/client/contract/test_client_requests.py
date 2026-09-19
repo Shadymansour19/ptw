@@ -302,11 +302,9 @@ class TestRisksAndDocuments:
         assert err is None and names == []
         src = tmp_path / 'MIWI-042 Pump.pdf'
         src.write_bytes(b'%PDF-1.4 miwi')
-        # savename is effectively mandatory: without it `requests` sends the part with no
-        # filename and the server answers "No file part" (DialogPTW always passes one).
-        err = CR.uploadMIWI(u, str(src))
-        assert err and 'No file part' in err
-        assert CR.uploadMIWI(u, str(src), savename='MIWI-042 Pump.pdf') is None
+        assert CR.uploadMIWI(u, str(src)) is None                  # savename defaults to the file's basename
+        err = CR.uploadMIWI(u, str(src), savename='MIWI-042 Pump.pdf')
+        assert err                                                  # same name again is refused server-side
         err, names = CR.getAllMIWIs(u, department='Turbo')
         assert err is None and names == ['MIWI-042 Pump.pdf']
         assert CR.getAllMIWIs(users['user_mech'], department='Mech')[1] == []

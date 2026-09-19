@@ -75,11 +75,6 @@ means one copy of `PTW.py` / `Isolation.py` / `User.py` was edited without the o
 
 These flip to a hard failure the moment the bug is fixed, so the marker gets removed:
 
-- `tests/server/api/test_users_and_mail.py::test_duplicate_username_is_reported_not_raised`
-  `UsersDb.addUserFromDict` returns the Exception object; `routes/users.py` passes it to
-  `jsonify`, which fails, so the admin gets a 400 "not JSON serializable" instead of the
-  documented 200 + error string.
-
 - `tests/client/contract/test_client_requests.py::TestPtwLifecycle::test_return_ptw_endpoint`
   `ClientRequests.returnPTW` posts to `/ptws/return`, a route the server does not have.
   Nothing in the GUI calls it (returns go through `updateApprovalPTW`); delete it or add
