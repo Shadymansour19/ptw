@@ -89,15 +89,7 @@ def derived(P, data):
     }
 
 
-KNOWN_DRIFT = pytest.mark.xfail(strict=True, reason=(
-    "Known drift: client PTW.requiredDocsToPrint() adds 'swc-hot-work' only for Hot Work, the server "
-    "version adds it for Hot Work AND Spark ('hot work also covers Spark permits'). The client is the "
-    "side that actually prints, so Spark permits currently go out without the hot-work Safe Work Card. "
-    "Align client/models/PTW.py with server/models/PTW.py and this marker will flag itself for removal."))
-
-
-@pytest.mark.parametrize("name", [pytest.param(n, marks=KNOWN_DRIFT) if n.startswith('spark') else n for n in PTW_FIXTURES],
-                         ids=list(PTW_FIXTURES))
+@pytest.mark.parametrize("name", list(PTW_FIXTURES), ids=list(PTW_FIXTURES))
 def test_ptw_derived_state_matches(name):
     data = PTW_FIXTURES[name]
     assert derived(cPTW, data) == derived(sPTW, data)

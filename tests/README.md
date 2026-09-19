@@ -6,13 +6,17 @@ package and cannot be imported into one Python process:
 ```
 tests/
   common/ptw_factory.py   builders for PTW / IC / approval / run-cycle fixtures (used by both halves)
+  common/ptw_test_db.py   throwaway-database bootstrap + the fixed test users (server context)
+  common/live_server.py   test-only server process the client contract tests spawn
   server/                 rootdir for the server half   ->  pytest tests/server
     unit/                 pure domain logic, no database
     api/                  Flask test client against a throwaway PostgreSQL database
+                          (auth, permissions, PTW lifecycle, IC lifecycle + auto de-isolation, mail, SSE)
   client/                 rootdir for the client half   ->  pytest tests/client
     unit/                 client/server model parity, i18n, spreadsheet import
     gui/                  role windows, tab routing, DialogPTW (headless Qt)
     reports/              PDF and Excel generation, read back with pypdf / openpyxl
+    contract/             the real client request layer + SSE listener against a live test server
   run_all.sh              runs both halves
 ```
 
@@ -45,6 +49,16 @@ emailed.
 
 If PostgreSQL is not reachable the `api/` directory is skipped, not failed.
 
+## Client contract tests and the live server
+
+`tests/client/contract/` exercises the real `ClientRequests` functions over real HTTP. The
+`live_server` fixture spawns `tests/common/live_server.py` in a separate interpreter (the
+client process cannot import the server tree), on a port chosen when the client conftest is
+imported, so `PTW_SERVER_URL` already points there when the request modules bind it. That
+server uses the same throwaway database and user set as the API tests, disables outgoing
+mail, and adds `POST /__test__/reset`, which the `contract` fixture calls before each test.
+If PostgreSQL is unreachable the contract tests are skipped.
+
 ## Client tests
 
 `QT_QPA_PLATFORM=offscreen` is set by the client conftest, so no display is required. The
@@ -65,12 +79,14 @@ These flip to a hard failure the moment the bug is fixed, so the marker gets rem
   `UsersDb.addUserFromDict` returns the Exception object; `routes/users.py` passes it to
   `jsonify`, which fails, so the admin gets a 400 "not JSON serializable" instead of the
   documented 200 + error string.
-- `tests/client/unit/test_model_parity.py::test_ptw_derived_state_matches[spark ...]`
-  client `PTW.requiredDocsToPrint()` adds `swc-hot-work` only for Hot Work; the server also
-  adds it for Spark. The client prints, so Spark permits currently miss the hot-work card.
+
+- `tests/client/contract/test_client_requests.py::TestPtwLifecycle::test_return_ptw_endpoint`
+  `ClientRequests.returnPTW` posts to `/ptws/return`, a route the server does not have.
+  Nothing in the GUI calls it (returns go through `updateApprovalPTW`); delete it or add
+  the route.
 
 ## Not covered here (and why)
 
 - Windows-only paths (keyring, `.ps1` scripts, Nuitka/PyInstaller builds): need a Windows runner.
-- Real SMTP delivery, the nginx/TLS layer, multi-client SSE over a network: deployment/staging checks.
+- Real SMTP delivery, the nginx/TLS layer, SSE reconnect after a server restart: deployment/staging checks.
 - Whether the UI *looks* right: tests assert structure and routing, not pixels.

@@ -8,9 +8,29 @@ in-memory `globalData` the test populated.
 """
 
 import os
+import socket
+import subprocess
+import sys
+import threading
+import time
+from types import SimpleNamespace
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-os.environ.setdefault('PTW_SERVER_URL', 'http://127.0.0.1:9')   # discard port - any accidental request fails fast
+
+
+def _free_port() -> int:
+    with socket.socket() as s:
+        s.bind(('127.0.0.1', 0))
+        return s.getsockname()[1]
+
+
+# The client request modules bind SERVER_URL at import time, so the port the live test
+# server (tests/common/live_server.py) will listen on is chosen *now*, before any client
+# module is imported. Until the `live_server` fixture actually starts it, nothing listens
+# there, so an accidental request from a GUI test fails fast instead of hanging.
+LIVE_PORT = _free_port()
+LIVE_URL = f'http://127.0.0.1:{LIVE_PORT}'
+os.environ['PTW_SERVER_URL'] = LIVE_URL
 
 import pytest  # noqa: E402
 
@@ -143,3 +163,77 @@ def offline_window(qtbot, monkeypatch):
         w._trayIcon.hide()
         w.hide()
         w.deleteLater()
+
+
+# ---- live server for the contract tests -------------------------------------------------
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+LAUNCHER = os.path.join(ROOT, 'tests', 'common', 'live_server.py')
+
+
+@pytest.fixture(scope='session')
+def live_server():
+    """Spawn the real server (real DB layer, throwaway database) on LIVE_PORT for the session.
+
+    Skips the requesting tests if PostgreSQL is not reachable. The server process is a
+    separate interpreter because server/ and client/ cannot share one (both define
+    `models`).
+    """
+    import requests
+    import shutil
+    import tempfile
+
+    data_dir = tempfile.mkdtemp(prefix='ptw-test-data-')       # the server's attachments/MIWIs/logs
+    env = dict(os.environ, PTW_DATA_DIR=data_dir)
+    proc = subprocess.Popen([sys.executable, LAUNCHER, '--port', str(LIVE_PORT)], env=env,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=ROOT)
+    lines = []
+    ready = threading.Event()
+
+    def drain():
+        for line in proc.stdout:
+            lines.append(line.rstrip())
+            if line.startswith('READY'):
+                ready.set()
+            if len(lines) > 2000:
+                del lines[:1000]
+        ready.set()
+
+    threading.Thread(target=drain, daemon=True).start()
+    ready.wait(90)
+    if proc.poll() is not None or not any(l.startswith('READY') for l in lines):
+        proc.terminate()
+        tail = '\n'.join(lines[-30:])
+        if proc.returncode == 2:
+            pytest.skip(f"live test server: PostgreSQL not reachable\n{tail}")
+        pytest.fail(f"live test server failed to start (exit={proc.returncode})\n{tail}")
+
+    def reset():
+        r = requests.post(f'{LIVE_URL}/__test__/reset', timeout=30)
+        assert r.status_code == 200, r.text
+
+    def log_tail(n=40):
+        return '\n'.join(lines[-n:])
+
+    yield SimpleNamespace(url=LIVE_URL, port=LIVE_PORT, reset=reset, log_tail=log_tail, proc=proc)
+    proc.terminate()
+    try:
+        proc.wait(10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+    shutil.rmtree(data_dir, ignore_errors=True)
+
+
+@pytest.fixture
+def contract(live_server):
+    """Per-test handle for contract tests: fresh tables, plus `login(username)` through the
+    real client login request."""
+    from network.clientRequests import ClientRequests
+    live_server.reset()
+
+    def login(username, password='pw'):
+        err, user = ClientRequests.login(username, password)
+        assert err is None, err
+        return user
+
+    return SimpleNamespace(login=login, url=live_server.url, log_tail=live_server.log_tail, reset=live_server.reset)

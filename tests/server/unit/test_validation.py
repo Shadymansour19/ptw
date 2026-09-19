@@ -92,9 +92,10 @@ class TestRequiredDocsToPrint:
     def test_baseline(self):
         assert make_ptw().requiredDocsToPrint() == ['toolbox', 'audit']
 
-    def test_hot_and_spark_share_the_hot_work_card(self):
+    def test_hot_work_card_is_for_hot_work_only(self):
+        # Decided 2026-09-19 (commit 49058f6): Spark permits do NOT carry the hot-work card.
         assert 'swc-hot-work' in make_ptw(PTW.Types.HT).requiredDocsToPrint()
-        assert 'swc-hot-work' in make_ptw(PTW.Types.SP).requiredDocsToPrint()
+        assert 'swc-hot-work' not in make_ptw(PTW.Types.SP).requiredDocsToPrint()
         assert 'swc-hot-work' not in make_ptw(PTW.Types.CW).requiredDocsToPrint()
 
     def test_gas_test_form_follows_the_control(self):
