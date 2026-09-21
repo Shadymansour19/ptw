@@ -538,6 +538,13 @@ class PTW:
     INITIAL_GAS_TEST_WINDOW_HOURS = 1
     GAS_TEST_TYPES = ['O2', 'H2S', 'LEL / Combustible Gas', 'CO', 'MeOH Vapor', 'Hydrogen']
 
+    # Every `ptws` column that's a list — all nullable array columns in the DB schema
+    # (see server/dev-scripts/init_db.py), so a NULL row value must be treated as an
+    # empty list rather than left as None (which used to crash __init__/setAll's list
+    # comprehensions over the object-typed ones: approvals/isolations/run_cycles/gas_tests).
+    _LIST_FIELDS = ('run_cycles', 'attachs', 'tools', 'isolations', 'hazards', 'controls',
+                    'risks', 'linked_ics', 'approvals', 'gas_tests')
+
     @staticmethod
     def shiftStart(dt: datetime) -> datetime:
         """Start (07:00 or 19:00) of the 12-hour shift containing dt."""
@@ -771,21 +778,21 @@ class PTW:
         self.description : str = data.get('description')
         self.fast_track : bool = data.get('fast_track', False)
         self.requestor : str = data.get('requestor')
-        self.run_cycles : list[PTW.RunCycle] = [PTW.RunCycle().setAll(cycle) for cycle in data.get('run_cycles', [])]
+        self.run_cycles : list[PTW.RunCycle] = [PTW.RunCycle().setAll(cycle) for cycle in (data.get('run_cycles') or [])]
         self.miwi : str = data.get('miwi')
         self.mos : str = data.get('mos')
         # Not a `ptws` column — the ptw-{id}-attachments/ folder is the only source of
         # truth for what's actually attached. This only ever holds the client's staged,
         # not-yet-uploaded filenames for validate()'s required-attachment check.
-        self.attachs : list[str] = data.get('attachs', [])
-        self.tools : list[str] = data.get('tools', [])
-        self.isolations : list[Isolation] = [Isolation().setAll(iso) for iso in data.get('isolations', [])]
-        self.hazards : list[str] = data.get('hazards', [])
-        self.controls : list[str] = data.get('controls', [])
-        self.risks : list[str] = data.get('risks', [])
-        self.linked_ics : list[str] = data.get('linked_ics', [])
-        self.approvals : list[PTW.Approval] = [PTW.Approval().setAll(approval) for approval in data.get('approvals', [])]
-        self.gas_tests : list[PTW.GasTest] = [PTW.GasTest().setAll(gasTest) for gasTest in data.get('gas_tests', [])]
+        self.attachs : list[str] = data.get('attachs') or []
+        self.tools : list[str] = data.get('tools') or []
+        self.isolations : list[Isolation] = [Isolation().setAll(iso) for iso in (data.get('isolations') or [])]
+        self.hazards : list[str] = data.get('hazards') or []
+        self.controls : list[str] = data.get('controls') or []
+        self.risks : list[str] = data.get('risks') or []
+        self.linked_ics : list[str] = data.get('linked_ics') or []
+        self.approvals : list[PTW.Approval] = [PTW.Approval().setAll(approval) for approval in (data.get('approvals') or [])]
+        self.gas_tests : list[PTW.GasTest] = [PTW.GasTest().setAll(gasTest) for gasTest in (data.get('gas_tests') or [])]
         # Not a `ptws` column either — __updateStatus() below recomputes this from
         # `approvals` every time, so persisting it would just be a stale duplicate.
         self.approval_status : PTW.ApprovalStatus = data.get('approval_status') or PTW.ApprovalStatus.UNDER_REVIEW
@@ -804,6 +811,12 @@ class PTW:
         __updateStatus(). Returns self for chaining."""
         if namespace:
             self.__dict__.update(vars(namespace))
+            # DB array columns are nullable with no default (see init_db.py) — a NULL
+            # row value lands here as None, so normalize before rebuilding the
+            # object-typed lists below (a None here used to raise TypeError).
+            for listField in PTW._LIST_FIELDS:
+                if getattr(self, listField, None) is None:
+                    setattr(self, listField, [])
             self.approvals = [PTW.Approval().setAll(approval.__dict__) for approval in self.approvals]
             self.isolations = [Isolation().setAll(iso.__dict__) for iso in self.isolations]
             self.run_cycles = [PTW.RunCycle().setAll(cycle.__dict__) for cycle in self.run_cycles]
@@ -812,13 +825,15 @@ class PTW:
             if hasattr(self, k):
                 try:
                     if k == 'approvals':
-                        self.approvals = [PTW.Approval().setAll(approval) for approval in v]
+                        self.approvals = [PTW.Approval().setAll(approval) for approval in (v or [])]
                     elif k == 'isolations':
-                        self.isolations = [Isolation().setAll(iso) for iso in v]
+                        self.isolations = [Isolation().setAll(iso) for iso in (v or [])]
                     elif k == 'run_cycles':
-                        self.run_cycles = [PTW.RunCycle().setAll(cycle) for cycle in v]
+                        self.run_cycles = [PTW.RunCycle().setAll(cycle) for cycle in (v or [])]
                     elif k == 'gas_tests':
-                        self.gas_tests = [PTW.GasTest().setAll(gasTest) for gasTest in v]
+                        self.gas_tests = [PTW.GasTest().setAll(gasTest) for gasTest in (v or [])]
+                    elif k in PTW._LIST_FIELDS and v is None:
+                        setattr(self, k, [])
                     else:
                         setattr(self, k, v)
                 except Exception as e:

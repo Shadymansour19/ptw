@@ -1793,7 +1793,7 @@ class PTW:
 
         def __str__(self):
             """Return a display string naming who recorded the test, its readings, and when."""
-            readingsStr = ', '.join(f"{r.get('gas')}: {r.get('percentage')}%" for r in self.readings)
+            readingsStr = ', '.join(f"{r.gas}: {r.percentage}%" for r in self.readings)
             user = globalData.allUsers.get(self.username)
             who = user.getName() if user is not None else f"[deleted user: {self.username}]"
             return f"Gas Test by {who} at {self.timestamp} ({readingsStr})"

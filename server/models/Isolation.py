@@ -56,6 +56,12 @@ class IC:
     and timestamps for each requestor/issuing/isolator step), attached P&ID/
     wiring documents, and PTW linkage lists (`linked_ptws`/`held_by`)."""
 
+    # Every `ics` column that's a list — all nullable array columns in the DB schema
+    # (see server/dev-scripts/init_db.py), so a NULL row value must be treated as an
+    # empty list rather than left as None (which would otherwise crash setAll()'s list
+    # comprehensions over the object-typed ones: approvals/items/pid_documents).
+    _LIST_FIELDS = ('approvals', 'items', 'pid_documents', 'psic_reasons', 'linked_ptws', 'held_by')
+
     class IsolationItem:
         """One isolation point on an IC: tag, description, target state
         (OPEN/CLOSE), and the lock/lock-box numbers set by the isolator."""
@@ -284,12 +290,12 @@ class IC:
         self.execution_department : str = data.get('execution_department')
         self.requestor : str = data.get('requestor')
         self.requestor_timestamp : str = data.get('requestor_timestamp') or datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-        self.approvals : list['IC.Approval'] = [IC.Approval().setAll(a) for a in data.get('approvals', [])]
+        self.approvals : list['IC.Approval'] = [IC.Approval().setAll(a) for a in (data.get('approvals') or [])]
         self.location : str = data.get('location')
         self.equipment : str = data.get('equipment')
         self.reason : str = data.get('reason')
-        self.items : list[IC.IsolationItem] = [IC.IsolationItem().setAll(iso) for iso in data.get('items', [])]
-        self.pid_documents : list[IC.PidWiringDocument] = [IC.PidWiringDocument().setAll(d) for d in data.get('pid_documents', [])]
+        self.items : list[IC.IsolationItem] = [IC.IsolationItem().setAll(iso) for iso in (data.get('items') or [])]
+        self.pid_documents : list[IC.PidWiringDocument] = [IC.PidWiringDocument().setAll(d) for d in (data.get('pid_documents') or [])]
 
         # ============== isolation usernames & timestamps =================
         # isolate_requestor/timestamp are set later, when someone requests the isolation
@@ -335,7 +341,7 @@ class IC:
         # ============== PSIC (Protective System IC) =================
         # Any IC, regardless of type, can be flagged as a PSIC - see requiredApprovers().
         self.is_psic: bool = data.get('is_psic', False)
-        self.psic_reasons: list = data.get('psic_reasons', [])
+        self.psic_reasons: list = data.get('psic_reasons') or []
         self.psic_moc_number: str = data.get('psic_moc_number')
         self.psic_system_description: str = data.get('psic_system_description')
         self.psic_isolation_method: str = data.get('psic_isolation_method')
@@ -350,6 +356,12 @@ class IC:
         classes, and return self."""
         if namespace:
             self.__dict__.update(vars(namespace))
+            # DB array columns are nullable with no default (see init_db.py) — a NULL
+            # row value lands here as None, so normalize before rebuilding the
+            # object-typed lists below (a None here used to raise TypeError).
+            for listField in IC._LIST_FIELDS:
+                if getattr(self, listField, None) is None:
+                    setattr(self, listField, [])
             self.approvals = [IC.Approval().setAll(a.__dict__) for a in self.approvals]
             self.items = [IC.IsolationItem().setAll(i.__dict__) for i in self.items]
             self.pid_documents = [IC.PidWiringDocument().setAll(d.__dict__) for d in self.pid_documents]
@@ -358,11 +370,13 @@ class IC:
                 if hasattr(self, k):
                     try:
                         if k == 'approvals':
-                            self.approvals = [IC.Approval().setAll(a) for a in v]
+                            self.approvals = [IC.Approval().setAll(a) for a in (v or [])]
                         elif k == 'items':
-                            self.items = [IC.IsolationItem().setAll(i) for i in v]
+                            self.items = [IC.IsolationItem().setAll(i) for i in (v or [])]
                         elif k == 'pid_documents':
-                            self.pid_documents = [IC.PidWiringDocument().setAll(d) for d in v]
+                            self.pid_documents = [IC.PidWiringDocument().setAll(d) for d in (v or [])]
+                        elif k in IC._LIST_FIELDS and v is None:
+                            setattr(self, k, [])
                         else:
                             setattr(self, k, v)
                     except Exception:

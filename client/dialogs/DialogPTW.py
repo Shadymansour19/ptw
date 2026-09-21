@@ -780,7 +780,7 @@ class DialogPTW(TabbedDialog):
         entries = []
         for gasTest in self.ptw.gas_tests:
             color = QColor('orange') if gasTest.isLate() else QColor('green')
-            readingsStr = ', '.join(f"{r.get('gas')}: {r.get('percentage')}%" for r in gasTest.readings)
+            readingsStr = ', '.join(f"{r.gas}: {r.percentage}%" for r in gasTest.readings)
             text = f"<b>{t('Gas Test')}</b> {t('by')} {DialogPTW.displayNameForUsername(gasTest.username)} {t('at')} {gasTest.timestamp}"
             text += f"<br>{t('For shift')}: {gasTest.shift}"
             if gasTest.isLate():
