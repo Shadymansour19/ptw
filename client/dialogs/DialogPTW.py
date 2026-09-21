@@ -774,20 +774,29 @@ class DialogPTW(TabbedDialog):
         Renders one entry per recorded GasTest — green normally, orange if
         isLate() (recorded after the shift it's credited toward had already
         started) — showing who recorded it, each gas/percentage reading on its
-        own line for readability, the shift it's credited toward, and its
-        comment if present. Only shown at all when the PTW requires an initial
-        gas test or already has one recorded (see DialogPTW.__init__)."""
+        own line in an aligned two-column table (gas names vary in length, so
+        plain text padding can't line up the values - an HTML table lets Qt's
+        rich-text engine size the label column to the longest one), the shift
+        it's credited toward, and its comment if present. Only shown at all
+        when the PTW requires an initial gas test or already has one recorded
+        (see DialogPTW.__init__)."""
         entries = []
         for gasTest in self.ptw.gas_tests:
             color = QColor('orange') if gasTest.isLate() else QColor('green')
             # readings is a plain list of {'gas': ..., 'percentage': ...} dicts, same as
             # DialogGasTest.getReadings() produces — never objects with .gas/.percentage.
-            readingsStr = '<br>'.join(f"{r.get('gas')}: {r.get('percentage')}%" for r in gasTest.readings)
+            readingsRows = ''.join(
+                f"<tr><td>{r.get('gas')}:</td><td style='padding-left:8px'>{r.get('percentage')}%</td></tr>"
+                for r in gasTest.readings
+            )
+            # No leading <br> before the table - <table> is already a block element, so a
+            # <br> right before it would leave a visibly blank line above the first row.
+            readingsStr = f"<table style='margin-top:0;' cellspacing='0'>{readingsRows}</table>"
             text = f"<b>{t('Gas Test')}</b> {t('by')} {DialogPTW.displayNameForUsername(gasTest.username)} {t('at')} {gasTest.timestamp}"
             text += f"<br>{t('For shift')}: {gasTest.shift}"
             if gasTest.isLate():
                 text += f" — <b>{t('Late')}</b>"
-            text += f"<br>{readingsStr}"
+            text += readingsStr
             if gasTest.comment:
                 text += f"<br><b>{t('Comment')}:</b> {gasTest.comment}"
             content = QLabel(text)

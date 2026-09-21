@@ -536,7 +536,7 @@ class PTW:
     # be credited toward that (upcoming) shift — see gasTestTargetShift(). Recording is never
     # blocked outside this window; it only decides which shift an early reading counts for.
     INITIAL_GAS_TEST_WINDOW_HOURS = 1
-    GAS_TEST_TYPES = ['O2', 'H2S', 'LEL / Combustible Gas', 'CO', 'MeOH Vapor', 'Hydrogen']
+    GAS_TEST_TYPES = ['O2', 'H2S', 'LEL', 'CO', 'MeOH Vapor', 'Hydrogen']
 
     # Every `ptws` column that's a list — all nullable array columns in the DB schema
     # (see server/dev-scripts/init_db.py), so a NULL row value must be treated as an

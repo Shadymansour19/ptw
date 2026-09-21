@@ -1557,7 +1557,7 @@ class PTW:
     # be credited toward that (upcoming) shift — see gasTestTargetShift(). Recording is never
     # blocked outside this window; it only decides which shift an early reading counts for.
     INITIAL_GAS_TEST_WINDOW_HOURS = 1
-    GAS_TEST_TYPES = ['O2', 'H2S', 'LEL / Combustible Gas', 'CO', 'MeOH Vapor', 'Hydrogen']
+    GAS_TEST_TYPES = ['O2', 'H2S', 'LEL', 'CO', 'MeOH Vapor', 'Hydrogen']
 
     @staticmethod
     def shiftStart(dt: datetime) -> datetime:
