@@ -231,25 +231,25 @@ class PTW:
             requirements=[
                 Requirement(type=Requirement.Types.RISK, description='Use of Welding Set'), 
             ], 
-            isRestricted=lambda ptwType: ptwType in [PTW.Types.HT], 
+            isRestricted=lambda ptwType: ptwType not in [PTW.Types.HT], 
         ), 
         'Oxy-Acetylene': CheckBox(
             title='Oxy-Acetylene', 
             requirements=[
                 Requirement(type=Requirement.Types.RISK, description='Use of Oxy-Acetylene'), 
             ], 
-            isRestricted=lambda ptwType: ptwType in [PTW.Types.HT], 
+            isRestricted=lambda ptwType: ptwType not in [PTW.Types.HT], 
         ),
         'Flare Gun': CheckBox(
             title='Flare Gun', 
             requirements=[
                 Requirement(type=Requirement.Types.RISK, description='Use of Flare Gun'), 
             ], 
-            isRestricted=lambda ptwType: ptwType in [PTW.Types.HT],
+            isRestricted=lambda ptwType: ptwType not in [PTW.Types.HT],
         ),
         'Grinder': CheckBox(
             title='Grinder', 
-            isRestricted=lambda ptwType: ptwType in [PTW.Types.HT],
+            isRestricted=lambda ptwType: ptwType not in [PTW.Types.HT],
         ),
     }
 
@@ -1503,7 +1503,7 @@ class PTW:
         CW = 'Cold'
         SP = 'Spark'
         HT = 'Hot'
-        HC = 'HydroCarbon'
+        HC = 'BOC'
         EX = 'Excavation'
         CS = 'Confined Space'
 

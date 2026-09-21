@@ -477,7 +477,7 @@ class PTW:
         CW = 'Cold'
         SP = 'Spark'
         HT = 'Hot'
-        HC = 'HydroCarbon'
+        HC = 'BOC'
         EX = 'Excavation'
         CS = 'Confined Space'
 
