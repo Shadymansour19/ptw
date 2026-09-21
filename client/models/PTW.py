@@ -1768,14 +1768,28 @@ class PTW:
             self.username = username
             self.timestamp = timestamp
             self.shift = shift
-            self.readings = list(readings) if readings else []
+            self.readings = PTW.GasTest._normalizeReadings(readings)
             self.comment = comment
+
+        @staticmethod
+        def _normalizeReadings(readings) -> list:
+            """Always return readings as plain {'gas': ..., 'percentage': ...} dicts,
+            regardless of which deserialization path produced them: constructed straight
+            from a JSON dict (already plain dicts) or rebuilt from a SimpleNamespace via
+            `PTW.setAll(namespace=...)` (dictToObj recurses into `readings`, so each entry
+            there is a SimpleNamespace, not a dict) - the one nested list-of-dicts field on
+            PTW, so the only place this ambiguity bites."""
+            if not readings:
+                return []
+            return [r if isinstance(r, dict) else vars(r) for r in readings]
 
         def setAll(self, data: dict):
             """Update fields from a dict, ignoring unknown keys and per-key errors."""
             for k,v in data.items():
                 if hasattr(self, k):
                     try:
+                        if k == 'readings':
+                            v = PTW.GasTest._normalizeReadings(v)
                         setattr(self, k, v)
                     except Exception as e:
                         pass
@@ -1793,7 +1807,9 @@ class PTW:
 
         def __str__(self):
             """Return a display string naming who recorded the test, its readings, and when."""
-            readingsStr = ', '.join(f"{r.gas}: {r.percentage}%" for r in self.readings)
+            # readings is a plain list of {'gas': ..., 'percentage': ...} dicts, same as
+            # DialogGasTest.getReadings() produces — never objects with .gas/.percentage.
+            readingsStr = ', '.join(f"{r.get('gas')}: {r.get('percentage')}%" for r in self.readings)
             user = globalData.allUsers.get(self.username)
             who = user.getName() if user is not None else f"[deleted user: {self.username}]"
             return f"Gas Test by {who} at {self.timestamp} ({readingsStr})"

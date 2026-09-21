@@ -773,14 +773,16 @@ class DialogPTW(TabbedDialog):
 
         Renders one entry per recorded GasTest — green normally, orange if
         isLate() (recorded after the shift it's credited toward had already
-        started) — showing who recorded it, each gas/percentage reading, the
-        shift it's credited toward, and its comment if present. Only shown at
-        all when the PTW requires an initial gas test or already has one
-        recorded (see DialogPTW.__init__)."""
+        started) — showing who recorded it, each gas/percentage reading on its
+        own line for readability, the shift it's credited toward, and its
+        comment if present. Only shown at all when the PTW requires an initial
+        gas test or already has one recorded (see DialogPTW.__init__)."""
         entries = []
         for gasTest in self.ptw.gas_tests:
             color = QColor('orange') if gasTest.isLate() else QColor('green')
-            readingsStr = ', '.join(f"{r.gas}: {r.percentage}%" for r in gasTest.readings)
+            # readings is a plain list of {'gas': ..., 'percentage': ...} dicts, same as
+            # DialogGasTest.getReadings() produces — never objects with .gas/.percentage.
+            readingsStr = '<br>'.join(f"{r.get('gas')}: {r.get('percentage')}%" for r in gasTest.readings)
             text = f"<b>{t('Gas Test')}</b> {t('by')} {DialogPTW.displayNameForUsername(gasTest.username)} {t('at')} {gasTest.timestamp}"
             text += f"<br>{t('For shift')}: {gasTest.shift}"
             if gasTest.isLate():
