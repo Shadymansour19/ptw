@@ -206,8 +206,36 @@ class PTW:
                 Requirement(type=Requirement.Types.RISK, description='Use of Hydraulic Tools'), 
             ], 
         ),
+        'Jet Washing': CheckBox(
+            title='Jet Washing', 
+        ),
         'Grit Blasting': CheckBox(
             title='Grit Blasting', 
+        ),
+        'Welding Set': CheckBox(
+            title='Welding Set', 
+            requirements=[
+                Requirement(type=Requirement.Types.RISK, description='Use of Welding Set'), 
+            ], 
+            isRestricted=lambda ptwType: ptwType in [PTW.Types.HT], 
+        ), 
+        'Oxy-Acetylene': CheckBox(
+            title='Oxy-Acetylene', 
+            requirements=[
+                Requirement(type=Requirement.Types.RISK, description='Use of Oxy-Acetylene'), 
+            ], 
+            isRestricted=lambda ptwType: ptwType in [PTW.Types.HT], 
+        ),
+        'Flare Gun': CheckBox(
+            title='Flare Gun', 
+            requirements=[
+                Requirement(type=Requirement.Types.RISK, description='Use of Flare Gun'), 
+            ], 
+            isRestricted=lambda ptwType: ptwType in [PTW.Types.HT],
+        ),
+        'Grinder': CheckBox(
+            title='Grinder', 
+            isRestricted=lambda ptwType: ptwType in [PTW.Types.HT],
         ),
     }
 
@@ -349,6 +377,12 @@ class PTW:
         ),
         'Portable Fire Extinguisher': CheckBox(
             title='Portable Fire Extinguisher', 
+        ),
+        'Fire Watcher': CheckBox(
+            title='Fire Watcher', 
+        ),
+        'Pressurized Habitat': CheckBox(
+            title='Pressurized Habitat', 
         ),
         'Equipment Earthing': CheckBox(
             title='Equipment Earthing', 
