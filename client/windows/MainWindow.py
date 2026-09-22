@@ -33,6 +33,7 @@ from tables.TableICs import TableICs
 from tables.TableEquipmentStatus import TableEquipmentStatus
 from dialogs.DialogIC import DialogIC
 from dialogs.DialogEquipmentStatus import DialogEquipmentStatus
+from dialogs.DialogTagConflictWarning import DialogTagConflictWarning
 from dialogs.DialogCompleteIsolation import DialogCompleteIsolation
 from dialogs.DialogDefinePsicTerms import DialogDefinePsicTerms
 from models.Isolation import IC
@@ -1244,37 +1245,16 @@ class MainWindow(QMainWindow):
     def _confirmNoTagConflicts(self, ic: IC) -> bool:
         """Warn Issuing, before accepting `ic`, if any of its tags are already
         isolated or in progress on another IC - so a duplicate isolation isn't
-        approved when linking the existing IC to the PTW would do instead. A
-        "View IC" button opens every distinct conflicting IC (via `viewIC`,
-        same read-only dialog as everywhere else) without resolving the
-        warning, re-showing it afterward so the decision is made with that
-        IC's details actually open. Returns True if there's nothing to warn
-        about or the user chooses to proceed anyway, False if they cancel."""
+        approved when linking the existing IC to the PTW would do instead.
+        Each conflicting (tag, IC) row in `DialogTagConflictWarning` has its
+        own View button (wired to `viewIC`), since more than one different IC
+        can be named at once. Returns True if there's nothing to warn about or
+        the user chooses to proceed anyway, False if they cancel."""
         conflicts = self._findTagConflicts(ic)
         if not conflicts:
             return True
-        lines = []
-        conflictingIcs = {}
-        for tag, matches in conflicts.items():
-            for otherIc in matches:
-                lines.append(t('Tag "{0}" — already {1} on IC #{2}').format(tag, t(otherIc.getStatus().value), otherIc.id))
-                conflictingIcs[otherIc.id] = otherIc
-        while True:
-            warnBox = QMessageBox(
-                QMessageBox.Icon.Warning, t('Possible Duplicate Isolation'),
-                t('IC #{0} isolates tag(s) already isolated or in progress on another IC:\n\n{1}\n\n'
-                  'Consider linking the existing IC to this PTW instead of approving a duplicate '
-                  'isolation. Approve anyway?').format(ic.id, "\n".join(lines)),
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, self,
-            )
-            warnBox.setDefaultButton(QMessageBox.StandardButton.No)
-            viewBtn = warnBox.addButton(t('View IC'), QMessageBox.ButtonRole.ActionRole)
-            warnBox.exec()
-            if warnBox.clickedButton() is viewBtn:
-                for otherIc in conflictingIcs.values():
-                    self.viewIC(0, otherIc)
-                continue
-            return warnBox.clickedButton() is warnBox.button(QMessageBox.StandardButton.Yes)
+        dlg = DialogTagConflictWarning(self, ic, conflicts, self.viewIC)
+        return dlg.exec() == QDialog.DialogCode.Accepted
 
     def acceptIC(self, row: int, ic: IC):
         """Confirm and, if confirmed, record an irreversible approval for `ic` on its
