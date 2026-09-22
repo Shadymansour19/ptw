@@ -1323,7 +1323,12 @@ class MainWindow(QMainWindow):
 
     def confirmIsolateIC(self, row: int, ic: IC):
         """Confirm and, if confirmed, confirm `ic`'s isolate request as Issuing
-        Authority, notifying the isolator to carry it out."""
+        Authority, notifying the isolator to carry it out. Gated by
+        `_confirmNoTagConflicts` first, same as `acceptIC` - a tag can just as
+        easily collide with another IC by the time physical isolation is
+        actually requested as it can at the IC's initial approval."""
+        if not self._confirmNoTagConflicts(ic):
+            return
         reply = QMessageBox.question(
             self, t('Confirm Isolate #{0}').format(ic.id), t("Confirm isolation for IC #{0}? The isolator will then be notified to carry it out.").format(ic.id),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
