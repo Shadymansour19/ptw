@@ -96,6 +96,7 @@ function renderItemsTable() {
 
   items.forEach((item, idx) => {
     const tr = document.createElement('tr');
+    tr.dataset.id = item.id;
     const evaluation = evaluateRisk(item.severityAfter, item.likelihoodAfter);
 
     const biCell = (field) => {
@@ -107,6 +108,7 @@ function renderItemsTable() {
     const evalBadge = (risk) => (risk ? `<span class="badge" style="background:${risk.bg};color:${risk.color}">${risk.en}</span>` : '');
 
     tr.innerHTML = `
+      <td class="col-drag" draggable="true" title="Drag to reorder">&#8942;&#8942;</td>
       <td class="col-no">${idx + 1}</td>
       <td>${biCell(item.hazard)}</td>
       <td>${biCell(item.effect)}</td>
@@ -262,6 +264,56 @@ function wireItemDialog() {
         renderItemsTable();
       }
     }
+  });
+}
+
+/* Show/hide Arabic text in the on-screen items table only - a preview
+   convenience, never affects PDF/Word export or any stored data. */
+function wireArabicPreviewToggle() {
+  const btn = $('#btn-toggle-arabic');
+  btn.addEventListener('click', () => {
+    const hidden = $('#items-table').classList.toggle('hide-arabic');
+    btn.textContent = hidden ? 'Show Arabic (Preview)' : 'Hide Arabic (Preview)';
+    btn.setAttribute('aria-pressed', String(hidden));
+  });
+}
+
+/* Drag-and-drop row reordering (desktop only - no touch support needed).
+   Only the ".col-drag" handle is draggable, so selecting text or clicking
+   Edit/Delete elsewhere in the row never starts a drag. */
+function wireItemsReorder() {
+  const tbody = $('#items-tbody');
+  let draggedRow = null;
+
+  tbody.addEventListener('dragstart', (e) => {
+    const handle = e.target.closest('.col-drag');
+    const row = handle && handle.closest('tr');
+    if (!row) { e.preventDefault(); return; }
+    draggedRow = row;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', row.dataset.id);
+    row.classList.add('dragging');
+  });
+
+  tbody.addEventListener('dragover', (e) => {
+    if (!draggedRow) return;
+    e.preventDefault();
+    const row = e.target.closest('tr');
+    if (!row || row === draggedRow) return;
+    const rect = row.getBoundingClientRect();
+    const before = (e.clientY - rect.top) < rect.height / 2;
+    row.parentNode.insertBefore(draggedRow, before ? row : row.nextSibling);
+  });
+
+  tbody.addEventListener('drop', (e) => e.preventDefault());
+
+  tbody.addEventListener('dragend', () => {
+    if (!draggedRow) return;
+    draggedRow.classList.remove('dragging');
+    const orderedIds = Array.from(tbody.querySelectorAll('tr')).map((tr) => tr.dataset.id);
+    draggedRow = null;
+    Store.reorderItems(orderedIds);
+    renderItemsTable();
   });
 }
 
@@ -555,6 +607,8 @@ document.addEventListener('DOMContentLoaded', () => {
   fillMetaPanel();
   wireMetaPanel();
   wireItemDialog();
+  wireItemsReorder();
+  wireArabicPreviewToggle();
   wireLibraryDialog();
   wireExcelImport();
   wireExport();

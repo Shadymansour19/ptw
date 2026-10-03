@@ -43,6 +43,7 @@
       <button id="btn-import-excel" class="btn">Import from Excel</button>
       <button id="btn-template-excel" class="btn btn-link">Download Excel Template</button>
       <button id="btn-translate-all" class="btn">Auto-translate All to Arabic</button>
+      <button id="btn-toggle-arabic" class="btn" aria-pressed="false">Hide Arabic (Preview)</button>
       <span class="toolbar-spacer"></span>
       <button id="btn-print" class="btn">Print</button>
       <div class="dropdown">
@@ -65,23 +66,31 @@
     </div>
 
     <table class="items-table" id="items-table">
+      <colgroup>
+        <col class="w-drag"><col class="w-no"><col class="w-hazard"><col class="w-effect">
+        <col class="w-sl"><col class="w-sl"><col class="w-risk">
+        <col class="w-ctrl">
+        <col class="w-sl"><col class="w-sl"><col class="w-risk">
+        <col class="w-eval"><col class="w-actions">
+      </colgroup>
       <thead>
         <tr>
+          <th class="col-drag" rowspan="2"></th>
           <th class="col-no" rowspan="2">No.</th>
-          <th rowspan="2">Hazard</th>
-          <th rowspan="2">Effect</th>
+          <th class="col-hazard" rowspan="2">Hazard</th>
+          <th class="col-effect" rowspan="2">Effect</th>
           <th colspan="3">Free Analysis</th>
-          <th rowspan="2">Control Measure</th>
+          <th class="col-ctrl" rowspan="2">Control Measure</th>
           <th colspan="3">Controlled Analysis</th>
           <th class="col-eval" rowspan="2">Evaluation</th>
           <th class="col-actions" rowspan="2">Actions</th>
         </tr>
         <tr>
-          <th class="col-sub">S</th>
-          <th class="col-sub">L</th>
+          <th class="col-sub col-sl">S</th>
+          <th class="col-sub col-sl">L</th>
           <th class="col-sub">Risk</th>
-          <th class="col-sub">S</th>
-          <th class="col-sub">L</th>
+          <th class="col-sub col-sl">S</th>
+          <th class="col-sub col-sl">L</th>
           <th class="col-sub">Risk</th>
         </tr>
       </thead>

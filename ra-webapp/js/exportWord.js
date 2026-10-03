@@ -326,7 +326,7 @@ function wordPageHeader(project) {
           width: { size: HEADER_BOX_WIDTHS_TWIPS[1], type: WidthType.DXA },
           verticalAlign: VerticalAlign.CENTER,
           borders,
-          margins: { top: 160, bottom: 160, left: 220, right: 220 },
+          margins: { top: 220, bottom: 220, left: 300, right: 300 },
           children: [
             titleLine('HSE Risk Assessment'),
             titleLine(`Task / Activity: ${project.title?.en || ''}`),

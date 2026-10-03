@@ -101,6 +101,14 @@ const Store = {
     this.save();
   },
 
+  // Reorders items to match orderedIds (from a drag-and-drop reorder in the
+  // UI). Any id not found is dropped; this should never happen in practice.
+  reorderItems(orderedIds) {
+    const byId = new Map(this.project.items.map((i) => [i.id, i]));
+    this.project.items = orderedIds.map((id) => byId.get(id)).filter(Boolean);
+    this.save();
+  },
+
   updateMeta(patch) {
     Object.assign(this.project, patch);
     this.save();
