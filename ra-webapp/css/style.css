@@ -1,0 +1,241 @@
+@font-face {
+  font-family: 'Noto Sans';
+  src: url('../vendor/fonts/NotoSans-Regular.ttf') format('truetype');
+  font-weight: 400;
+}
+@font-face {
+  font-family: 'Noto Sans';
+  src: url('../vendor/fonts/NotoSans-Bold.ttf') format('truetype');
+  font-weight: 700;
+}
+@font-face {
+  font-family: 'Noto Naskh Arabic';
+  src: url('../vendor/fonts/NotoNaskhArabic-Regular.ttf') format('truetype');
+  font-weight: 400;
+}
+@font-face {
+  font-family: 'Noto Naskh Arabic';
+  src: url('../vendor/fonts/NotoNaskhArabic-Bold.ttf') format('truetype');
+  font-weight: 700;
+}
+
+:root {
+  --ink: #1b2430;
+  --muted: #5c6b7a;
+  --border: #d9e0e7;
+  --bg: #f4f6f8;
+  --panel: #ffffff;
+  --accent: #1a5fb4;
+  --accent-ink: #ffffff;
+  --danger: #b71c1c;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: 'Noto Sans', Arial, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+}
+
+[dir="rtl"] { font-family: 'Noto Naskh Arabic', Arial, sans-serif; }
+
+.app-header {
+  padding: 20px 28px;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.app-header h1 { margin: 0; font-size: 22px; }
+.app-sub { margin: 4px 0 0; opacity: .85; font-size: 13px; }
+
+.app-main {
+  max-width: 1400px;
+  margin: 24px auto;
+  padding: 0 20px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 20px;
+}
+.panel h2 { margin: 0 0 14px; font-size: 16px; }
+
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px 20px;
+}
+.meta-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.meta-grid input {
+  font-family: inherit; font-size: 14px; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: 6px; color: var(--ink);
+}
+.date-field { position: relative; display: flex; align-items: center; gap: 6px; }
+.date-field input[type="text"] { flex: 1; background: #fff; cursor: default; }
+.date-pick-btn {
+  padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px;
+  background: #fff; cursor: pointer; font-size: 14px; line-height: 1;
+}
+.date-pick-btn:hover { background: #f0f3f6; }
+.date-picker-hidden { position: absolute; width: 0; height: 0; padding: 0; border: 0; opacity: 0; pointer-events: none; }
+
+.toolbar {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px;
+}
+.toolbar-spacer { flex: 1; }
+
+.btn {
+  font-family: inherit; font-size: 13px; padding: 9px 14px;
+  border-radius: 7px; border: 1px solid var(--border); background: #fff;
+  color: var(--ink); cursor: pointer;
+}
+.btn:hover { background: #f0f3f6; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary:hover { background: #164a8f; }
+.btn-accent { background: #2e7d32; border-color: #2e7d32; color: #fff; }
+.btn-accent:hover { background: #255f28; }
+.btn-link { background: transparent; border-color: transparent; color: var(--accent); text-decoration: underline; }
+.btn-danger-outline { background: #fff; border-color: var(--danger); color: var(--danger); }
+.btn-danger-outline:hover { background: #fdecec; }
+.danger { color: var(--danger); }
+
+.dropdown { position: relative; display: inline-block; }
+.dropdown-menu {
+  display: none; position: absolute; top: calc(100% + 4px); left: 0; z-index: 20;
+  background: #fff; border: 1px solid var(--border); border-radius: 8px; min-width: 190px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.12); overflow: hidden;
+}
+.dropdown-menu.open { display: block; }
+.dropdown-menu button {
+  display: block; width: 100%; text-align: left; padding: 10px 14px; border: none;
+  background: none; font-size: 13px; cursor: pointer; color: var(--ink);
+}
+.dropdown-menu button:hover { background: #f0f3f6; }
+
+.items-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.items-table th, .items-table td {
+  border: 1px solid var(--border); padding: 8px 10px; text-align: left; vertical-align: top;
+}
+.items-table th { background: #eef2f6; font-size: 12px; color: var(--muted); }
+.items-table .col-no { width: 34px; text-align: center; }
+.items-table .col-sub { width: 38px; text-align: center; font-weight: 600; }
+.items-table .col-eval { width: 110px; text-align: center; }
+.items-table .col-actions { width: 110px; white-space: nowrap; }
+.cell-en { margin-bottom: 2px; text-align: justify; white-space: pre-line; line-height: 1.3; }
+.cell-ar { color: var(--muted); font-family: 'Noto Naskh Arabic', Arial, sans-serif; text-align: justify; white-space: pre-line; line-height: 1.3; }
+.empty-hint { color: var(--muted); font-size: 13px; text-align: center; padding: 18px 0 2px; }
+
+.badge, .rpt-badge {
+  display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 700;
+  white-space: nowrap;
+}
+.badge-plain, .rpt-badge-plain {
+  background: #eef2f6; color: var(--ink);
+}
+
+.row-actions-btn {
+  font-size: 12px; padding: 5px 8px; border-radius: 5px; border: 1px solid var(--border);
+  background: #fff; cursor: pointer; margin-right: 4px;
+}
+.row-actions-btn:hover { background: #f0f3f6; }
+.row-actions-btn.danger { color: var(--danger); border-color: #f1b0b0; }
+
+/* ---- dialogs ---- */
+dialog.modal {
+  border: none; border-radius: 12px; padding: 22px 24px; width: min(640px, 92vw);
+  box-shadow: 0 20px 60px rgba(0,0,0,.25);
+}
+dialog.modal::backdrop { background: rgba(10, 16, 24, .45); }
+dialog.modal-wide { width: min(880px, 94vw); }
+dialog.modal h3 { margin: 0 0 14px; }
+
+.item-form-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; margin-bottom: 12px;
+}
+.item-form-grid label, .meta-grid label { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+.item-form-grid textarea, select, input[type="text"], input[type="date"] {
+  font-family: inherit; font-size: 13px; padding: 7px 9px; border: 1px solid var(--border);
+  border-radius: 6px; resize: vertical; color: var(--ink);
+}
+
+.eval-row { display: flex; gap: 16px; align-items: flex-end; margin-bottom: 14px; flex-wrap: wrap; }
+.eval-row label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.eval-badge-holder { font-size: 13px; padding-bottom: 7px; }
+
+.dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
+
+.library-list { max-height: 50vh; overflow: auto; margin: 12px 0; border: 1px solid var(--border); border-radius: 8px; }
+.library-category { padding: 8px 12px; background: #eef2f6; font-weight: 700; font-size: 13px; }
+.library-item { display: flex; gap: 10px; padding: 8px 14px; border-top: 1px solid var(--border); align-items: flex-start; font-size: 13px; }
+.library-item .item-text { display: flex; flex-direction: column; gap: 1px; }
+.library-item .item-text .ar { color: var(--muted); font-family: 'Noto Naskh Arabic', Arial, sans-serif; }
+
+.lang-choice { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; font-size: 14px; }
+
+#import-result-body ul { margin: 6px 0; padding-left: 18px; }
+
+.toast {
+  position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+  background: #1b2430; color: #fff; padding: 10px 18px; border-radius: 8px; font-size: 13px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.25); z-index: 100;
+}
+
+/* ---- offscreen PDF report rendering (not normally visible) ----
+   Visual style mirrors the PTW Qt app's own ReportLab-generated PDF:
+   black 1px grid, gray (#cccccc) header rows, Arial/Helvetica body text,
+   two logos flanking the title, and a "CONTROLLED COPY" watermark stamped
+   at the top of the table (repeats on every page, since the table itself
+   repeats its header on every page). */
+.rpt-page {
+  position: relative; background: #fff; overflow: hidden;
+  font-family: Arial, Helvetica, 'Noto Sans', sans-serif; color: #000;
+}
+.rpt-content-layer { position: relative; z-index: 1; padding: 28px 90px 64px; }
+
+.rpt-table-wrapper { position: relative; }
+.rpt-watermark {
+  /* Large diagonal stamp, bottom-left to top-right (negative rotation),
+     centered on the whole page so it reads across ~60% of it. */
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg);
+  font-family: Arial, Helvetica, sans-serif; font-weight: 700; font-size: 82px;
+  letter-spacing: 10px; color: rgba(120, 120, 120, 0.35); white-space: nowrap;
+  z-index: 5; pointer-events: none;
+}
+
+
+.rpt-doc-control { display: flex; align-items: center; width: 100%; box-sizing: border-box; background: #000; color: #fff; font-family: Arial, Helvetica, sans-serif; font-size: 19px; line-height: 1; padding: 5px 10px; }
+.rpt-doc-control .rpt-dc-left  { flex: 1; text-align: left; }
+.rpt-doc-control .rpt-dc-mid   { flex: 1; text-align: center; white-space: nowrap; }
+.rpt-doc-control .rpt-dc-right { flex: 1; text-align: right; }
+
+.rpt-header-box { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+.rpt-header-box td { border: 2px solid #000; vertical-align: middle; text-align: center; padding: 4px; }
+.rpt-logo-cell img { object-fit: contain; }
+.rpt-title-cell { padding: 6px 10px; }
+.rpt-ra-title { font-family: Arial, Helvetica, sans-serif; font-weight: 700; font-size: 32px; }
+.rpt-ra-meta { font-size: 19px; color: #000; margin-top: 8px; display: flex; align-items: baseline; }
+.rpt-ra-meta .rpt-meta-left { flex: 1; text-align: left; }
+.rpt-ra-meta .rpt-meta-mid { flex: 1; text-align: center; }
+.rpt-ra-meta .rpt-meta-right { flex: 1; text-align: right; }
+.rpt-meta-blank { display: inline-block; min-width: 90px; vertical-align: middle; margin-left: 4px; }
+
+.rpt-table { width: 100%; border-collapse: collapse; font-size: 18px; table-layout: fixed; background: #fff; }
+.rpt-table th, .rpt-table td { border: 1.2px solid #000; padding: 7px 9px; text-align: left; vertical-align: middle; word-wrap: break-word; background: #fff; }
+.rpt-table th { background: #cccccc; font-weight: 700; font-size: 20px; text-align: center; vertical-align: middle; }
+.rpt-table .col-no, .rpt-table .col-sub, .rpt-table .col-eval { text-align: center; }
+.rpt-en { margin-bottom: 2px; text-align: justify; white-space: pre-line; line-height: 1.3; }
+.rpt-ar { font-family: 'Noto Naskh Arabic', Arial, sans-serif; color: #000; text-align: justify; white-space: pre-line; line-height: 1.3; }
+
+.rpt-signatures {
+  display: flex; justify-content: space-between; gap: 60px; margin-top: 40px;
+  font-family: Arial, Helvetica, sans-serif; font-weight: 700; font-size: 20px; color: #000;
+}
+.rpt-sig-block { flex: 1; display: flex; flex-direction: column; align-items: center; }
+.rpt-sig-label { text-align: center; }
+.rpt-sig-line { width: 80%; border-bottom: 2px solid #000; }

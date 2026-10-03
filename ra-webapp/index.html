@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Specific Risk Assessment Builder</title>
+<link rel="icon" type="image/png" href="vendor/assets/rashpetco-logo.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <h1>Specific Risk Assessment Builder</h1>
+</header>
+
+<main class="app-main">
+
+  <section class="panel" id="meta-panel">
+    <h2>Risk Assessment Details</h2>
+    <div class="meta-grid">
+      <label>Title (English)<input type="text" id="meta-title-en" placeholder="e.g. Scaffold Erection at Unit 4"></label>
+      <label>العنوان (عربي)<input type="text" id="meta-title-ar" dir="rtl" placeholder="مثال: تركيب السقالات بالوحدة 4"></label>
+      <label>Location (English)<input type="text" id="meta-location-en"></label>
+      <label>الموقع (عربي)<input type="text" id="meta-location-ar" dir="rtl"></label>
+      <label>PTW #<input type="text" id="meta-ptw-number" placeholder="e.g. 1234"></label>
+      <label>Date
+        <div class="date-field">
+          <input type="text" id="meta-date" placeholder="dd/mm/yyyy" readonly>
+          <button type="button" id="btn-meta-date-pick" class="date-pick-btn" aria-label="Pick date" title="Pick date">&#128197;</button>
+          <input type="date" id="meta-date-picker" class="date-picker-hidden" tabindex="-1" aria-hidden="true">
+        </div>
+      </label>
+    </div>
+    <button type="button" class="btn btn-link" id="btn-meta-translate">Auto-translate Title/Location to Arabic</button>
+  </section>
+
+  <section class="panel" id="toolbar-panel">
+    <h2>Risk Items</h2>
+    <div class="toolbar">
+      <button id="btn-add-manual" class="btn btn-primary">+ Add Item</button>
+      <button id="btn-add-library" class="btn">Add from General RA Library</button>
+      <button id="btn-import-excel" class="btn">Import from Excel</button>
+      <button id="btn-template-excel" class="btn btn-link">Download Excel Template</button>
+      <button id="btn-translate-all" class="btn">Auto-translate All to Arabic</button>
+      <span class="toolbar-spacer"></span>
+      <button id="btn-print" class="btn">Print</button>
+      <div class="dropdown">
+        <button id="btn-export" class="btn btn-accent">Export ▾</button>
+        <div class="dropdown-menu" id="export-menu">
+          <button data-export="pdf">Export as PDF</button>
+          <button data-export="word">Export as Word</button>
+        </div>
+      </div>
+      <div class="dropdown">
+        <button id="btn-project" class="btn">Project ▾</button>
+        <div class="dropdown-menu" id="project-menu">
+          <button id="btn-save-json">Save Project (.json)</button>
+          <button id="btn-load-json">Load Project (.json)</button>
+        </div>
+      </div>
+      <button id="btn-reset" class="btn btn-danger-outline" title="Remove all risk items and clear all fields">Reset</button>
+      <input type="file" id="file-import-excel" accept=".xlsx,.xls,.csv" hidden>
+      <input type="file" id="file-load-json" accept=".json" hidden>
+    </div>
+
+    <table class="items-table" id="items-table">
+      <thead>
+        <tr>
+          <th class="col-no" rowspan="2">No.</th>
+          <th rowspan="2">Hazard</th>
+          <th rowspan="2">Effect</th>
+          <th colspan="3">Free Analysis</th>
+          <th rowspan="2">Control</th>
+          <th colspan="3">Controlled Analysis</th>
+          <th class="col-eval" rowspan="2">Evaluation</th>
+          <th class="col-actions" rowspan="2">Actions</th>
+        </tr>
+        <tr>
+          <th class="col-sub">S</th>
+          <th class="col-sub">L</th>
+          <th class="col-sub">Risk</th>
+          <th class="col-sub">S</th>
+          <th class="col-sub">L</th>
+          <th class="col-sub">Risk</th>
+        </tr>
+      </thead>
+      <tbody id="items-tbody"></tbody>
+    </table>
+    <p class="empty-hint" id="empty-hint">No risk items yet. Add one manually, pick from the library, or import an Excel file.</p>
+  </section>
+
+</main>
+
+<!-- ===== Manual add/edit item dialog ===== -->
+<dialog id="item-dialog" class="modal">
+  <form method="dialog" id="item-form">
+    <h3 id="item-dialog-title">Add Risk Item</h3>
+    <button type="button" class="btn btn-link" id="btn-item-translate">Auto-translate to Arabic</button>
+    <div class="item-form-grid">
+      <label>Hazard (EN)<textarea id="f-hazard-en" rows="2"></textarea></label>
+      <label>الخطر (عربي)<textarea id="f-hazard-ar" dir="rtl" rows="2"></textarea></label>
+
+      <label>Effect (EN)<textarea id="f-effect-en" rows="3"></textarea></label>
+      <label>الأثر (عربي)<textarea id="f-effect-ar" dir="rtl" rows="3"></textarea></label>
+    </div>
+
+    <div class="eval-row">
+      <label>Severity<select id="f-sev-before"></select></label>
+      <label>Likelihood<select id="f-lik-before"></select></label>
+      <div class="eval-badge-holder">Free Analysis: <span id="f-eval-before" class="badge badge-plain"></span></div>
+    </div>
+
+    <div class="item-form-grid">
+      <label>Control (EN)<textarea id="f-ctrl-en" rows="8"></textarea></label>
+      <label>الضوابط (عربي)<textarea id="f-ctrl-ar" dir="rtl" rows="8"></textarea></label>
+    </div>
+
+    <div class="eval-row">
+      <label>Severity<select id="f-sev-after"></select></label>
+      <label>Likelihood<select id="f-lik-after"></select></label>
+      <div class="eval-badge-holder">Controlled Analysis: <span id="f-ctrl-code-after" class="badge badge-plain"></span></div>
+      <div class="eval-badge-holder">Evaluation: <span id="f-eval-after" class="badge"></span></div>
+    </div>
+
+    <div class="dialog-actions">
+      <button type="button" class="btn" id="btn-item-cancel">Cancel</button>
+      <button type="button" class="btn btn-primary" id="btn-item-save">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ===== Library picker dialog ===== -->
+<dialog id="library-dialog" class="modal modal-wide">
+  <h3>Add from General RA Library</h3>
+  <input type="text" id="library-search" placeholder="Search hazard / effect...">
+  <div id="library-list" class="library-list"></div>
+  <div class="dialog-actions">
+    <button type="button" class="btn" id="btn-library-close">Close</button>
+    <button type="button" class="btn btn-primary" id="btn-library-add">Add Selected</button>
+  </div>
+</dialog>
+
+<!-- ===== Excel import result dialog ===== -->
+<dialog id="import-result-dialog" class="modal">
+  <h3 id="import-result-title">Import Result</h3>
+  <div id="import-result-body"></div>
+  <div class="dialog-actions">
+    <button type="button" class="btn btn-primary" id="btn-import-result-close">OK</button>
+  </div>
+</dialog>
+
+<!-- ===== Export language dialog ===== -->
+<dialog id="export-lang-dialog" class="modal">
+  <h3 id="export-lang-title">Export Language</h3>
+  <p>Which language should the exported file contain?</p>
+  <div class="lang-choice">
+    <label><input type="radio" name="export-lang" value="en"> English only</label>
+    <label><input type="radio" name="export-lang" value="ar"> Arabic only</label>
+    <label><input type="radio" name="export-lang" value="both" checked> Both (English, then Arabic below in each item)</label>
+  </div>
+  <div class="dialog-actions">
+    <button type="button" class="btn" id="btn-export-lang-cancel">Cancel</button>
+    <button type="button" class="btn btn-primary" id="btn-export-lang-go">Export</button>
+  </div>
+</dialog>
+
+<div id="toast" class="toast" hidden></div>
+
+<!-- Vendored libraries (fully offline, no CDN) -->
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="vendor/jspdf.umd.min.js"></script>
+<script src="vendor/html2canvas.min.js"></script>
+<script src="vendor/docx.umd.min.js"></script>
+<script src="vendor/FileSaver.min.js"></script>
+<script src="vendor/assets/logos.js"></script>
+
+<script src="js/translate.js"></script>
+<script src="js/matrix.js"></script>
+<script src="js/globalRisks.js"></script>
+<script src="js/store.js"></script>
+<script src="js/excelImport.js"></script>
+<script src="js/exportPdf.js"></script>
+<script src="js/exportWord.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
