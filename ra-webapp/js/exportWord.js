@@ -22,8 +22,9 @@ const WORD_PAGE_SHORT_TWIPS = 11906;
 const WORD_PAGE_LONG_TWIPS = 16838;
 const WORD_MARGIN_LR_TWIPS = Math.round(17.78 * TWIPS_PER_MM); // 0.7in, same as PDF
 const WORD_MARGIN_TOP_TWIPS = Math.round(6 * TWIPS_PER_MM);
-const WORD_MARGIN_BOTTOM_TWIPS = Math.round(8.89 * TWIPS_PER_MM); // 0.35in, same as PDF
+const WORD_MARGIN_BOTTOM_TWIPS = Math.round(16 * TWIPS_PER_MM); // same as PDF's MARGIN_BOTTOM_PX
 const WORD_HEADER_DIST_TWIPS = Math.round(6 * TWIPS_PER_MM);
+const WORD_FOOTER_DIST_TWIPS = Math.round(9 * TWIPS_PER_MM);
 const WORD_USABLE_WIDTH_TWIPS = WORD_PAGE_LONG_TWIPS - WORD_MARGIN_LR_TWIPS * 2;
 
 // No | Hazard | Effect | S | L | Risk | Control | S | L | Risk | Evaluation
@@ -48,6 +49,7 @@ const FS_META = pdfPxToHalfPt(19);
 const FS_BODY = pdfPxToHalfPt(18);
 const FS_TH = pdfPxToHalfPt(20);
 const FS_SIG = pdfPxToHalfPt(20);
+const FS_FOOTER = pdfPxToHalfPt(18);
 
 function sanitizeFilename(text) {
   return String(text || '').trim().replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').slice(0, 120);
@@ -122,7 +124,7 @@ function wordColWidth(weightIndex) {
 
 function wordHeaderLabel(key) {
   // Table column headers are always English only - same as the PDF export.
-  const H = { no: 'No.', hazard: 'Hazard', effect: 'Effect', free: 'Free Analysis', ctrl: 'Control', controlled: 'Controlled Analysis', eval: 'Evaluation', s: 'S', l: 'L', risk: 'Risk' };
+  const H = { no: 'No.', hazard: 'Hazard', effect: 'Effect', free: 'Free Analysis', ctrl: 'Control Measure', controlled: 'Controlled Analysis', eval: 'Evaluation', s: 'S', l: 'L', risk: 'Risk' };
   return H[key];
 }
 
@@ -324,7 +326,7 @@ function wordPageHeader(project) {
           width: { size: HEADER_BOX_WIDTHS_TWIPS[1], type: WidthType.DXA },
           verticalAlign: VerticalAlign.CENTER,
           borders,
-          margins: { top: 80, bottom: 80, left: 140, right: 140 },
+          margins: { top: 160, bottom: 160, left: 220, right: 220 },
           children: [
             titleLine('HSE Risk Assessment'),
             titleLine(`Task / Activity: ${project.title?.en || ''}`),
@@ -347,6 +349,41 @@ function wordPageHeader(project) {
       new Paragraph({ spacing: { before: 0, after: 0 }, children: [new TextRun({ text: '', size: 8 })] }),
     ],
   });
+}
+
+function wordPageFooter() {
+  // Repeating page Footer: "UPDATED <date>" left, dynamic page number right
+  // (LAST_UPDATED_DATE is defined once in exportPdf.js). Word controls its
+  // own pagination, so the page number must be a native field, not a static
+  // value - PageNumber.CURRENT inserts a real PAGE field.
+  const {
+    Footer, Table, TableRow, TableCell, Paragraph, TextRun,
+    WidthType, AlignmentType, BorderStyle, PageNumber,
+  } = window.docx;
+  const noBorder = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
+  const noCellBorders = { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder };
+  const half = Math.round(WORD_USABLE_WIDTH_TWIPS / 2);
+
+  const cell = (runs, alignment) => new TableCell({
+    width: { size: half, type: WidthType.DXA },
+    borders: noCellBorders,
+    margins: { left: 180, right: 180 },
+    children: [new Paragraph({ alignment, children: runs })],
+  });
+
+  const footerTable = new Table({
+    width: { size: WORD_USABLE_WIDTH_TWIPS, type: WidthType.DXA },
+    columnWidths: [half, half],
+    borders: wordNoBorders(),
+    rows: [new TableRow({
+      children: [
+        cell([new TextRun({ text: `UPDATED ${LAST_UPDATED_DATE}`, size: FS_FOOTER, font: 'Arial' })], AlignmentType.LEFT),
+        cell([new TextRun({ children: [PageNumber.CURRENT, ' | Page'], size: FS_FOOTER, font: 'Arial' })], AlignmentType.RIGHT),
+      ],
+    })],
+  });
+
+  return new Footer({ children: [footerTable] });
 }
 
 function wordSignatureRow() {
@@ -431,11 +468,12 @@ async function exportProjectToWord(project, lang) {
             left: WORD_MARGIN_LR_TWIPS,
             right: WORD_MARGIN_LR_TWIPS,
             header: WORD_HEADER_DIST_TWIPS,
-            footer: 0,
+            footer: WORD_FOOTER_DIST_TWIPS,
           },
         },
       },
       headers: { default: wordPageHeader(project) },
+      footers: { default: wordPageFooter() },
       children: [table],
     }],
   });

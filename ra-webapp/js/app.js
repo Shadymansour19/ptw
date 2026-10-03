@@ -45,7 +45,6 @@ function fillMetaPanel() {
   $('#meta-title-en').value = p.title.en || '';
   $('#meta-title-ar').value = p.title.ar || '';
   $('#meta-location-en').value = p.location.en || '';
-  $('#meta-location-ar').value = p.location.ar || '';
   $('#meta-ptw-number').value = p.ptwNumber || '';
   $('#meta-date').value = formatDDMMYYYY(p.date);
   $('#meta-date-picker').value = p.date || '';
@@ -63,7 +62,6 @@ function wireMetaPanel() {
   bind('#meta-title-en', ['title', 'en']);
   bind('#meta-title-ar', ['title', 'ar']);
   bind('#meta-location-en', ['location', 'en']);
-  bind('#meta-location-ar', ['location', 'ar']);
   bind('#meta-ptw-number', ['ptwNumber', null]);
 
   // Date keeps a hidden native <input type="date"> purely for its calendar
@@ -84,7 +82,6 @@ function wireMetaPanel() {
   $('#btn-meta-translate').addEventListener('click', (e) => {
     runTranslateButton(e.target, [
       ['#meta-title-en', '#meta-title-ar'],
-      ['#meta-location-en', '#meta-location-ar'],
     ]);
   });
 }

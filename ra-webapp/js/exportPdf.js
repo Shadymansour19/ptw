@@ -14,14 +14,15 @@ const PDF_PAGE_W_PX = 1500;
 const PDF_PAGE_H_PX = Math.round(PDF_PAGE_W_PX * (210 / 297)); // A4 landscape ratio
 const PDF_SCALE = 2;
 const MARGIN_LR_PX = Math.round(17.78 * MM_TO_PX); // 0.7in
-const MARGIN_BOTTOM_PX = Math.round(12.7 * MM_TO_PX); // 0.5in
+const MARGIN_BOTTOM_PX = Math.round(16 * MM_TO_PX); // enlarged to keep the (bigger, higher) page footer clear of the table
+const CONTENT_TOP_PADDING_PX = 28; // .rpt-content-layer's own top padding (style.css)
 const LOGO_IMG_PX = Math.round(35 * 0.7 * MM_TO_PX); // 24.5mm - logo image scaled 0.7x
 const LOGO_CELL_PX = Math.round(42 * 0.8 * MM_TO_PX); // 33.6mm - logo column scaled 0.8x
 
 // PDF-only column weights (Word has its own, independent WORD_COL_WEIGHTS in
 // exportWord.js - the two exports are tuned separately, not shared):
 // No | Hazard | Effect | S | L | Risk | Control | S | L | Risk | Evaluation
-const PDF_COL_WEIGHTS = [8, 28, 32, 4, 4, 9, 60, 4, 4, 9, 18];
+const PDF_COL_WEIGHTS = [7, 26, 30, 4, 4, 8, 70, 4, 4, 8, 16];
 const PDF_COL_WEIGHT_SUM = PDF_COL_WEIGHTS.reduce((a, b) => a + b, 0);
 
 // Document-control strip shown above the logos/title box on every export.
@@ -30,6 +31,10 @@ const DOC_CONTROL_FORM_CODE = 'FO-HSE-RM-01';
 const DOC_CONTROL_ISSUE = '3';
 const DOC_CONTROL_REV = '0';
 const DOC_CONTROL_REV_DATE = '29 June 2025';
+
+// Footer shown on every page. Update this whenever the app/library/matrix
+// content changes - it's the only thing to edit, the rest is automatic.
+const LAST_UPDATED_DATE = 'FEB 2026';
 
 function sanitizeFilename(text) {
   return String(text || '').trim().replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').slice(0, 120);
@@ -75,7 +80,7 @@ function riskEvaluationHtml(severity, likelihood, lang) {
 function headerLabels() {
   // Table column headers are always English only - user instruction, no
   // need to translate "Hazard"/"Effect"/etc.
-  const H = { no: 'No.', hazard: 'Hazard', effect: 'Effect', free: 'Free Analysis', ctrl: 'Control', controlled: 'Controlled Analysis', eval: 'Evaluation', s: 'S', l: 'L', risk: 'Risk' };
+  const H = { no: 'No.', hazard: 'Hazard', effect: 'Effect', free: 'Free Analysis', ctrl: 'Control Measure', controlled: 'Controlled Analysis', eval: 'Evaluation', s: 'S', l: 'L', risk: 'Risk' };
   return (key) => H[key];
 }
 
@@ -203,7 +208,15 @@ function makeOffscreenHost() {
   return host;
 }
 
-function pageContentHtml(project, lang, rowsHtml, includeSignatures) {
+function buildPageFooterHtml(pageNumber) {
+  return `
+    <div class="rpt-page-footer">
+      <span>UPDATED ${escapeHtml(LAST_UPDATED_DATE)}</span>
+      <span>${pageNumber} | Page</span>
+    </div>`;
+}
+
+function pageContentHtml(project, lang, rowsHtml, includeSignatures, pageNumber) {
   return `
     <div class="rpt-watermark">CONTROLLED COPY</div>
     <div class="rpt-content-layer">
@@ -216,7 +229,8 @@ function pageContentHtml(project, lang, rowsHtml, includeSignatures) {
         </table>
       </div>
       ${includeSignatures ? buildSignatureFooterHtml() : ''}
-    </div>`;
+    </div>
+    ${buildPageFooterHtml(pageNumber)}`;
 }
 
 async function renderProjectPageImages(project, lang) {
@@ -231,7 +245,7 @@ async function renderProjectPageImages(project, lang) {
     measureDiv.className = 'rpt-page';
     measureDiv.style.width = `${PDF_PAGE_W_PX}px`;
     measureDiv.style.height = 'auto';
-    measureDiv.innerHTML = pageContentHtml(project, lang, project.items.map((it, i) => renderRowHtml(it, i, lang)).join(''), true);
+    measureDiv.innerHTML = pageContentHtml(project, lang, project.items.map((it, i) => renderRowHtml(it, i, lang)).join(''), true, 1);
     host.appendChild(measureDiv);
     await waitForImages(measureDiv);
 
@@ -248,7 +262,7 @@ async function renderProjectPageImages(project, lang) {
 
     // --- paginate by accumulating row heights against the page budget ---
     // The logo/title header box AND the table header repeat on every page.
-    const usablePageH = PDF_PAGE_H_PX - MARGIN_BOTTOM_PX - headerBoxH - theadH;
+    const usablePageH = PDF_PAGE_H_PX - MARGIN_BOTTOM_PX - headerBoxH - theadH - CONTENT_TOP_PADDING_PX;
     const pages = [];
     let i = 0;
     while (i < rowHeights.length || pages.length === 0) {
@@ -292,7 +306,7 @@ async function renderProjectPageImages(project, lang) {
       pageDiv.style.height = `${PDF_PAGE_H_PX}px`;
       const rowsHtml = project.items.slice(startIdx, endIdx).map((it, i2) => renderRowHtml(it, startIdx + i2, lang)).join('');
       const includeSignatures = p === pages.length - 1;
-      pageDiv.innerHTML = pageContentHtml(project, lang, rowsHtml, includeSignatures);
+      pageDiv.innerHTML = pageContentHtml(project, lang, rowsHtml, includeSignatures, p + 1);
       host.appendChild(pageDiv);
 
       // eslint-disable-next-line no-await-in-loop
