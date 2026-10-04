@@ -10,6 +10,12 @@ library it uses is vendored under `vendor/` and every font under
 Just open `index.html` in a browser (double-click it, or `File > Open`).
 There is nothing to install and nothing to build.
 
+Tip: to get a desktop-app-like shortcut (its own icon, its own window, no
+address bar, pinnable to the taskbar), use Chrome/Edge's "Create Shortcut…
+→ Open as window" (under the three-dot menu while the page is open) — no
+server or installation step needed, it works directly from the file. See
+"Desktop shortcut" below for the full steps.
+
 Dates are entered and displayed as `dd/mm/yyyy` throughout (details form and
 exports).
 
@@ -17,6 +23,29 @@ Your in-progress assessment is kept in the browser's local storage, so
 closing and reopening the page keeps your work. Use **Project → Save Project
 (.json)** to export a portable backup/snapshot you can reload later or move
 to another computer (**Project → Load Project**).
+
+## Desktop shortcut (pinnable to the Windows taskbar)
+
+Chrome and Edge can turn this page into its own app-like window with its own
+icon, separate from your regular browser windows - no install step, no
+server, works straight from `index.html`:
+
+1. Open `index.html` in Chrome or Edge.
+2. Click the three-dot menu (top-right) → **Cast, save, and share** (Chrome)
+   or just look for **Apps** (Edge) → **Create shortcut…**.
+3. Check **"Open as window"**, then click **Create**.
+4. A shortcut appears on your Desktop (or Start Menu, depending on the
+   browser/Windows version) - it already uses this page's own icon (the
+   Rashpetco logo) and its title ("Specific Risk Assessment Builder") as its
+   name, so nothing else to rename.
+5. Right-click that shortcut (or find it in the Start Menu) → **Pin to
+   taskbar**.
+
+A plain Windows shortcut to the `.html` file (right-click → **Create
+shortcut**) will also open the page, but Windows generally won't let you pin
+a document shortcut like that to the taskbar - only the browser's "Open as
+window" shortcut above is reliably pinnable, since it technically launches
+the browser itself with this page as its app.
 
 ## Adding risk items
 
@@ -86,7 +115,7 @@ It does not share code or a database with the PTW app.
 ## Project structure
 
 ```
-index.html            app shell
+index.html             app shell
 css/style.css          all styling, incl. @font-face for offline Arabic/Latin fonts
 js/matrix.js            <-- edit this for the real risk matrix
 js/globalRisks.js       <-- edit this to manage the general RA library

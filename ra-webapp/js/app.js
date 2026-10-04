@@ -3,6 +3,13 @@
 let editingItemId = null;
 let pendingExportKind = null; // 'pdf' | 'word' | 'print'
 
+// Monochrome SVG icons for the items-table row actions. Plain inline
+// outline shapes (not emoji) so color is fully controllable via CSS
+// `currentColor` - neutral by default, colored only on :hover.
+const ICON_EDIT = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 2.5l4 4L7 17l-5 1 1-5L13.5 2.5z"/><path d="M12 4l4 4"/></svg>';
+const ICON_DELETE = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h12"/><path d="M8 6V4h4v2"/><path d="M5.5 6l1 10a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1l1-10"/><path d="M8.5 9v5"/><path d="M11.5 9v5"/></svg>';
+const ICON_DRAG = '<svg viewBox="0 0 20 20" fill="currentColor"><circle cx="7" cy="4" r="1.3"/><circle cx="13" cy="4" r="1.3"/><circle cx="7" cy="10" r="1.3"/><circle cx="13" cy="10" r="1.3"/><circle cx="7" cy="16" r="1.3"/><circle cx="13" cy="16" r="1.3"/></svg>';
+
 function $(sel) { return document.querySelector(sel); }
 function $all(sel) { return Array.from(document.querySelectorAll(sel)); }
 
@@ -108,7 +115,13 @@ function renderItemsTable() {
     const evalBadge = (risk) => (risk ? `<span class="badge" style="background:${risk.bg};color:${risk.color}">${risk.en}</span>` : '');
 
     tr.innerHTML = `
-      <td class="col-drag" draggable="true" title="Drag to reorder">&#8942;&#8942;</td>
+      <td class="col-actions">
+        <div class="row-actions">
+          <span class="row-actions-btn drag-handle" draggable="true" title="Drag to reorder" aria-label="Drag to reorder">${ICON_DRAG}</span>
+          <button class="row-actions-btn" data-action="edit" data-id="${item.id}" title="Edit" aria-label="Edit">${ICON_EDIT}</button>
+          <button class="row-actions-btn" data-action="delete" data-id="${item.id}" title="Delete" aria-label="Delete">${ICON_DELETE}</button>
+        </div>
+      </td>
       <td class="col-no">${idx + 1}</td>
       <td>${biCell(item.hazard)}</td>
       <td>${biCell(item.effect)}</td>
@@ -119,11 +132,7 @@ function renderItemsTable() {
       ${sub(item.severityAfter)}
       ${sub(item.likelihoodAfter)}
       ${sub(`${item.severityAfter}${item.likelihoodAfter}`)}
-      <td class="col-eval">${evalBadge(evaluation)}</td>
-      <td class="col-actions">
-        <button class="row-actions-btn" data-action="edit" data-id="${item.id}">Edit</button>
-        <button class="row-actions-btn danger" data-action="delete" data-id="${item.id}">Delete</button>
-      </td>`;
+      <td class="col-eval">${evalBadge(evaluation)}</td>`;
     tbody.appendChild(tr);
   });
 }
@@ -279,14 +288,14 @@ function wireArabicPreviewToggle() {
 }
 
 /* Drag-and-drop row reordering (desktop only - no touch support needed).
-   Only the ".col-drag" handle is draggable, so selecting text or clicking
+   Only the ".drag-handle" icon is draggable, so selecting text or clicking
    Edit/Delete elsewhere in the row never starts a drag. */
 function wireItemsReorder() {
   const tbody = $('#items-tbody');
   let draggedRow = null;
 
   tbody.addEventListener('dragstart', (e) => {
-    const handle = e.target.closest('.col-drag');
+    const handle = e.target.closest('.drag-handle');
     const row = handle && handle.closest('tr');
     if (!row) { e.preventDefault(); return; }
     draggedRow = row;
@@ -319,6 +328,11 @@ function wireItemsReorder() {
 
 /* ---------------- library dialog ---------------- */
 
+// Checked RAs (by category index) must survive re-rendering the list as the
+// user adjusts the search filter - otherwise every re-render creates fresh
+// unchecked checkboxes and silently drops the selection.
+let selectedLibraryCats = new Set();
+
 function renderLibraryList(filterText = '') {
   // A generic RA is a complete named assessment (e.g. "Use of Hand Tools"),
   // not a pick-list of individual hazards - so this only ever shows RA
@@ -327,19 +341,23 @@ function renderLibraryList(filterText = '') {
   host.innerHTML = '';
   const ft = filterText.trim().toLowerCase();
 
+  const searchContentToo = $('#library-search-content').checked;
+
   GLOBAL_RA_LIBRARY.forEach((cat, catIdx) => {
     if (ft) {
-      const haystack = [
-        cat.category.en, cat.category.ar,
-        ...cat.items.flatMap((item) => [item.hazard.en, item.hazard.ar, item.effect.en, item.effect.ar]),
-      ].join(' ').toLowerCase();
+      const haystackParts = [cat.category.en, cat.category.ar];
+      if (searchContentToo) {
+        haystackParts.push(...cat.items.flatMap((item) => [item.hazard.en, item.hazard.ar, item.effect.en, item.effect.ar]));
+      }
+      const haystack = haystackParts.join(' ').toLowerCase();
       if (!haystack.includes(ft)) return;
     }
 
     const row = document.createElement('label');
     row.className = 'library-item';
+    const checked = selectedLibraryCats.has(catIdx) ? 'checked' : '';
     row.innerHTML = `
-      <input type="checkbox" data-cat="${catIdx}">
+      <input type="checkbox" data-cat="${catIdx}" ${checked}>
       <span class="item-text">
         <span class="en"><strong>${escapeHtml(cat.category.en)}</strong> (${cat.items.length} item${cat.items.length === 1 ? '' : 's'})</span>
         <span class="ar" dir="rtl">${escapeHtml(cat.category.ar)}</span>
@@ -354,12 +372,21 @@ function renderLibraryList(filterText = '') {
 
 function wireLibraryDialog() {
   $('#btn-add-library').addEventListener('click', () => {
+    selectedLibraryCats = new Set();
     renderLibraryList('');
     $('#library-search').value = '';
     $('#library-dialog').showModal();
   });
   $('#btn-library-close').addEventListener('click', () => $('#library-dialog').close());
   $('#library-search').addEventListener('input', (e) => renderLibraryList(e.target.value));
+  $('#library-search-content').addEventListener('change', () => renderLibraryList($('#library-search').value));
+  $('#library-list').addEventListener('change', (e) => {
+    const cb = e.target.closest('input[type="checkbox"][data-cat]');
+    if (!cb) return;
+    const catIdx = Number(cb.dataset.cat);
+    if (cb.checked) selectedLibraryCats.add(catIdx);
+    else selectedLibraryCats.delete(catIdx);
+  });
 
   $('#btn-library-add').addEventListener('click', () => {
     const checked = $all('#library-list input[type="checkbox"]:checked');
@@ -520,26 +547,44 @@ function wireExport() {
 
   $('#btn-export-lang-cancel').addEventListener('click', () => $('#export-lang-dialog').close());
 
-  $('#btn-export-lang-go').addEventListener('click', async () => {
+  $('#btn-export-lang-go').addEventListener('click', () => {
     const lang = $('input[name="export-lang"]:checked').value;
     $('#export-lang-dialog').close();
-    toast('Generating file…', 6000);
-    try {
-      if (pendingExportKind === 'pdf') {
-        await exportProjectToPdf(Store.project, lang);
-      } else if (pendingExportKind === 'print') {
-        await printProjectPdf(Store.project, lang);
-      } else if (pendingExportKind === 'word') {
-        await exportProjectToWord(Store.project, lang);
-      } else {
-        throw new Error(`Unknown action: ${pendingExportKind}`);
-      }
-      toast(pendingExportKind === 'print' ? 'Sent to print.' : 'Export complete.');
-    } catch (err) {
-      console.error(err);
-      toast(`${pendingExportKind === 'print' ? 'Print' : 'Export'} failed: ${err.message}`, 5000);
-    }
+    runExportAction(pendingExportKind, lang);
   });
+
+  // Ctrl+P (Cmd+P on Mac) prints directly with "Both" as the language,
+  // skipping the language dialog - default chosen per explicit request,
+  // revisit if a different default language is wanted later.
+  document.addEventListener('keydown', (e) => {
+    const isPrintShortcut = (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'p';
+    if (!isPrintShortcut) return;
+    e.preventDefault();
+    if (!Store.project.items.length) {
+      toast('Add at least one risk item before printing.');
+      return;
+    }
+    runExportAction('print', 'both');
+  });
+}
+
+async function runExportAction(kind, lang) {
+  toast('Generating file…', 6000);
+  try {
+    if (kind === 'pdf') {
+      await exportProjectToPdf(Store.project, lang);
+    } else if (kind === 'print') {
+      await printProjectPdf(Store.project, lang);
+    } else if (kind === 'word') {
+      await exportProjectToWord(Store.project, lang);
+    } else {
+      throw new Error(`Unknown action: ${kind}`);
+    }
+    toast(kind === 'print' ? 'Sent to print.' : 'Export complete.');
+  } catch (err) {
+    console.error(err);
+    toast(`${kind === 'print' ? 'Print' : 'Export'} failed: ${err.message}`, 5000);
+  }
 }
 
 /* ---------------- project save/load/clear ---------------- */

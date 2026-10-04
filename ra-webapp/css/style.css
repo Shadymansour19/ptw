@@ -125,29 +125,30 @@ body {
 
 .items-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
 .items-table th, .items-table td {
-  border: 1px solid var(--border); padding: 8px 10px; text-align: left; vertical-align: middle; word-wrap: break-word;
+  border: 1.5px solid #9aa7b3; padding: 8px 10px; text-align: left; vertical-align: middle; word-wrap: break-word;
 }
 .items-table th { background: #eef2f6; font-size: 12px; color: var(--muted); text-align: center; vertical-align: middle; }
-.items-table .col-drag { text-align: center; cursor: grab; color: var(--muted); user-select: none; }
 .items-table .col-no { text-align: center; }
 .items-table .col-sub { text-align: center; font-weight: 600; }
 .items-table .col-eval { text-align: center; }
 .items-table .col-eval .badge { white-space: normal; word-wrap: break-word; }
-.items-table .col-actions { white-space: nowrap; }
+.items-table .col-actions { white-space: nowrap; text-align: center; padding-left: 4px; padding-right: 4px; }
+.row-actions {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
 
 /* Column widths are set on <colgroup><col> elements, not on the th/td
    classes above - a merged header cell like "Free Analysis" (colspan=3)
    would otherwise force its 3 sub-columns to equal widths regardless of
    any per-column width declared on the second header row's own cells. */
-.items-table col.w-drag { width: 2%; }
 .items-table col.w-no { width: 3%; }
 .items-table col.w-hazard { width: 15%; }
 .items-table col.w-effect { width: 13%; }
 .items-table col.w-sl { width: 1.8%; }
 .items-table col.w-risk { width: 3.5%; }
-.items-table col.w-ctrl { width: 37.8%; }
-.items-table col.w-eval { width: 7.5%; }
-.items-table col.w-actions { width: 7.5%; }
+.items-table col.w-ctrl { width: 44.8%; }
+.items-table col.w-eval { width: 6.5%; }
+.items-table col.w-actions { width: 3.5%; }
 .items-table tbody tr.dragging { opacity: 0.4; }
 .items-table.hide-arabic .cell-ar { display: none; }
 .cell-en { margin-bottom: 2px; text-align: justify; white-space: pre-line; line-height: 1.3; }
@@ -163,11 +164,16 @@ body {
 }
 
 .row-actions-btn {
-  font-size: 12px; padding: 5px 8px; border-radius: 5px; border: 1px solid var(--border);
-  background: #fff; cursor: pointer; margin-right: 4px;
+  display: flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px; padding: 0;
+  border-radius: 5px; border: none;
+  background: transparent; color: var(--muted); cursor: pointer;
 }
+.row-actions-btn svg { width: 21px; height: 21px; }
 .row-actions-btn:hover { background: #f0f3f6; }
-.row-actions-btn.danger { color: var(--danger); border-color: #f1b0b0; }
+.row-actions-btn[data-action="edit"]:hover { color: var(--accent); }
+.row-actions-btn[data-action="delete"]:hover { color: var(--danger); }
+.row-actions-btn.drag-handle { cursor: grab; user-select: none; }
 
 /* ---- dialogs ---- */
 dialog.modal {
@@ -193,6 +199,10 @@ dialog.modal h3 { margin: 0 0 14px; }
 
 .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
 
+.library-search-option {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 8px; font-size: 12px; color: var(--muted); cursor: pointer;
+}
 .library-list { max-height: 50vh; overflow: auto; margin: 12px 0; border: 1px solid var(--border); border-radius: 8px; }
 .library-category { padding: 8px 12px; background: #eef2f6; font-weight: 700; font-size: 13px; }
 .library-item { display: flex; gap: 10px; padding: 8px 14px; border-top: 1px solid var(--border); align-items: flex-start; font-size: 13px; }

@@ -67,15 +67,15 @@
 
     <table class="items-table" id="items-table">
       <colgroup>
-        <col class="w-drag"><col class="w-no"><col class="w-hazard"><col class="w-effect">
+        <col class="w-actions"><col class="w-no"><col class="w-hazard"><col class="w-effect">
         <col class="w-sl"><col class="w-sl"><col class="w-risk">
         <col class="w-ctrl">
         <col class="w-sl"><col class="w-sl"><col class="w-risk">
-        <col class="w-eval"><col class="w-actions">
+        <col class="w-eval">
       </colgroup>
       <thead>
         <tr>
-          <th class="col-drag" rowspan="2"></th>
+          <th class="col-actions" rowspan="2"></th>
           <th class="col-no" rowspan="2">No.</th>
           <th class="col-hazard" rowspan="2">Hazard</th>
           <th class="col-effect" rowspan="2">Effect</th>
@@ -83,7 +83,6 @@
           <th class="col-ctrl" rowspan="2">Control Measure</th>
           <th colspan="3">Controlled Analysis</th>
           <th class="col-eval" rowspan="2">Evaluation</th>
-          <th class="col-actions" rowspan="2">Actions</th>
         </tr>
         <tr>
           <th class="col-sub col-sl">S</th>
@@ -143,6 +142,10 @@
 <dialog id="library-dialog" class="modal modal-wide">
   <h3>Add from General RA Library</h3>
   <input type="text" id="library-search" placeholder="Search hazard / effect...">
+  <label class="library-search-option">
+    <input type="checkbox" id="library-search-content" checked>
+    Search item content too
+  </label>
   <div id="library-list" class="library-list"></div>
   <div class="dialog-actions">
     <button type="button" class="btn" id="btn-library-close">Close</button>
