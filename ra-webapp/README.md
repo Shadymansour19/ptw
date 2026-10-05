@@ -65,12 +65,12 @@ Three ways, from the toolbar:
 ## Risk item fields (matches the PTW Qt app's risk item model)
 
 Each risk item has exactly the same fields as a PTW risk item: **Hazard**,
-**Effect**, **Free Analysis** (Severity+Likelihood before control, e.g.
-"4C"), **Control**, **Controlled Analysis** (Severity+Likelihood after
+**Effect**, **Risk Analysis (No controls)** (Severity+Likelihood before control, e.g.
+"4C"), **Control**, **Risk Analysis with control** (Severity+Likelihood after
 control, e.g. "2A"), **Evaluation**.
 
 The one difference from the Qt app: **Evaluation is auto-computed** from the
-Controlled Analysis via the risk matrix below, instead of being typed in manually.
+Risk Analysis with control via the risk matrix below, instead of being typed in manually.
 
 ## The risk matrix
 
