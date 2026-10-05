@@ -22,7 +22,7 @@ const LOGO_CELL_PX = Math.round(42 * 0.8 * MM_TO_PX); // 33.6mm - logo column sc
 // PDF-only column weights (Word has its own, independent WORD_COL_WEIGHTS in
 // exportWord.js - the two exports are tuned separately, not shared):
 // No | Hazard | Effect | S | L | Risk | Control | S | L | Risk | Evaluation
-const PDF_COL_WEIGHTS = [7, 26, 30, 4, 4, 8, 70, 4, 4, 8, 16];
+const PDF_COL_WEIGHTS = [7, 26, 30, 5, 5, 8, 66, 5, 5, 8, 16];
 const PDF_COL_WEIGHT_SUM = PDF_COL_WEIGHTS.reduce((a, b) => a + b, 0);
 
 // Document-control strip shown above the logos/title box on every export.
@@ -80,7 +80,7 @@ function riskEvaluationHtml(severity, likelihood, lang) {
 function headerLabels() {
   // Table column headers are always English only - user instruction, no
   // need to translate "Hazard"/"Effect"/etc.
-  const H = { no: 'No.', hazard: 'Hazard', effect: 'Effect', free: 'Free Analysis', ctrl: 'Control Measure', controlled: 'Controlled Analysis', eval: 'Evaluation', s: 'S', l: 'L', risk: 'Risk' };
+  const H = { no: 'No.', hazard: 'Hazard', effect: 'Effect', free: 'Risk Analysis (No controls)', ctrl: 'Control Measure', controlled: 'Risk Analysis with control', eval: 'Evaluation', s: 'S', l: 'L', risk: 'Risk' };
   return (key) => H[key];
 }
 

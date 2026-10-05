@@ -28,7 +28,7 @@ const WORD_FOOTER_DIST_TWIPS = Math.round(9 * TWIPS_PER_MM);
 const WORD_USABLE_WIDTH_TWIPS = WORD_PAGE_LONG_TWIPS - WORD_MARGIN_LR_TWIPS * 2;
 
 // No | Hazard | Effect | S | L | Risk | Control | S | L | Risk | Evaluation
-const WORD_COL_WEIGHTS = [8, 28, 32, 4, 4, 9, 60, 4, 4, 9, 18];
+const WORD_COL_WEIGHTS = [8, 28, 32, 5, 5, 9, 56, 5, 5, 9, 18];
 const WORD_COL_WEIGHT_SUM = WORD_COL_WEIGHTS.reduce((a, b) => a + b, 0);
 const WORD_COL_WIDTHS_TWIPS = WORD_COL_WEIGHTS.map((w) => Math.round((w / WORD_COL_WEIGHT_SUM) * WORD_USABLE_WIDTH_TWIPS));
 
@@ -47,7 +47,7 @@ const FS_STRIP = pdfPxToHalfPt(19);
 const FS_TITLE = pdfPxToHalfPt(32);
 const FS_META = pdfPxToHalfPt(19);
 const FS_BODY = pdfPxToHalfPt(18);
-const FS_TH = pdfPxToHalfPt(20);
+const FS_TH = pdfPxToHalfPt(18);
 const FS_SIG = pdfPxToHalfPt(20);
 const FS_FOOTER = pdfPxToHalfPt(18);
 
@@ -124,7 +124,7 @@ function wordColWidth(weightIndex) {
 
 function wordHeaderLabel(key) {
   // Table column headers are always English only - same as the PDF export.
-  const H = { no: 'No.', hazard: 'Hazard', effect: 'Effect', free: 'Free Analysis', ctrl: 'Control Measure', controlled: 'Controlled Analysis', eval: 'Evaluation', s: 'S', l: 'L', risk: 'Risk' };
+  const H = { no: 'No.', hazard: 'Hazard', effect: 'Effect', free: 'Risk Analysis (No controls)', ctrl: 'Control Measure', controlled: 'Risk Analysis with control', eval: 'Evaluation', s: 'S', l: 'L', risk: 'Risk' };
   return H[key];
 }
 
