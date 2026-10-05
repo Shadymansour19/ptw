@@ -12,8 +12,8 @@
  * Evaluation is calculated from the controlled code via matrix.js.
  *
  * Source: Rashpetco Risk Assessment Proformas (controlled copies), 2026-10.
- * "Use of Hand Tools" keeps its earlier conversion (its proforma uses the
- * old numeric 1-6 scale, not 1-5 / A-E).
+ * "Use of Hand Tools", "Use of Hand Tools at Height" and "Use of Non-IS
+ * Test Equipment" are from the Hand Tools & Non-IS proforma (updated May 2023).
  * Arabic (`ar`) is blank - use "Auto-translate All to Arabic" after adding,
  * and review the result.
  */
@@ -180,17 +180,10 @@ const GLOBAL_RA_LIBRARY = [
         severityAfter: 2, likelihoodAfter: 'B',
       },
       {
-        hazard: { en: 'Use of hand tools at height', ar: '' },
-        effect: { en: 'Dropped objects.\nInjury to personnel.\nDamage to equipment.', ar: '' },
-        severityBefore: 3, likelihoodBefore: 'C',
-        ctrl: { en: 'Only competent personnel to carry out the task.\nTools to be secured whilst lifting to area of work.\nUse correct manual handling techniques.\nLifting equipment to be inspected prior to operation.\nTools not being used at time to be kept secured in work area.', ar: '' },
-        severityAfter: 3, likelihoodAfter: 'B',
-      },
-      {
-        hazard: { en: 'Tools with poor housekeeping', ar: '' },
+        hazard: { en: 'Tools with poor housekeeping.', ar: '' },
         effect: { en: 'Dropped objects.\nInjury to personnel.\nDamage to equipment.', ar: '' },
         severityBefore: 2, likelihoodBefore: 'C',
-        ctrl: { en: 'Tools to be kept clean and free from task product / oil / grease.\nTools to be checked during and after task.\nCompetent persons to carry non-chemical cleaning materials e.g rags / cloth.', ar: '' },
+        ctrl: { en: 'Tools to be kept clean and free from task product / oil / grease.\nTools to be checked during and after task.\nCompetent persons to carry non-chemical cleaning materials for hand tools e.g. rags / cloth.', ar: '' },
         severityAfter: 2, likelihoodAfter: 'B',
       },
       {
@@ -199,6 +192,37 @@ const GLOBAL_RA_LIBRARY = [
         severityBefore: 2, likelihoodBefore: 'C',
         ctrl: { en: 'Tools to be well maintained by personnel while not in use.\nTools to be kept stored in a clean / dry area.\nRegular periodic checks to be carried out.', ar: '' },
         severityAfter: 2, likelihoodAfter: 'B',
+      },
+    ],
+  },
+  {
+    category: { en: 'Use of Hand Tools at Height', ar: 'استخدام العدد اليدوية على ارتفاعات' },
+    items: [
+      {
+        hazard: { en: 'Use of hand tools at height.', ar: '' },
+        effect: { en: 'Dropped objects.\nInjury to personnel.\nDamage to equipment.', ar: '' },
+        severityBefore: 3, likelihoodBefore: 'C',
+        ctrl: { en: 'Only competent personnel to carry out the task.\nUse correct manual handling techniques.\nLifting equipment to be inspected prior to operation.\nTools not in use to be kept secured in work area.\nMust have three point contact whilst using ladder.\nLadder must be secured and footed by second person.\nTools to be secured whilst lifting to area of work.', ar: '' },
+        severityAfter: 3, likelihoodAfter: 'B',
+      },
+    ],
+  },
+  {
+    category: { en: 'Use of Non-IS Test Equipment', ar: 'استخدام أجهزة الاختبار غير الآمنة ذاتياً (Non-IS)' },
+    items: [
+      {
+        hazard: { en: 'Use of Non-IS Test Equipment.', ar: '' },
+        effect: { en: 'Serious injury.\nFire and Explosion.\nAsset damage.', ar: '' },
+        severityBefore: 4, likelihoodBefore: 'C',
+        ctrl: { en: 'Only competent personnel to carry out the task using Non-IS Test Equipment.\nAll Non-IS Test Equipment to be certified and tested.\nAll Non-IS Test Equipment to be inspected on a regular basis.\nAll Non-IS Test Equipment must be registered and tagged.\nAll Non-IS Test Equipment to be tested prior to work start.\nTool Box Talk.\nContinuous Gas Monitoring whilst carrying out task.\nAreas / Zones to be discussed with supervision prior to task.\nCorrect PPE to be worn at all times.', ar: '' },
+        severityAfter: 4, likelihoodAfter: 'B',
+      },
+      {
+        hazard: { en: 'Damage to Non-IS Test Equipment.', ar: '' },
+        effect: { en: 'Serious injury.\nFire and Explosion.\nAsset damage.', ar: '' },
+        severityBefore: 4, likelihoodBefore: 'C',
+        ctrl: { en: 'All Non-IS Test Equipment found damaged is to be replaced with new.\nAny Non-IS Equipment suspected to be faulty not to be used.', ar: '' },
+        severityAfter: 4, likelihoodAfter: 'B',
       },
     ],
   },
