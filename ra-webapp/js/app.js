@@ -456,68 +456,286 @@ async function translateMultiline(text, cache) {
 
 function wireTranslateAll() {
   const btn = $('#btn-translate-all');
-  btn.addEventListener('click', async () => {
-    const items = Store.project.items;
-    if (!items.length) { toast('No risk items to translate.'); return; }
+  const dialog = $('#translate-mode-dialog');
+  const hasEn = (it, f) => (it[f]?.en || '').trim();
+  const hasAr = (it, f) => (it[f]?.ar || '').trim();
 
-    const hasEn = (it, f) => (it[f]?.en || '').trim();
-    const hasAr = (it, f) => (it[f]?.ar || '').trim();
-
-    // Default: only fill fields whose Arabic is empty. If everything is
-    // already translated, offer to re-translate (overwrite) all of it.
-    let jobs = [];
-    items.forEach((it) => TRANSLATE_FIELDS.forEach((f) => {
-      if (hasEn(it, f) && !hasAr(it, f)) jobs.push([it.id, f]);
+  const collectJobs = (mode) => {
+    const jobs = [];
+    Store.project.items.forEach((it) => TRANSLATE_FIELDS.forEach((f) => {
+      if (hasEn(it, f) && (mode === 'all' || !hasAr(it, f))) jobs.push([it.id, f]);
     }));
-    if (!jobs.length) {
-      if (!confirm('All risk items already have Arabic text.\nRe-translate everything and overwrite the existing Arabic?')) return;
-      items.forEach((it) => TRANSLATE_FIELDS.forEach((f) => {
-        if (hasEn(it, f)) jobs.push([it.id, f]);
-      }));
-    }
-    if (!jobs.length) { toast('Nothing to translate - no English text found.'); return; }
+    return jobs;
+  };
 
-    const original = btn.textContent;
-    btn.disabled = true;
-    const cache = new Map();
-    let done = 0;
-    let failed = 0;
-    let next = 0;
+  btn.addEventListener('click', () => {
+    if (!Store.project.items.length) { toast('No risk items to translate.'); return; }
 
-    const worker = async () => {
-      while (next < jobs.length) {
-        const [id, f] = jobs[next];
-        next += 1;
-        const item = Store.project.items.find((i) => i.id === id);
-        if (item) {
-          try {
-            // eslint-disable-next-line no-await-in-loop
-            const ar = await translateMultiline(item[f].en, cache);
-            Store.updateItem(id, { [f]: { ...item[f], ar } });
-            renderItemsTable();
-          } catch (err) {
-            console.error(err);
-            failed += 1;
-          }
+    const emptyCount = collectJobs('empty').length;
+    const totalCount = collectJobs('all').length;
+    const filledCount = totalCount - emptyCount;
+    if (!totalCount) { toast('Nothing to translate - no English text found.'); return; }
+
+    // Nothing already in Arabic -> nothing to protect, just translate.
+    if (!filledCount) { runTranslateJobs(btn, collectJobs('empty')); return; }
+
+    // Some fields already have Arabic (e.g. library items) -> ask first.
+    // Default is always "Empty only".
+    $('#translate-mode-summary').textContent =
+      `${emptyCount} field(s) have no Arabic yet, ${filledCount} field(s) already have Arabic text.`;
+    $('input[name="translate-mode"][value="empty"]').checked = true;
+    dialog.showModal();
+  });
+
+  $('#btn-translate-mode-cancel').addEventListener('click', () => dialog.close());
+  $('#btn-translate-mode-go').addEventListener('click', () => {
+    const mode = $('input[name="translate-mode"]:checked').value;
+    dialog.close();
+    if (mode === 'empty' && !collectJobs('empty').length) { toast('All fields already have Arabic - nothing to translate.'); return; }
+    if (mode === 'all' && !confirm('Overwrite ALL existing Arabic text (including your edits and the library\'s built-in Arabic)?')) return;
+    runTranslateJobs(btn, collectJobs(mode));
+  });
+}
+
+async function runTranslateJobs(btn, jobs) {
+  if (!jobs.length) { toast('Nothing to translate.'); return; }
+
+  const original = btn.textContent;
+  btn.disabled = true;
+  const cache = new Map();
+  let done = 0;
+  let failed = 0;
+  let next = 0;
+
+  const worker = async () => {
+    while (next < jobs.length) {
+      const [id, f] = jobs[next];
+      next += 1;
+      const item = Store.project.items.find((i) => i.id === id);
+      if (item) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          const ar = await translateMultiline(item[f].en, cache);
+          Store.updateItem(id, { [f]: { ...item[f], ar } });
+          renderItemsTable();
+        } catch (err) {
+          console.error(err);
+          failed += 1;
         }
-        done += 1;
-        btn.textContent = `Translating ${done}/${jobs.length}…`;
       }
+      done += 1;
+      btn.textContent = `Translating ${done}/${jobs.length}…`;
+    }
+  };
+
+  try {
+    await Promise.all([worker(), worker(), worker()]); // 3 requests at a time
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+    renderItemsTable();
+  }
+
+  if (failed) {
+    toast(`Translated ${jobs.length - failed} of ${jobs.length} fields - ${failed} failed (check internet or the daily free limit).`, 6000);
+  } else {
+    toast(`Translated ${jobs.length} field(s) - please review the Arabic text.`, 4000);
+  }
+}
+
+/* ---------------- export RA to general library ---------------- */
+
+const LIB_FILE_PATH = 'js/globalRisks.js';
+const LIB_FILE_HEADER = `/*
+ * GLOBAL / GENERAL RISK ASSESSMENT LIBRARY
+ * =========================================
+ * Editable static library of complete generic RAs, one category per RA.
+ * Picking a category in "Add from General RA Library" adds all its items.
+ * Plain data - nothing else in the app needs to change when you edit it.
+ *
+ * Item shape (same as a manually-entered risk item):
+ *   hazard, effect, ctrl -> { en, ar }   (multiple lines separated by \\n)
+ *   severityBefore (1-5), likelihoodBefore (A-E)  - Free Analysis
+ *   severityAfter (1-5), likelihoodAfter (A-E)    - Controlled Analysis
+ * Evaluation is calculated from the controlled code via matrix.js.
+ *
+ * Source: Rashpetco Risk Assessment Proformas (controlled copies), 2026-10,
+ * plus RAs exported from the app ("Project > Export RA to General Library").
+ * Arabic (\`ar\`) is pre-filled (static, no internet needed). Technical / HSE
+ * terms that read poorly in Arabic (PPE, PTW, Tool Box Talk, Performing
+ * Authority, ATEX, SWL, ESD, ...) are intentionally kept in English.
+ */`;
+
+// Re-reads js/globalRisks.js from disk/share (not the copy loaded at page
+// start), so RAs other users added since then are kept. Loaded through a
+// hidden iframe because a plain fetch() is blocked on file:// pages.
+function loadLatestLibrary(timeoutMs = 5000) {
+  return new Promise((resolve) => {
+    const frame = document.createElement('iframe');
+    frame.style.display = 'none';
+    document.body.appendChild(frame);
+    let finished = false;
+    const finish = (lib) => {
+      if (finished) return;
+      finished = true;
+      frame.remove();
+      resolve(lib);
+    };
+    const win = frame.contentWindow;
+    win.__libDone = () => {
+      let lib = null;
+      try { lib = win.eval('typeof GLOBAL_RA_LIBRARY !== "undefined" ? JSON.parse(JSON.stringify(GLOBAL_RA_LIBRARY)) : null'); } catch (e) { lib = null; }
+      finish(Array.isArray(lib) ? lib : null);
+    };
+    const doc = win.document;
+    doc.open();
+    doc.write(`<base href="${location.href}"><script src="${LIB_FILE_PATH}?t=${Date.now()}" onload="__libDone()" onerror="__libDone()"><\/script>`);
+    doc.close();
+    setTimeout(() => finish(null), timeoutMs);
+  });
+}
+
+function libItemFromRiskItem(it) {
+  const bi = (v) => ({ en: String(v?.en || '').trim(), ar: String(v?.ar || '').trim() });
+  return {
+    hazard: bi(it.hazard),
+    effect: bi(it.effect),
+    severityBefore: Number(it.severityBefore),
+    likelihoodBefore: String(it.likelihoodBefore || '').toUpperCase(),
+    ctrl: bi(it.ctrl),
+    severityAfter: Number(it.severityAfter),
+    likelihoodAfter: String(it.likelihoodAfter || '').toUpperCase(),
+  };
+}
+
+function serializeLibrary(lib) {
+  const q = (v) => JSON.stringify(String(v ?? ''));
+  const bi = (v) => `{ en: ${q(v?.en)}, ar: ${q(v?.ar)} }`;
+  const out = [LIB_FILE_HEADER, '', 'const GLOBAL_RA_LIBRARY = ['];
+  lib.forEach((cat) => {
+    out.push('  {');
+    out.push(`    category: ${bi(cat.category)},`);
+    out.push('    items: [');
+    (cat.items || []).forEach((it) => {
+      out.push('      {');
+      out.push(`        hazard: ${bi(it.hazard)},`);
+      out.push(`        effect: ${bi(it.effect)},`);
+      out.push(`        severityBefore: ${Number(it.severityBefore)}, likelihoodBefore: ${q(it.likelihoodBefore)},`);
+      out.push(`        ctrl: ${bi(it.ctrl)},`);
+      out.push(`        severityAfter: ${Number(it.severityAfter)}, likelihoodAfter: ${q(it.likelihoodAfter)},`);
+      out.push('      },');
+    });
+    out.push('    ],');
+    out.push('  },');
+  });
+  out.push('];', '');
+  return out.join('\r\n');
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (e) {
+    const ta = $('#lib-export-output');
+    ta.focus();
+    ta.select();
+    try { return document.execCommand('copy'); } catch (e2) { return false; }
+  }
+}
+
+// Absolute Windows path of js/globalRisks.js, from the page's own URL:
+//   file://server/share/x/js/globalRisks.js -> \\server\share\x\js\globalRisks.js
+//   file:///C:/x/js/globalRisks.js          -> C:\x\js\globalRisks.js
+function libraryFilePath() {
+  const url = new URL(LIB_FILE_PATH, location.href);
+  const path = decodeURIComponent(url.pathname);
+  if (url.protocol !== 'file:') return url.href;
+  if (url.host) return `\\\\${url.host}${path.replace(/\//g, '\\')}`;
+  return path.replace(/^\//, '').replace(/\//g, '\\');
+}
+
+function wireLibraryExport() {
+  const dialog = $('#lib-export-dialog');
+  const showStep = (n) => {
+    $('#lib-export-step1').hidden = n !== 1;
+    $('#lib-export-step2').hidden = n !== 2;
+  };
+
+  $('#btn-export-lib').addEventListener('click', () => {
+    const items = Store.project.items;
+    if (!items.length) { toast('Add at least one risk item before exporting to the library.'); return; }
+    $('#lib-export-name-en').value = Store.project.title?.en || '';
+    $('#lib-export-name-ar').value = Store.project.title?.ar || '';
+    $('#lib-export-count').textContent = `${items.length} risk item(s) will be included.`;
+    showStep(1);
+    dialog.showModal();
+    $('#lib-export-name-en').focus();
+  });
+
+  $('#btn-lib-export-cancel').addEventListener('click', () => dialog.close());
+  $('#btn-lib-export-close').addEventListener('click', () => dialog.close());
+
+  $('#btn-lib-export-go').addEventListener('click', async () => {
+    const nameEn = $('#lib-export-name-en').value.trim();
+    const nameAr = $('#lib-export-name-ar').value.trim();
+    if (!nameEn) { toast('RA name (English) is required.'); return; }
+
+    const goBtn = $('#btn-lib-export-go');
+    goBtn.disabled = true;
+    goBtn.textContent = 'Reading library…';
+    let lib = await loadLatestLibrary();
+    goBtn.disabled = false;
+    goBtn.textContent = 'Generate';
+
+    let source = 'latest library file';
+    if (!lib) {
+      lib = JSON.parse(JSON.stringify(GLOBAL_RA_LIBRARY));
+      source = 'library loaded at app start (could not re-read the file)';
+    }
+
+    const newCat = {
+      category: { en: nameEn, ar: nameAr },
+      items: Store.project.items.map(libItemFromRiskItem),
     };
 
-    try {
-      await Promise.all([worker(), worker(), worker()]); // 3 requests at a time
-    } finally {
-      btn.disabled = false;
-      btn.textContent = original;
-      renderItemsTable();
+    const norm = (s) => String(s || '').trim().toLowerCase();
+    const existingIdx = lib.findIndex((c) => norm(c.category?.en) === norm(nameEn));
+    let action = 'Added';
+    if (existingIdx >= 0) {
+      if (!confirm(`An RA named "${nameEn}" already exists in the library.\nReplace it with the current items?`)) return;
+      lib[existingIdx] = newCat;
+      action = 'Replaced';
+    } else {
+      lib.push(newCat);
     }
 
-    if (failed) {
-      toast(`Translated ${jobs.length - failed} of ${jobs.length} fields - ${failed} failed (check internet or the daily free limit).`, 6000);
-    } else {
-      toast(`Translated ${jobs.length} field(s) - please review the Arabic text.`, 4000);
-    }
+    // Update the in-app library too, so it shows in "Add from General RA
+    // Library" right away (until the page is reloaded from the old file).
+    GLOBAL_RA_LIBRARY.length = 0;
+    GLOBAL_RA_LIBRARY.push(...JSON.parse(JSON.stringify(lib)));
+
+    const text = serializeLibrary(lib);
+    $('#lib-export-output').value = text;
+    $('#lib-export-path').textContent = libraryFilePath();
+    showStep(2);
+    const copied = await copyText(text);
+    $('#lib-export-status').textContent =
+      `${action} "${nameEn}" (${newCat.items.length} items) - based on the ${source}. ${lib.length} RA(s) in total.`
+      + (copied ? ' Copied to clipboard.' : ' Click "Copy to Clipboard" to copy.');
+    if (copied) toast('Library file content copied to clipboard.');
+  });
+
+  $('#btn-lib-export-copy').addEventListener('click', async () => {
+    const ok = await copyText($('#lib-export-output').value);
+    toast(ok ? 'Copied to clipboard.' : 'Copy failed - select the text and press Ctrl+C.');
+  });
+
+  $('#btn-lib-export-copy-path').addEventListener('click', async () => {
+    const path = $('#lib-export-path').textContent;
+    let ok = false;
+    try { await navigator.clipboard.writeText(path); ok = true; } catch (e) { ok = false; }
+    toast(ok ? 'Path copied - paste it in File Explorer\'s address bar.' : 'Copy failed - select the path and press Ctrl+C.');
   });
 }
 
@@ -648,17 +866,30 @@ function wireDropdowns() {
 /* ---------------- init ---------------- */
 
 document.addEventListener('DOMContentLoaded', () => {
-  Store.load();
-  fillMetaPanel();
-  wireMetaPanel();
-  wireItemDialog();
-  wireItemsReorder();
-  wireArabicPreviewToggle();
-  wireLibraryDialog();
-  wireExcelImport();
-  wireExport();
-  wireTranslateAll();
-  wireProjectMenu();
-  wireDropdowns();
-  renderItemsTable();
+  // Each step runs on its own: if one fails (e.g. index.html and app.js are
+  // from different versions, so an element is missing), the rest still runs
+  // instead of leaving the whole app dead.
+  const steps = [
+    ['Store.load', () => Store.load()],
+    ['fillMetaPanel', fillMetaPanel],
+    ['wireMetaPanel', wireMetaPanel],
+    ['wireItemDialog', wireItemDialog],
+    ['wireItemsReorder', wireItemsReorder],
+    ['wireArabicPreviewToggle', wireArabicPreviewToggle],
+    ['wireLibraryDialog', wireLibraryDialog],
+    ['wireExcelImport', wireExcelImport],
+    ['wireExport', wireExport],
+    ['wireTranslateAll', wireTranslateAll],
+    ['wireProjectMenu', wireProjectMenu],
+    ['wireLibraryExport', wireLibraryExport],
+    ['wireDropdowns', wireDropdowns],
+    ['renderItemsTable', renderItemsTable],
+  ];
+  const failed = [];
+  steps.forEach(([name, fn]) => {
+    try { fn(); } catch (err) { console.error(`[startup] ${name} failed:`, err); failed.push(name); }
+  });
+  if (failed.length) {
+    toast(`Some features failed to load (${failed.join(', ')}). index.html and js/app.js are probably from different versions - replace both. Details: F12 > Console.`, 12000);
+  }
 });

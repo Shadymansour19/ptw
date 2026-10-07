@@ -65,12 +65,12 @@ Three ways, from the toolbar:
 ## Risk item fields (matches the PTW Qt app's risk item model)
 
 Each risk item has exactly the same fields as a PTW risk item: **Hazard**,
-**Effect**, **Risk Analysis (No controls)** (Severity+Likelihood before control, e.g.
-"4C"), **Control**, **Risk Analysis with control** (Severity+Likelihood after
+**Effect**, **Free Analysis** (Severity+Likelihood before control, e.g.
+"4C"), **Control**, **Controlled Analysis** (Severity+Likelihood after
 control, e.g. "2A"), **Evaluation**.
 
 The one difference from the Qt app: **Evaluation is auto-computed** from the
-Risk Analysis with control via the risk matrix below, instead of being typed in manually.
+Controlled Analysis via the risk matrix below, instead of being typed in manually.
 
 ## The risk matrix
 
@@ -83,6 +83,39 @@ High Medium / High) for every Severity+Likelihood combination (e.g. "4C").
 category. Add, remove or edit entries directly — copy an existing item object
 to add a new one, or copy a `{ category, items: [...] }` block to add a new
 category.
+
+Every library item ships with a static Arabic translation (no internet
+needed). Technical / HSE terms that read poorly in Arabic - PPE, PTW, Tool
+Box Talk, Performing / Issuing Authority, ATEX, SWL, ESD, etc. - are kept in
+English inside the Arabic text on purpose.
+
+## Auto-translate All to Arabic
+
+If some items already have Arabic text (library items, or your own edits),
+the button asks first: **Empty only** (default - translates only fields with
+no Arabic and leaves the rest untouched) or **All** (re-translates and
+overwrites everything, with a second confirmation). If no field has Arabic
+yet, it translates straight away without asking.
+
+## Export RA to General Library
+
+**Project → Export RA to General Library…** turns the current risk items into
+a new library RA:
+
+1. Enter the RA name (English required, Arabic optional - prefilled from the
+   project title) and click **Generate**.
+2. The app re-reads the latest `js/globalRisks.js` (so RAs added by others
+   since you opened the app are kept), appends the new RA (or replaces one
+   with the same English name, after asking), and shows the full new file.
+3. The full new file content is copied to the clipboard automatically
+   (**Copy File Content** copies it again), and the absolute path of
+   `js/globalRisks.js` is shown with a **Copy Path** button.
+4. Open that file (paste the path in File Explorer's address bar, then open
+   it with Notepad), select all, paste over it and save. Everyone gets the
+   new RA on next reload.
+
+The new RA also appears in **Add from General RA Library** immediately for
+the current session. The app never writes to the file itself.
 
 ## Exporting
 

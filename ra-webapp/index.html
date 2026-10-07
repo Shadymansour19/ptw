@@ -58,6 +58,7 @@
         <div class="dropdown-menu" id="project-menu">
           <button id="btn-save-json">Save Project (.json)</button>
           <button id="btn-load-json">Load Project (.json)</button>
+          <button id="btn-export-lib">Export RA to General Library…</button>
         </div>
       </div>
       <button id="btn-reset" class="btn btn-danger-outline" title="Remove all risk items and clear all fields">Reset</button>
@@ -79,9 +80,9 @@
           <th class="col-no" rowspan="2">No.</th>
           <th class="col-hazard" rowspan="2">Hazard</th>
           <th class="col-effect" rowspan="2">Effect</th>
-          <th colspan="3">Risk Analysis (No controls)</th>
+          <th colspan="3">Free Analysis</th>
           <th class="col-ctrl" rowspan="2">Control Measure</th>
-          <th colspan="3">Risk Analysis with control</th>
+          <th colspan="3">Controlled Analysis</th>
           <th class="col-eval" rowspan="2">Evaluation</th>
         </tr>
         <tr>
@@ -116,7 +117,7 @@
     <div class="eval-row">
       <label>Severity<select id="f-sev-before"></select></label>
       <label>Likelihood<select id="f-lik-before"></select></label>
-      <div class="eval-badge-holder">Risk Analysis (No controls): <span id="f-eval-before" class="badge badge-plain"></span></div>
+      <div class="eval-badge-holder">Free Analysis: <span id="f-eval-before" class="badge badge-plain"></span></div>
     </div>
 
     <div class="item-form-grid">
@@ -127,7 +128,7 @@
     <div class="eval-row">
       <label>Severity<select id="f-sev-after"></select></label>
       <label>Likelihood<select id="f-lik-after"></select></label>
-      <div class="eval-badge-holder">Risk Analysis with control: <span id="f-ctrl-code-after" class="badge badge-plain"></span></div>
+      <div class="eval-badge-holder">Controlled Analysis: <span id="f-ctrl-code-after" class="badge badge-plain"></span></div>
       <div class="eval-badge-holder">Evaluation: <span id="f-eval-after" class="badge"></span></div>
     </div>
 
@@ -174,6 +175,50 @@
   <div class="dialog-actions">
     <button type="button" class="btn" id="btn-export-lang-cancel">Cancel</button>
     <button type="button" class="btn btn-primary" id="btn-export-lang-go">Export</button>
+  </div>
+</dialog>
+
+<!-- ===== Auto-translate mode dialog ===== -->
+<dialog id="translate-mode-dialog" class="modal">
+  <h3>Auto-translate to Arabic</h3>
+  <p id="translate-mode-summary"></p>
+  <div class="lang-choice">
+    <label><input type="radio" name="translate-mode" value="empty" checked> <span>Empty only - skip fields that already have Arabic</span></label>
+    <label><input type="radio" name="translate-mode" value="all"> <span>All - re-translate and overwrite existing Arabic</span></label>
+  </div>
+  <div class="dialog-actions">
+    <button type="button" class="btn" id="btn-translate-mode-cancel">Cancel</button>
+    <button type="button" class="btn btn-primary" id="btn-translate-mode-go">Translate</button>
+  </div>
+</dialog>
+
+<!-- ===== Export RA to General Library dialog ===== -->
+<dialog id="lib-export-dialog" class="modal modal-wide">
+  <h3>Export RA to General Library</h3>
+  <div id="lib-export-step1">
+    <p>The current risk items will be added to the library as a new RA. Give it a name:</p>
+    <div class="item-form-grid">
+      <label>RA name (English) *<input type="text" id="lib-export-name-en"></label>
+      <label>RA name (Arabic)<input type="text" id="lib-export-name-ar" dir="rtl"></label>
+    </div>
+    <p class="lib-export-note" id="lib-export-count"></p>
+    <div class="dialog-actions">
+      <button type="button" class="btn" id="btn-lib-export-cancel">Cancel</button>
+      <button type="button" class="btn btn-primary" id="btn-lib-export-go">Generate</button>
+    </div>
+  </div>
+  <div id="lib-export-step2" hidden>
+    <p id="lib-export-status"></p>
+    <p class="lib-export-note">Open the library file below, select all its content (Ctrl+A), paste the copied text over it (Ctrl+V) and save.</p>
+    <div class="lib-export-path">
+      <code id="lib-export-path"></code>
+      <button type="button" class="btn" id="btn-lib-export-copy-path">Copy Path</button>
+    </div>
+    <textarea id="lib-export-output" class="lib-export-output" readonly spellcheck="false"></textarea>
+    <div class="dialog-actions">
+      <button type="button" class="btn" id="btn-lib-export-close">Close</button>
+      <button type="button" class="btn btn-primary" id="btn-lib-export-copy">Copy File Content</button>
+    </div>
   </div>
 </dialog>
 
