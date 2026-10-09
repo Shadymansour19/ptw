@@ -50,7 +50,6 @@ async function runTranslateButton(btn, fieldPairs) {
 function fillMetaPanel() {
   const p = Store.project;
   $('#meta-title-en').value = p.title.en || '';
-  $('#meta-title-ar').value = p.title.ar || '';
   $('#meta-location-en').value = p.location.en || '';
   $('#meta-ptw-number').value = p.ptwNumber || '';
   $('#meta-date').value = formatDDMMYYYY(p.date);
@@ -67,7 +66,6 @@ function wireMetaPanel() {
     });
   };
   bind('#meta-title-en', ['title', 'en']);
-  bind('#meta-title-ar', ['title', 'ar']);
   bind('#meta-location-en', ['location', 'en']);
   bind('#meta-ptw-number', ['ptwNumber', null]);
 
@@ -84,12 +82,6 @@ function wireMetaPanel() {
     Store.project.date = e.target.value;
     Store.save();
     $('#meta-date').value = formatDDMMYYYY(Store.project.date);
-  });
-
-  $('#btn-meta-translate').addEventListener('click', (e) => {
-    runTranslateButton(e.target, [
-      ['#meta-title-en', '#meta-title-ar'],
-    ]);
   });
 }
 
@@ -360,7 +352,6 @@ function renderLibraryList(filterText = '') {
       <input type="checkbox" data-cat="${catIdx}" ${checked}>
       <span class="item-text">
         <span class="en"><strong>${escapeHtml(cat.category.en)}</strong> (${cat.items.length} item${cat.items.length === 1 ? '' : 's'})</span>
-        <span class="ar" dir="rtl">${escapeHtml(cat.category.ar)}</span>
       </span>`;
     host.appendChild(row);
   });
@@ -644,13 +635,21 @@ async function copyText(text) {
   }
 }
 
-// Absolute Windows path of js/globalRisks.js, from the page's own URL:
+// Absolute path of js/globalRisks.js, from the page's own URL. On Windows
+// this is a backslash path (what File Explorer's address bar needs):
 //   file://server/share/x/js/globalRisks.js -> \\server\share\x\js\globalRisks.js
 //   file:///C:/x/js/globalRisks.js          -> C:\x\js\globalRisks.js
+// On any other OS (Linux/Mac - e.g. while developing this app itself) it's
+// left as a normal forward-slash path, since backslashes aren't valid there.
+function isWindows() {
+  return /Windows/i.test(navigator.userAgent);
+}
+
 function libraryFilePath() {
   const url = new URL(LIB_FILE_PATH, location.href);
   const path = decodeURIComponent(url.pathname);
   if (url.protocol !== 'file:') return url.href;
+  if (!isWindows()) return url.host ? `//${url.host}${path}` : path;
   if (url.host) return `\\\\${url.host}${path.replace(/\//g, '\\')}`;
   return path.replace(/^\//, '').replace(/\//g, '\\');
 }
@@ -666,7 +665,6 @@ function wireLibraryExport() {
     const items = Store.project.items;
     if (!items.length) { toast('Add at least one risk item before exporting to the library.'); return; }
     $('#lib-export-name-en').value = Store.project.title?.en || '';
-    $('#lib-export-name-ar').value = Store.project.title?.ar || '';
     $('#lib-export-count').textContent = `${items.length} risk item(s) will be included.`;
     showStep(1);
     dialog.showModal();
@@ -678,7 +676,6 @@ function wireLibraryExport() {
 
   $('#btn-lib-export-go').addEventListener('click', async () => {
     const nameEn = $('#lib-export-name-en').value.trim();
-    const nameAr = $('#lib-export-name-ar').value.trim();
     if (!nameEn) { toast('RA name (English) is required.'); return; }
 
     const goBtn = $('#btn-lib-export-go');
@@ -695,7 +692,7 @@ function wireLibraryExport() {
     }
 
     const newCat = {
-      category: { en: nameEn, ar: nameAr },
+      category: { en: nameEn, ar: '' },
       items: Store.project.items.map(libItemFromRiskItem),
     };
 
@@ -718,6 +715,9 @@ function wireLibraryExport() {
     const text = serializeLibrary(lib);
     $('#lib-export-output').value = text;
     $('#lib-export-path').textContent = libraryFilePath();
+    $('#lib-export-instructions').textContent = isWindows()
+      ? 'Open the library file below in Notepad (File > Open, paste the path), select all its content (Ctrl+A), paste the copied text over it (Ctrl+V) and save (Ctrl+S). Don\'t double-click the .js file in File Explorer - Windows tries to run it.'
+      : 'Open the library file below in a text editor (paste the path to locate it), select all its content, paste the copied text over it and save.';
     showStep(2);
     const copied = await copyText(text);
     $('#lib-export-status').textContent =
@@ -871,6 +871,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // instead of leaving the whole app dead.
   const steps = [
     ['Store.load', () => Store.load()],
+    ['header logos', () => {
+      $('#header-logo-left').src = LOGO_RASHPETCO_DATA_URL;
+      $('#header-logo-right').src = LOGO_BURULLUS_DATA_URL;
+    }],
     ['fillMetaPanel', fillMetaPanel],
     ['wireMetaPanel', wireMetaPanel],
     ['wireItemDialog', wireItemDialog],

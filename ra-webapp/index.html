@@ -10,7 +10,9 @@
 <body>
 
 <header class="app-header">
+  <img id="header-logo-left" class="app-header-logo" alt="Rashpetco logo">
   <h1>Specific Risk Assessment Builder</h1>
+  <img id="header-logo-right" class="app-header-logo" alt="Burullus logo">
 </header>
 
 <main class="app-main">
@@ -19,9 +21,6 @@
     <h2>Risk Assessment Details</h2>
     <div class="meta-grid">
       <label>Title (English)<input type="text" id="meta-title-en" placeholder="e.g. Scaffold Erection at Unit 4"></label>
-      <label>العنوان (عربي)<input type="text" id="meta-title-ar" dir="rtl" placeholder="مثال: تركيب السقالات بالوحدة 4"></label>
-    </div>
-    <div class="meta-row-3">
       <label>Location (English)<input type="text" id="meta-location-en"></label>
       <label>PTW #<input type="text" id="meta-ptw-number" placeholder="e.g. 1234"></label>
       <label>Date
@@ -32,7 +31,6 @@
         </div>
       </label>
     </div>
-    <button type="button" class="btn btn-link" id="btn-meta-translate">Auto-translate Title to Arabic</button>
   </section>
 
   <section class="panel" id="toolbar-panel">
@@ -199,7 +197,6 @@
     <p>The current risk items will be added to the library as a new RA. Give it a name:</p>
     <div class="item-form-grid">
       <label>RA name (English) *<input type="text" id="lib-export-name-en"></label>
-      <label>RA name (Arabic)<input type="text" id="lib-export-name-ar" dir="rtl"></label>
     </div>
     <p class="lib-export-note" id="lib-export-count"></p>
     <div class="dialog-actions">
@@ -209,7 +206,7 @@
   </div>
   <div id="lib-export-step2" hidden>
     <p id="lib-export-status"></p>
-    <p class="lib-export-note">Open the library file below in Notepad (<b>File &gt; Open</b>, paste the path), select all its content (<b>Ctrl+A</b>), paste the copied text over it (<b>Ctrl+V</b>) and save (<b>Ctrl+S</b>). Don't double-click the .js file in File Explorer - Windows tries to run it.</p>
+    <p class="lib-export-note" id="lib-export-instructions"></p>
     <div class="lib-export-path">
       <code id="lib-export-path"></code>
       <button type="button" class="btn" id="btn-lib-export-copy-path">Copy Path</button>
@@ -234,9 +231,7 @@
 
 <script src="js/translate.js"></script>
 <script src="js/matrix.js"></script>
-<script src="js/globalRisks.js"></script>
-<script src="js/globalRisksAr.js"></script>
-<script src="js/store.js"></script>
+<script src="js/globalRisks.js"></script><script src="js/store.js"></script>
 <script src="js/excelImport.js"></script>
 <script src="js/exportPdf.js"></script>
 <script src="js/exportWord.js"></script>

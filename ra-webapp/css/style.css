@@ -42,11 +42,15 @@ body {
 [dir="rtl"] { font-family: 'Noto Naskh Arabic', Arial, sans-serif; }
 
 .app-header {
-  padding: 20px 28px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 12px 28px;
   background: var(--accent);
   color: var(--accent-ink);
 }
-.app-header h1 { margin: 0; font-size: 22px; }
+.app-header h1 { margin: 0; font-size: 22px; flex: 1; text-align: center; }
+.app-header-logo {
+  height: 96px; width: 96px; object-fit: contain; flex-shrink: 0;
+}
 .app-sub { margin: 4px 0 0; opacity: .85; font-size: 13px; }
 
 .app-main {
@@ -67,17 +71,11 @@ body {
 
 .meta-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: 3fr 1fr 1fr 1fr;
   gap: 12px 20px;
 }
-.meta-row-3 {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px 20px;
-  margin-top: 12px;
-}
-.meta-grid label, .meta-row-3 label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
-.meta-grid input, .meta-row-3 input {
+.meta-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.meta-grid input {
   font-family: inherit; font-size: 14px; padding: 8px 10px;
   border: 1px solid var(--border); border-radius: 6px; color: var(--ink);
 }

@@ -13,7 +13,7 @@ function formatDDMMYYYY(isoDate) {
 
 function blankProject() {
   return {
-    title: { en: '', ar: '' },
+    title: { en: '' }, // Arabic title is not used - removed per explicit instruction
     location: { en: '' }, // Arabic location is not used - removed per explicit instruction
     ptwNumber: '',
     date: new Date().toISOString().slice(0, 10),
