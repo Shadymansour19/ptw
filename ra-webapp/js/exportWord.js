@@ -41,13 +41,13 @@ const HEADER_BOX_WIDTHS_TWIPS = [
   WORD_LOGO_CELL_TWIPS,
 ];
 
-const WORD_SIGNATURE_SPACE_TWIPS = Math.round(16 * TWIPS_PER_MM); // same as PDF's SIGNATURE_SPACE_PX
+const WORD_SIGNATURE_SPACE_TWIPS = Math.round(16 * 0.7 * TWIPS_PER_MM); // ~0.7x of the PDF's SIGNATURE_SPACE_PX, Word-only reduction
 
 const FS_STRIP = pdfPxToHalfPt(19);
 const FS_TITLE = pdfPxToHalfPt(32);
 const FS_META = pdfPxToHalfPt(19);
 const FS_BODY = pdfPxToHalfPt(18);
-const FS_TH = pdfPxToHalfPt(16);
+const FS_TH = pdfPxToHalfPt(14);
 const FS_SIG = pdfPxToHalfPt(20);
 const FS_FOOTER = pdfPxToHalfPt(18);
 
@@ -136,6 +136,7 @@ function wordHeaderCell(key, { colSpan, rowSpan, widthIdx } = {}) {
     ...(widthIdx !== undefined ? { width: wordColWidth(widthIdx) } : {}),
     verticalAlign: VerticalAlign.CENTER,
     shading: { type: ShadingType.CLEAR, fill: 'CCCCCC' },
+    margins: { top: 60, bottom: 60 },
     children: [wordCenteredParagraph(wordHeaderLabel(key), { bold: true, size: FS_TH })],
   });
 }
@@ -176,7 +177,7 @@ function wordItemRow(item, index, lang, { keepNext = false } = {}) {
   // signature block, so the signatures never land on a page alone.
   const { TableRow, TableCell, VerticalAlign } = window.docx;
   const o = { keepNext };
-  const cell = (paras, widthIdx) => new TableCell({ width: wordColWidth(widthIdx), verticalAlign: VerticalAlign.CENTER, children: paras });
+  const cell = (paras, widthIdx) => new TableCell({ width: wordColWidth(widthIdx), verticalAlign: VerticalAlign.CENTER, margins: { top: 60, bottom: 60 }, children: paras });
 
   return new TableRow({
     cantSplit: true,
