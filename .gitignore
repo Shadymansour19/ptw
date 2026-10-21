@@ -53,3 +53,8 @@ client/qr-summery-*.png
 
 # pytest
 .pytest_cache/
+
+# OS-generated junk (e.g. picked up by browsing vendor/assets/ in Windows Explorer)
+Thumbs.db
+desktop.ini
+.DS_Store
