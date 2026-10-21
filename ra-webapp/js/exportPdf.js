@@ -32,9 +32,13 @@ const DOC_CONTROL_ISSUE = '3';
 const DOC_CONTROL_REV = '0';
 const DOC_CONTROL_REV_DATE = '29 June 2025';
 
-// Footer shown on every page. Update this whenever the app/library/matrix
-// content changes - it's the only thing to edit, the rest is automatic.
-const LAST_UPDATED_DATE = 'FEB 2026';
+// Footer shown on every page - "UPDATED <month> <year>", always the month the
+// export happens in (computed automatically, never goes stale).
+const LAST_UPDATED_DATE = (() => {
+  const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  const now = new Date();
+  return `${MONTHS[now.getMonth()]} ${now.getFullYear()}`;
+})();
 
 function sanitizeFilename(text) {
   return String(text || '').trim().replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').slice(0, 120);
