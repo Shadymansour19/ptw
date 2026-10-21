@@ -741,7 +741,19 @@ function wireLibraryExport() {
 
 /* ---------------- export ---------------- */
 
+// Order the "Export ▾" menu lists its formats in - Word generates far
+// faster than PDF (PDF rasterizes every page via html2canvas; Word just
+// builds the .docx directly), so it's first/default. Change this one array
+// to reorder it later - no other code needs to change.
+const EXPORT_MENU_ORDER = ['word', 'pdf'];
+
 function wireExport() {
+  const menu = $('#export-menu');
+  EXPORT_MENU_ORDER.forEach((kind) => {
+    const btn = menu.querySelector(`button[data-export="${kind}"]`);
+    if (btn) menu.appendChild(btn); // re-appending moves it to the end, in order
+  });
+
   const openLangDialog = (kind) => {
     pendingExportKind = kind;
     if (!Store.project.items.length) {
@@ -761,7 +773,14 @@ function wireExport() {
     });
   });
 
-  $('#btn-print').addEventListener('click', () => openLangDialog('print'));
+  // Print always prints both languages on one sheet - no language prompt.
+  $('#btn-print').addEventListener('click', () => {
+    if (!Store.project.items.length) {
+      toast('Add at least one risk item before printing.');
+      return;
+    }
+    runExportAction('print', 'both');
+  });
 
   $('#btn-export-lang-cancel').addEventListener('click', () => $('#export-lang-dialog').close());
 

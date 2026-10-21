@@ -34,7 +34,7 @@ const WORD_COL_WIDTHS_TWIPS = WORD_COL_WEIGHTS.map((w) => Math.round((w / WORD_C
 
 // Logo/title box: same mm sizes as the PDF (logo cell 33.6mm, image 24.5mm).
 const WORD_LOGO_CELL_TWIPS = Math.round(42 * 0.8 * TWIPS_PER_MM);
-const WORD_LOGO_IMG_PX = Math.round(35 * 0.7 * PX96_PER_MM);
+const WORD_LOGO_IMG_PX = Math.round(35 * 0.65 * PX96_PER_MM);
 const HEADER_BOX_WIDTHS_TWIPS = [
   WORD_LOGO_CELL_TWIPS,
   WORD_USABLE_WIDTH_TWIPS - WORD_LOGO_CELL_TWIPS * 2,
@@ -44,7 +44,7 @@ const HEADER_BOX_WIDTHS_TWIPS = [
 const WORD_SIGNATURE_SPACE_TWIPS = Math.round(16 * 0.7 * TWIPS_PER_MM); // ~0.7x of the PDF's SIGNATURE_SPACE_PX, Word-only reduction
 
 const FS_STRIP = pdfPxToHalfPt(19);
-const FS_TITLE = pdfPxToHalfPt(32);
+const FS_TITLE = pdfPxToHalfPt(28);
 const FS_META = pdfPxToHalfPt(19);
 const FS_BODY = pdfPxToHalfPt(18);
 const FS_TH = pdfPxToHalfPt(14);
@@ -327,11 +327,11 @@ function wordPageHeader(project) {
           width: { size: HEADER_BOX_WIDTHS_TWIPS[1], type: WidthType.DXA },
           verticalAlign: VerticalAlign.CENTER,
           borders,
-          margins: { top: 220, bottom: 220, left: 300, right: 300 },
+          margins: { top: 140, bottom: 140, left: 300, right: 300 },
           children: [
             titleLine('HSE Risk Assessment'),
             titleLine(`Task / Activity: ${project.title?.en || ''}`),
-            new Paragraph({ spacing: { before: 120 }, children: [] }),
+            new Paragraph({ spacing: { before: 40 }, children: [] }),
             metaTable,
           ],
         }),

@@ -256,7 +256,7 @@ dialog.modal h3 { margin: 0 0 14px; }
 .rpt-header-box td { border: 2px solid #000; vertical-align: middle; text-align: center; padding: 4px; }
 .rpt-logo-cell img { object-fit: contain; }
 .rpt-header-box td.rpt-title-cell { padding: 20px 26px; }
-.rpt-ra-title { font-family: Arial, Helvetica, sans-serif; font-weight: 700; font-size: 32px; }
+.rpt-ra-title { font-family: Arial, Helvetica, sans-serif; font-weight: 700; font-size: 28px; }
 .rpt-ra-meta { font-size: 19px; color: #000; margin-top: 8px; display: flex; align-items: baseline; }
 .rpt-ra-meta .rpt-meta-left { flex: 1; text-align: left; }
 .rpt-ra-meta .rpt-meta-mid { flex: 1; text-align: center; }
