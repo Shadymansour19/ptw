@@ -32,6 +32,12 @@ const WORD_COL_WEIGHTS = [8, 28, 32, 4, 4, 8, 62, 4, 4, 8, 18];
 const WORD_COL_WEIGHT_SUM = WORD_COL_WEIGHTS.reduce((a, b) => a + b, 0);
 const WORD_COL_WIDTHS_TWIPS = WORD_COL_WEIGHTS.map((w) => Math.round((w / WORD_COL_WEIGHT_SUM) * WORD_USABLE_WIDTH_TWIPS));
 
+// Left/right padding inside every main-table cell so text never touches the
+// borders. Keep it modest: the S/L columns are only ~329 twips (5.8mm) wide,
+// so 2 x pad must leave room for one 10pt character (~115 twips).
+const WORD_CELL_PAD_LR_TWIPS = Math.round(1.5 * TWIPS_PER_MM); // ~85 twips
+const WORD_CELL_MARGINS = { top: 60, bottom: 60, left: WORD_CELL_PAD_LR_TWIPS, right: WORD_CELL_PAD_LR_TWIPS };
+
 // Logo/title box: same mm sizes as the PDF (logo cell 33.6mm, image 24.5mm).
 const WORD_LOGO_CELL_TWIPS = Math.round(42 * 0.8 * TWIPS_PER_MM);
 const WORD_LOGO_IMG_PX = Math.round(35 * 0.65 * PX96_PER_MM);
@@ -122,21 +128,32 @@ function wordColWidth(weightIndex) {
   return { size: WORD_COL_WIDTHS_TWIPS[weightIndex], type: window.docx.WidthType.DXA };
 }
 
+function wordSpanWidth(fromIdx, count) {
+  // Width of a cell spanning `count` grid columns starting at `fromIdx`.
+  const size = WORD_COL_WIDTHS_TWIPS.slice(fromIdx, fromIdx + count).reduce((a, b) => a + b, 0);
+  return { size, type: window.docx.WidthType.DXA };
+}
+
 function wordHeaderLabel(key) {
   // Table column headers are always English only - same as the PDF export.
   const H = { no: 'No.', hazard: 'Hazard', effect: 'Effect', free: 'Risk Analysis (No controls)', ctrl: 'Control Measure', controlled: 'Risk Analysis with control', eval: 'Evaluation', s: 'S', l: 'L', risk: 'Risk' };
   return H[key];
 }
 
-function wordHeaderCell(key, { colSpan, rowSpan, widthIdx } = {}) {
+function wordHeaderCell(key, { colSpan, rowSpan, widthIdx, spanFrom } = {}) {
+  // Every header cell gets an explicit width (spanned cells = sum of their
+  // grid columns) so Word never sizes a column from its text.
   const { TableCell, ShadingType, VerticalAlign } = window.docx;
+  let width;
+  if (spanFrom !== undefined) width = wordSpanWidth(spanFrom, colSpan || 1);
+  else if (widthIdx !== undefined) width = wordColWidth(widthIdx);
   return new TableCell({
     ...(colSpan ? { columnSpan: colSpan } : {}),
     ...(rowSpan ? { rowSpan } : {}),
-    ...(widthIdx !== undefined ? { width: wordColWidth(widthIdx) } : {}),
+    ...(width ? { width } : {}),
     verticalAlign: VerticalAlign.CENTER,
     shading: { type: ShadingType.CLEAR, fill: 'CCCCCC' },
-    margins: { top: 60, bottom: 60 },
+    margins: WORD_CELL_MARGINS,
     children: [wordCenteredParagraph(wordHeaderLabel(key), { bold: true, size: FS_TH })],
   });
 }
@@ -150,9 +167,9 @@ function wordHeaderRows() {
       wordHeaderCell('no', { rowSpan: 2, widthIdx: 0 }),
       wordHeaderCell('hazard', { rowSpan: 2, widthIdx: 1 }),
       wordHeaderCell('effect', { rowSpan: 2, widthIdx: 2 }),
-      wordHeaderCell('free', { colSpan: 3 }),
+      wordHeaderCell('free', { colSpan: 3, spanFrom: 3 }),
       wordHeaderCell('ctrl', { rowSpan: 2, widthIdx: 6 }),
-      wordHeaderCell('controlled', { colSpan: 3 }),
+      wordHeaderCell('controlled', { colSpan: 3, spanFrom: 7 }),
       wordHeaderCell('eval', { rowSpan: 2, widthIdx: 10 }),
     ],
   });
@@ -177,7 +194,7 @@ function wordItemRow(item, index, lang, { keepNext = false } = {}) {
   // signature block, so the signatures never land on a page alone.
   const { TableRow, TableCell, VerticalAlign } = window.docx;
   const o = { keepNext };
-  const cell = (paras, widthIdx) => new TableCell({ width: wordColWidth(widthIdx), verticalAlign: VerticalAlign.CENTER, margins: { top: 60, bottom: 60 }, children: paras });
+  const cell = (paras, widthIdx) => new TableCell({ width: wordColWidth(widthIdx), verticalAlign: VerticalAlign.CENTER, margins: WORD_CELL_MARGINS, children: paras });
 
   return new TableRow({
     cantSplit: true,
@@ -437,6 +454,7 @@ function wordSignatureRow() {
     cantSplit: true,
     children: [new TableCell({
       columnSpan: WORD_COL_WEIGHTS.length,
+      width: { size: WORD_USABLE_WIDTH_TWIPS, type: WidthType.DXA },
       borders: { left: none, right: none, bottom: none },
       margins: { left: 0, right: 0 },
       children: [inner, new Paragraph({ children: [new TextRun({ text: '', size: 2 })] })],
@@ -445,12 +463,18 @@ function wordSignatureRow() {
 }
 
 async function exportProjectToWord(project, lang) {
-  const { Document, Packer, Table, WidthType, PageOrientation } = window.docx;
+  const { Document, Packer, Table, WidthType, PageOrientation, TableLayoutType } = window.docx;
   const lastIdx = project.items.length - 1;
 
+  // FIXED layout: Word uses the grid widths exactly and wraps text, instead
+  // of AutoFit resizing columns from their content (which made S/L/Risk too
+  // wide). Table-level margins also cover the vMerge "continue" cells that
+  // docx.js inserts for rowSpan headers.
   const table = new Table({
     width: { size: WORD_USABLE_WIDTH_TWIPS, type: WidthType.DXA },
     columnWidths: WORD_COL_WIDTHS_TWIPS,
+    layout: TableLayoutType.FIXED,
+    margins: { left: WORD_CELL_PAD_LR_TWIPS, right: WORD_CELL_PAD_LR_TWIPS },
     rows: [
       ...wordHeaderRows(),
       ...project.items.map((item, i) => wordItemRow(item, i, lang, { keepNext: i === lastIdx })),
