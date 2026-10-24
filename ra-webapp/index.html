@@ -5,6 +5,27 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Specific Risk Assessment Builder</title>
 <link rel="icon" type="image/png" href="vendor/assets/rashpetco-logo.png">
+<script>
+  // When launched via the Chrome/Edge "Open as window" shortcut, fill the screen on startup.
+  // Placed before the stylesheet so it runs immediately instead of waiting for CSS to load.
+  (function () {
+    var isAppWindow =
+      matchMedia('(display-mode: standalone)').matches ||
+      matchMedia('(display-mode: minimal-ui)').matches ||
+      !window.locationbar.visible;
+    if (!isAppWindow) return;   // normal browser tab -> leave it alone
+    try {
+      // Only on first launch of this window, not on every F5/reload,
+      // so a window you resized yourself does not snap back.
+      if (sessionStorage.getItem('ra-window-filled')) return;
+      sessionStorage.setItem('ra-window-filled', '1');
+    } catch (e) {}
+    try {
+      window.moveTo(screen.availLeft || 0, screen.availTop || 0);
+      window.resizeTo(screen.availWidth, screen.availHeight);
+    } catch (e) {}
+  })();
+</script>
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -98,6 +119,11 @@
   </section>
 
 </main>
+
+<footer class="app-footer">
+  &copy; <span id="footer-year">2026</span> &mdash; Powered by <a class="footer-author" href="mailto:shady.abdelhady@rashpetco.com" data-email="shady.abdelhady@rashpetco.com" aria-label="Email Shady Mansour at shady.abdelhady@rashpetco.com">Shady Mansour</a> &middot; <span class="footer-title">Turbo-Machinery Engineer</span>
+</footer>
+<script>document.getElementById('footer-year').textContent = new Date().getFullYear();</script>
 
 <!-- ===== Manual add/edit item dialog ===== -->
 <dialog id="item-dialog" class="modal">
