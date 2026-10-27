@@ -237,14 +237,15 @@ function pageContentHtml(project, lang, rowsHtml, includeSignatures, pageNumber)
     ${buildPageFooterHtml(pageNumber)}`;
 }
 
-async function renderProjectPageImages(project, lang) {
-  // Renders every report page (same layout/pagination as the PDF) to a JPEG
-  // data URL. Shared by the PDF export and by Print.
+async function paginateProjectReportHtml(project, lang) {
+  // Measures row/header heights once (unpaginated) and packs rows into pages
+  // against the page budget, the same way for both the PDF export (which
+  // then rasterizes each page) and Print (which now prints this HTML
+  // directly - see printProjectPdf()). Returns one HTML string per page.
   await waitForFontsReady();
   const host = makeOffscreenHost();
 
   try {
-    // --- measurement pass: render everything once (unpaginated) to measure row/header heights ---
     const measureDiv = document.createElement('div');
     measureDiv.className = 'rpt-page';
     measureDiv.style.width = `${PDF_PAGE_W_PX}px`;
@@ -299,18 +300,30 @@ async function renderProjectPageImages(project, lang) {
       // together rather than leave signatures alone on an empty page.
     }
 
-    // --- render + capture each page ---
-    const images = [];
+    return pages.map(({ startIdx, endIdx }, p) => {
+      const rowsHtml = project.items.slice(startIdx, endIdx).map((it, i2) => renderRowHtml(it, startIdx + i2, lang)).join('');
+      const includeSignatures = p === pages.length - 1;
+      return pageContentHtml(project, lang, rowsHtml, includeSignatures, p + 1);
+    });
+  } finally {
+    document.body.removeChild(host);
+  }
+}
 
-    for (let p = 0; p < pages.length; p += 1) {
-      const { startIdx, endIdx } = pages[p];
+async function renderProjectPageImages(project, lang) {
+  // Rasterizes every paginated report page to a JPEG data URL, for the PDF
+  // export (which needs real image bytes to embed via jsPDF).
+  const pageHtmls = await paginateProjectReportHtml(project, lang);
+  const host = makeOffscreenHost();
+
+  try {
+    const images = [];
+    for (let p = 0; p < pageHtmls.length; p += 1) {
       const pageDiv = document.createElement('div');
       pageDiv.className = 'rpt-page';
       pageDiv.style.width = `${PDF_PAGE_W_PX}px`;
       pageDiv.style.height = `${PDF_PAGE_H_PX}px`;
-      const rowsHtml = project.items.slice(startIdx, endIdx).map((it, i2) => renderRowHtml(it, startIdx + i2, lang)).join('');
-      const includeSignatures = p === pages.length - 1;
-      pageDiv.innerHTML = pageContentHtml(project, lang, rowsHtml, includeSignatures, p + 1);
+      pageDiv.innerHTML = pageHtmls[p];
       host.appendChild(pageDiv);
 
       // eslint-disable-next-line no-await-in-loop
@@ -343,12 +356,17 @@ async function exportProjectToPdf(project, lang) {
   pdf.save(`${sanitizeFilename(project.title?.en) || 'risk-assessment'}.pdf`);
 }
 
+// Shrinks the 1500px-wide authored report page (that width stands in for
+// 297mm when rasterized for the PDF export) down to the real CSS-mm size of
+// an A4-landscape sheet, so Print can show the exact same HTML/CSS at true
+// physical page size instead of rasterizing it first - this is the whole
+// reason Print used to be as slow as PDF export (same html2canvas cost) and
+// now isn't: no canvas/image step at all, just the browser printing a page
+// like any other.
+const PRINT_SCALE = (297 * 96 / 25.4) / PDF_PAGE_W_PX;
+
 async function printProjectPdf(project, lang) {
-  // Prints the exact PDF pages (same rendered images the PDF export uses),
-  // but through a hidden HTML iframe instead of a PDF file - so nothing is
-  // downloaded and no PDF viewer is involved; the browser's print dialog
-  // opens directly. Each image fills one A4-landscape sheet, zero margins.
-  const images = await renderProjectPageImages(project, lang);
+  const pageHtmls = await paginateProjectReportHtml(project, lang);
 
   const old = document.getElementById('pdf-print-frame');
   if (old) old.remove();
@@ -360,21 +378,34 @@ async function printProjectPdf(project, lang) {
   const title = escapeHtml(project.title?.en || 'Risk Assessment');
   const doc = frame.contentDocument;
   doc.open();
-  doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>
+  doc.write(`<!doctype html><html><head><meta charset="utf-8">
+<base href="${location.href}">
+<title>${title}</title>
+<link rel="stylesheet" href="css/style.css">
 <style>
   @page { size: A4 landscape; margin: 0; }
   html, body { margin: 0; padding: 0; background: #fff; }
-  .sheet { width: 297mm; height: 210mm; overflow: hidden; page-break-after: always; break-after: page; }
-  .sheet:last-child { page-break-after: auto; break-after: auto; }
-  .sheet img { display: block; width: 297mm; height: 210mm; }
+  .print-sheet { width: 297mm; height: 210mm; overflow: hidden; page-break-after: always; break-after: page; }
+  .print-sheet:last-child { page-break-after: auto; break-after: auto; }
+  .print-sheet-inner { width: ${PDF_PAGE_W_PX}px; height: ${PDF_PAGE_H_PX}px; transform: scale(${PRINT_SCALE}); transform-origin: top left; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 </style></head><body>
-${images.map((src) => `<div class="sheet"><img src="${src}" alt=""></div>`).join('')}
+${pageHtmls.map((html) => `<div class="print-sheet"><div class="print-sheet-inner rpt-page">${html}</div></div>`).join('')}
 </body></html>`);
   doc.close();
 
+  // The stylesheet (fonts/colors/layout) must actually be applied, and the
+  // logos (base64 <img> data URLs) decoded, before printing - same idea as
+  // the old waitForImages() wait, plus a stylesheet-load wait since this
+  // path renders live HTML instead of pre-rasterized images.
+  await new Promise((resolve) => {
+    const link = doc.querySelector('link[rel="stylesheet"]');
+    if (link.sheet) resolve();
+    else link.addEventListener('load', resolve, { once: true });
+  });
+  if (frame.contentWindow.document.fonts) await frame.contentWindow.document.fonts.ready;
   await waitForImages(doc);
-  await new Promise((res) => setTimeout(res, 100));
+  await new Promise((res) => setTimeout(res, 50));
 
   const win = frame.contentWindow;
   win.addEventListener('afterprint', () => setTimeout(() => frame.remove(), 500));

@@ -18,6 +18,24 @@
   src: url('../vendor/fonts/NotoNaskhArabic-Bold.ttf') format('truetype');
   font-weight: 700;
 }
+/* Footer credit name only - a tiny subset (just the letters in "Shady
+   Mansour") of the cursive/script Yellowtail typeface. */
+@font-face {
+  font-family: 'Yellowtail Name';
+  src: url('../vendor/fonts/yellowtail-name.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+}
+/* Arabic toolbar button icon only - a single ع glyph in the ornamental Aref
+   Ruqaa calligraphy typeface (a ~1.5KB subset containing just that one
+   character, fetched from Google Fonts the same way the footer's name
+   subset above was). */
+@font-face {
+  font-family: 'Arabic Icon Glyph';
+  src: url('../vendor/fonts/arefruqaa-ain-glyph.woff2') format('woff2');
+  font-weight: 700;
+  font-display: swap;
+}
 
 :root {
   --ink: #1b2430;
@@ -26,8 +44,45 @@
   --bg: #f4f6f8;
   --panel: #ffffff;
   --accent: #1a5fb4;
+  --accent-rgb: 26, 95, 180;
   --accent-ink: #ffffff;
   --danger: #b71c1c;
+  --danger-bg: #fdecec;
+  --surface-2: #eef2f6;
+  --hover: #f0f3f6;
+  --table-border: #9aa7b3;
+  --shadow-sm: 0 1px 2px rgba(16,24,32,.06), 0 1px 3px rgba(16,24,32,.08);
+  --shadow-md: 0 8px 24px rgba(16,24,32,.14);
+  --shadow-lg: 0 20px 50px rgba(16,24,32,.22);
+  --dev-to: #0284c7;
+}
+
+/* Follows the OS/browser "prefers dark" setting automatically - no manual
+   toggle. Only the on-screen app chrome below is themed; the offscreen
+   .rpt-* report-rendering styles (used for the PDF/Word/print output) are
+   intentionally hardcoded black-on-white further down and must NOT read
+   these variables, so exported/printed reports always look the same
+   regardless of the viewer's OS theme. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #e7edf3;
+    --muted: #93a2b2;
+    --border: #2e3944;
+    --bg: #11161c;
+    --panel: #1b232c;
+    --accent: #4f94e0;
+    --accent-rgb: 79, 148, 224;
+    --accent-ink: #ffffff;
+    --danger: #ff6f64;
+    --danger-bg: rgba(183, 28, 28, 0.3);
+    --surface-2: #222b35;
+    --hover: #28323d;
+    --table-border: #46525e;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.35);
+    --shadow-md: 0 8px 24px rgba(0,0,0,.45);
+    --shadow-lg: 0 20px 50px rgba(0,0,0,.55);
+    --dev-to: #38bdf8;
+  }
 }
 
 * { box-sizing: border-box; }
@@ -38,6 +93,49 @@ body {
   color: var(--ink);
   background: var(--bg);
 }
+
+/* Custom checkbox (replaces the plain OS-tinted native box) - same rounded,
+   bordered, themed look as the rest of the app's inputs/buttons, with a
+   drawn checkmark/indeterminate dash so it looks identical across browsers. */
+input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none; margin: 0;
+  display: inline-grid; place-content: center; flex-shrink: 0;
+  width: 17px; height: 17px;
+  border: 1.5px solid var(--border); border-radius: 5px;
+  background: var(--panel); cursor: pointer;
+  transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+input[type="checkbox"]:hover { border-color: var(--accent); }
+input[type="checkbox"]:checked, input[type="checkbox"]:indeterminate {
+  background: var(--accent); border-color: var(--accent);
+}
+input[type="checkbox"]:checked::after {
+  content: ''; width: 5px; height: 9px;
+  border: solid var(--accent-ink); border-width: 0 2px 2px 0;
+  transform: rotate(45deg) translate(-1px, -1px);
+}
+input[type="checkbox"]:indeterminate::after {
+  content: ''; width: 9px; height: 2px; border-radius: 1px; background: var(--accent-ink);
+}
+input[type="checkbox"]:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .35); }
+input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Custom radio - same drawing approach/theming as the checkbox above. */
+input[type="radio"] {
+  appearance: none; -webkit-appearance: none; margin: 0;
+  display: inline-grid; place-content: center; flex-shrink: 0;
+  width: 18px; height: 18px;
+  border: 1.5px solid var(--border); border-radius: 50%;
+  background: var(--panel); cursor: pointer;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+input[type="radio"]:hover { border-color: var(--accent); }
+input[type="radio"]:checked { border-color: var(--accent); }
+input[type="radio"]:checked::after {
+  content: ''; width: 9px; height: 9px; border-radius: 50%; background: var(--accent);
+}
+input[type="radio"]:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .35); }
+input[type="radio"]:disabled { opacity: .5; cursor: not-allowed; }
 
 [dir="rtl"] { font-family: 'Noto Naskh Arabic', Arial, sans-serif; }
 
@@ -64,8 +162,9 @@ body {
 .panel {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 18px 20px;
+  box-shadow: var(--shadow-sm);
 }
 .panel h2 { margin: 0 0 14px; font-size: 16px; }
 
@@ -77,55 +176,112 @@ body {
 .meta-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 .meta-grid input {
   font-family: inherit; font-size: 14px; padding: 8px 10px;
-  border: 1px solid var(--border); border-radius: 6px; color: var(--ink);
+  border: 1px solid var(--border); border-radius: 7px; color: var(--ink);
+  background: var(--panel); transition: border-color .15s ease, box-shadow .15s ease;
 }
 .date-field { position: relative; display: flex; align-items: center; gap: 6px; }
-.date-field input[type="text"] { flex: 1; background: #fff; cursor: default; }
+.date-field input[type="text"] { flex: 1; background: var(--panel); cursor: default; }
 .date-pick-btn {
-  padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px;
-  background: #fff; cursor: pointer; font-size: 14px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0; width: 36px; height: 36px; flex-shrink: 0;
+  border: 1px solid var(--border); border-radius: 7px;
+  background: var(--panel); color: var(--muted); cursor: pointer;
+  transition: background-color .15s ease, color .15s ease, border-color .15s ease;
 }
-.date-pick-btn:hover { background: #f0f3f6; }
-.date-picker-hidden { position: absolute; width: 0; height: 0; padding: 0; border: 0; opacity: 0; pointer-events: none; }
+.date-pick-btn svg { width: 18px; height: 18px; }
+.date-pick-btn:hover { background: var(--hover); color: var(--accent); border-color: var(--accent); }
+
+/* Custom calendar dropdown (replaces the native <input type="date"> popup,
+   which no browser lets CSS restyle - this one fully matches the app's own
+   theme instead). Reuses the same .dropdown/.dropdown-menu open/close
+   mechanics as the toolbar menus. */
+#date-popover { right: 0; left: auto; min-width: 232px; padding: 10px; }
+/* #date-popover also carries the generic .dropdown-menu class (for the
+   shared open/close animation), whose ".dropdown-menu button" rule
+   (display:flex; width:100%; padding:10px 14px; ...) would otherwise
+   override all of the nav/day button styling below it in the cascade since
+   it's more specific than a single class selector - so every rule here is
+   scoped under #date-popover to win regardless of source order. */
+#date-popover .cal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 13px; font-weight: 700; color: var(--ink); }
+#date-popover .cal-nav {
+  display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; flex-shrink: 0;
+  padding: 0; border: none; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer;
+  transition: background-color .12s ease, color .12s ease;
+}
+#date-popover .cal-nav svg { width: 15px; height: 15px; color: inherit; }
+#date-popover .cal-nav:hover { background: var(--hover); color: var(--accent); }
+#date-popover .cal-weekdays, #date-popover .cal-days { display: grid; grid-template-columns: repeat(7, 1fr); }
+#date-popover .cal-weekdays { text-align: center; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+#date-popover .cal-days { gap: 2px; }
+#date-popover .cal-day {
+  display: flex; align-items: center; justify-content: center; aspect-ratio: 1; width: auto;
+  padding: 0; border: none; border-radius: 6px; background: transparent; font-size: 12px; color: var(--ink); cursor: pointer;
+  transition: background-color .12s ease, color .12s ease;
+}
+#date-popover .cal-day:hover { background: var(--hover); }
+#date-popover .cal-day.other-month { color: var(--muted); opacity: .5; }
+#date-popover .cal-day.today { box-shadow: inset 0 0 0 1.5px var(--accent); font-weight: 700; }
+#date-popover .cal-day.selected, #date-popover .cal-day.selected:hover { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
 
 .toolbar {
   display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px;
 }
 .toolbar-spacer { flex: 1; }
+.auto-detect-toggle {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
+  color: var(--ink); cursor: pointer; user-select: none;
+}
+.auto-detect-toggle input { cursor: pointer; }
 
 .btn {
+  display: inline-flex; align-items: center; gap: 7px;
   font-family: inherit; font-size: 13px; padding: 9px 14px;
-  border-radius: 7px; border: 1px solid var(--border); background: #fff;
+  border-radius: 8px; border: 1px solid var(--border); background: var(--panel);
   color: var(--ink); cursor: pointer;
+  transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease, transform .08s ease;
 }
-.btn:hover { background: #f0f3f6; }
+.btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+.btn-ic { display: inline-flex; flex-shrink: 0; }
+.btn-icon-only { padding: 9px; width: 38px; height: 38px; justify-content: center; }
+/* Aref Ruqaa's ع has more ink below the baseline (its curling tail) than
+   above, so flex-centering the box alone looks visually low - nudge it up
+   a touch to compensate. */
+.btn-arabic-glyph { font-family: 'Arabic Icon Glyph', 'Noto Naskh Arabic', sans-serif; font-weight: 700; font-size: 19px; line-height: 1; transform: translateY(-5px); }
+.btn:hover { background: var(--hover); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
+.btn:active { transform: translateY(0); box-shadow: none; }
+.btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .35); }
 .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn-primary:hover { background: #164a8f; }
 .btn-accent { background: #2e7d32; border-color: #2e7d32; color: #fff; }
 .btn-accent:hover { background: #255f28; }
 .btn-link { background: transparent; border-color: transparent; color: var(--accent); text-decoration: underline; }
-.btn-danger-outline { background: #fff; border-color: var(--danger); color: var(--danger); }
-.btn-danger-outline:hover { background: #fdecec; }
+.btn-link:hover { background: transparent; box-shadow: none; }
+.btn-danger-outline { background: var(--panel); border-color: var(--danger); color: var(--danger); }
+.btn-danger-outline:hover { background: var(--danger-bg); }
 .danger { color: var(--danger); }
 
 .dropdown { position: relative; display: inline-block; }
 .dropdown-menu {
-  display: none; position: absolute; top: calc(100% + 4px); left: 0; z-index: 20;
-  background: #fff; border: 1px solid var(--border); border-radius: 8px; min-width: 190px;
-  box-shadow: 0 8px 24px rgba(0,0,0,.12); overflow: hidden;
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 20;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px; min-width: 190px;
+  box-shadow: var(--shadow-md); overflow: hidden;
+  opacity: 0; visibility: hidden; transform: translateY(-6px); pointer-events: none;
+  transition: opacity .15s ease, transform .15s ease, visibility .15s;
 }
-.dropdown-menu.open { display: block; }
+.dropdown-menu.open { opacity: 1; visibility: visible; transform: translateY(0); pointer-events: auto; }
 .dropdown-menu button {
-  display: block; width: 100%; text-align: left; padding: 10px 14px; border: none;
+  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; padding: 10px 14px; border: none;
   background: none; font-size: 13px; cursor: pointer; color: var(--ink);
+  transition: background-color .12s ease;
 }
-.dropdown-menu button:hover { background: #f0f3f6; }
+.dropdown-menu button:hover { background: var(--hover); }
+.dropdown-menu button svg { width: 16px; height: 16px; flex-shrink: 0; color: var(--muted); }
 
 .items-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
 .items-table th, .items-table td {
-  border: 1.5px solid #9aa7b3; padding: 8px 10px; text-align: left; vertical-align: middle; word-wrap: break-word;
+  border: 1.5px solid var(--table-border); padding: 8px 10px; text-align: left; vertical-align: middle; word-wrap: break-word;
 }
-.items-table th { background: #eef2f6; font-size: 12px; color: var(--muted); text-align: center; vertical-align: middle; }
+.items-table th { background: var(--surface-2); font-size: 12px; color: var(--muted); text-align: center; vertical-align: middle; }
 .items-table .col-no { text-align: center; }
 .items-table .col-sub { text-align: center; font-weight: 600; }
 .items-table .col-eval { text-align: center; }
@@ -147,6 +303,8 @@ body {
 .items-table col.w-ctrl { width: 44.8%; }
 .items-table col.w-eval { width: 6.5%; }
 .items-table col.w-actions { width: 3.5%; }
+.items-table tbody tr { transition: background-color .1s ease; }
+.items-table tbody tr:hover td { background: var(--hover); }
 .items-table tbody tr.dragging { opacity: 0.4; }
 .items-table.hide-arabic .cell-ar { display: none; }
 .cell-en { margin-bottom: 2px; text-align: justify; white-space: pre-line; line-height: 1.3; }
@@ -157,28 +315,37 @@ body {
   display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 700;
   white-space: nowrap;
 }
-.badge-plain, .rpt-badge-plain {
-  background: #eef2f6; color: var(--ink);
-}
+.badge-plain { background: var(--surface-2); color: var(--ink); }
+/* Fixed (not themed) - must render identically regardless of OS dark mode,
+   since this is the offscreen report markup rasterized into the PDF/Word
+   export. */
+.rpt-badge-plain { background: #eef2f6; color: #1b2430; }
 
 .row-actions-btn {
   display: flex; align-items: center; justify-content: center;
   width: 38px; height: 38px; padding: 0;
-  border-radius: 5px; border: none;
+  border-radius: 6px; border: none;
   background: transparent; color: var(--muted); cursor: pointer;
+  transition: background-color .15s ease, color .15s ease;
 }
 .row-actions-btn svg { width: 21px; height: 21px; }
-.row-actions-btn:hover { background: #f0f3f6; }
+.row-actions-btn:hover { background: var(--hover); }
 .row-actions-btn[data-action="edit"]:hover { color: var(--accent); }
 .row-actions-btn[data-action="delete"]:hover { color: var(--danger); }
 .row-actions-btn.drag-handle { cursor: grab; user-select: none; }
+.row-actions-btn:disabled { opacity: .35; cursor: not-allowed; }
+.row-actions-btn:disabled:hover { background: transparent; color: var(--muted); }
+.row-select { margin: 0 0 2px; }
+.items-table tbody tr.row-selected td { background: var(--surface-2); }
+.items-table tbody tr.row-selected:hover td { background: var(--hover); }
 
 /* ---- dialogs ---- */
 dialog.modal {
-  border: none; border-radius: 12px; padding: 22px 24px; width: min(640px, 92vw);
-  box-shadow: 0 20px 60px rgba(0,0,0,.25);
+  border: none; border-radius: 14px; padding: 22px 24px; width: min(640px, 92vw);
+  box-shadow: var(--shadow-lg);
+  background: var(--panel); color: var(--ink);
 }
-dialog.modal::backdrop { background: rgba(10, 16, 24, .45); }
+dialog.modal::backdrop { background: rgba(10, 16, 24, .5); backdrop-filter: blur(1px); }
 dialog.modal-wide { width: min(880px, 94vw); }
 dialog.modal h3 { margin: 0 0 14px; }
 
@@ -188,7 +355,12 @@ dialog.modal h3 { margin: 0 0 14px; }
 .item-form-grid label, .meta-grid label { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
 .item-form-grid textarea, select, input[type="text"], input[type="date"] {
   font-family: inherit; font-size: 13px; padding: 7px 9px; border: 1px solid var(--border);
-  border-radius: 6px; resize: vertical; color: var(--ink);
+  border-radius: 7px; resize: vertical; color: var(--ink); background: var(--panel);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.item-form-grid textarea:focus, select:focus, input[type="text"]:focus, input[type="date"]:focus,
+.meta-grid input:focus {
+  outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .18);
 }
 
 .eval-row { display: flex; gap: 16px; align-items: flex-end; margin-bottom: 14px; flex-wrap: wrap; }
@@ -202,20 +374,37 @@ dialog.modal h3 { margin: 0 0 14px; }
   margin-top: 8px; font-size: 12px; color: var(--muted); cursor: pointer;
 }
 .library-list { max-height: 50vh; overflow: auto; margin: 12px 0; border: 1px solid var(--border); border-radius: 8px; }
-.library-category { padding: 8px 12px; background: #eef2f6; font-weight: 700; font-size: 13px; }
-.library-item { display: flex; gap: 10px; padding: 8px 14px; border-top: 1px solid var(--border); align-items: flex-start; font-size: 13px; }
+.library-category { padding: 8px 12px; background: var(--surface-2); font-weight: 700; font-size: 13px; }
+.library-item { display: flex; gap: 10px; padding: 8px 14px; border-top: 1px solid var(--border); align-items: flex-start; font-size: 13px; cursor: pointer; transition: background-color .12s ease; }
+.library-item:hover { background: var(--hover); }
 .library-item .item-text { display: flex; flex-direction: column; gap: 1px; }
 .library-item .item-text .ar { color: var(--muted); font-family: 'Noto Naskh Arabic', Arial, sans-serif; }
 
-.lang-choice { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; font-size: 14px; }
+/* Modern card-style radio choice - used for the export-language and
+   auto-translate-mode dialogs (any future similar "pick one of a few
+   options" UI should reuse this same class rather than plain radio rows). */
+.lang-choice { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; font-size: 14px; }
+.lang-choice label {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; border: 1.5px solid var(--border); border-radius: 10px;
+  cursor: pointer; transition: border-color .15s ease, background-color .15s ease;
+}
+.lang-choice label:hover { border-color: var(--accent); background: var(--hover); }
+.lang-choice label:has(input:checked) { border-color: var(--accent); background: var(--surface-2); }
+.choice-text { display: flex; flex-direction: column; gap: 2px; }
+.choice-text strong { font-weight: 600; color: var(--ink); }
+.choice-text small { color: var(--muted); font-size: 12px; }
 
 #import-result-body ul { margin: 6px 0; padding-left: 18px; }
 
 .toast {
-  position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+  position: fixed; bottom: 22px; left: 50%;
   background: #1b2430; color: #fff; padding: 10px 18px; border-radius: 8px; font-size: 13px;
   box-shadow: 0 10px 30px rgba(0,0,0,.25); z-index: 100;
+  opacity: 0; transform: translate(-50%, 8px); pointer-events: none;
+  transition: opacity .2s ease, transform .2s ease;
 }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
 
 /* ---- offscreen PDF report rendering (not normally visible) ----
    Visual style mirrors the PTW Qt app's own ReportLab-generated PDF:
@@ -282,6 +471,7 @@ dialog.modal h3 { margin: 0 0 14px; }
 .lib-export-output {
   width: 100%; height: 50vh; box-sizing: border-box; font-family: Consolas, "Courier New", monospace;
   font-size: 12px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; white-space: pre; resize: vertical;
+  background: var(--panel); color: var(--ink);
 }
 .lib-export-note { font-size: 12px; color: var(--muted); }
 .lib-export-path { display: flex; align-items: center; gap: 10px; margin: 8px 0 10px; }
@@ -296,27 +486,30 @@ dialog.modal h3 { margin: 0 0 14px; }
   border-top: 1px solid var(--border);
   text-align: center; font-size: 12px; color: var(--muted);
 }
-.footer-author {
-  position: relative; color: var(--accent); font-weight: 700; text-decoration: none;
-}
-.footer-author:hover, .footer-author:focus-visible { text-decoration: underline; }
-.footer-author:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
 .footer-title { color: var(--ink); }
-/* Email tooltip */
-.footer-author::after {
-  content: attr(data-email);
-  position: absolute; bottom: calc(100% + 10px); left: 50%;
-  transform: translate(-50%, 4px);
-  background: var(--ink); color: #fff; font-weight: 400; font-size: 12px; white-space: nowrap;
-  padding: 6px 10px; border-radius: 6px; box-shadow: 0 6px 18px rgba(0,0,0,.2);
-  opacity: 0; pointer-events: none; transition: opacity .15s, transform .15s;
+
+/* "Powered by" credit row - same look as the timesheet app's "Developed by"
+   row: a text line plus a row of circular icon links. */
+.credit { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 18px; margin: 10px 0 2px; color: var(--muted); }
+.credit-links { display: flex; gap: 16px; }
+.credit-link {
+  display: inline-grid; place-items: center; width: 48px; height: 48px; border-radius: 50%;
+  color: var(--muted); border: 1px solid var(--border);
+  transition: color .15s ease, border-color .15s ease, background-color .15s ease;
 }
-.footer-author::before {
-  content: ""; position: absolute; bottom: calc(100% + 4px); left: 50%;
-  transform: translateX(-50%); border: 6px solid transparent; border-top-color: var(--ink);
-  opacity: 0; pointer-events: none; transition: opacity .15s;
+.credit-link:hover { color: var(--accent); border-color: var(--accent); background: var(--hover); }
+.credit-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Name gets the same treatment as the timesheet app's "Developed by" credit:
+   a dedicated font plus an animated brand-colored gradient sweep on hover. */
+.dev-name {
+  font-family: 'Yellowtail Name', 'Yellowtail', cursive; font-weight: 400;
+  font-size: 1.4em;
+  background: linear-gradient(90deg, var(--accent), var(--dev-to), var(--accent));
+  background-size: 220% 100%; background-position: 0 0;
+  -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent;
+  transition: background-position .8s ease;
 }
-.footer-author:hover::after, .footer-author:focus-visible::after { opacity: 1; transform: translate(-50%, 0); }
-.footer-author:hover::before, .footer-author:focus-visible::before { opacity: 1; }
-@media (prefers-reduced-motion: reduce) { .footer-author::after, .footer-author::before { transition: none; } }
+.credit:hover .dev-name { background-position: 100% 0; }
+@media (prefers-reduced-motion: reduce) { .dev-name { transition: none; } }
 @media print { .app-footer { display: none; } }

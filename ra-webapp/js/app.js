@@ -3,6 +3,12 @@
 let editingItemId = null;
 let pendingExportKind = null; // 'pdf' | 'word' | 'print'
 
+// Multi-select (checkboxes in the items table): bulk delete and drag-reorder
+// both still work while items are selected, but the per-row Edit button is
+// disabled whenever more than one item is selected, since editing multiple
+// items at once isn't supported - only ever edit one at a time.
+let selectedItemIds = new Set();
+
 // Monochrome SVG icons for the items-table row actions. Plain inline
 // outline shapes (not emoji) so color is fully controllable via CSS
 // `currentColor` - neutral by default, colored only on :hover.
@@ -18,15 +24,57 @@ function toast(msg, ms = 2600) {
   el.textContent = msg;
   el.hidden = false;
   clearTimeout(toast._t);
-  toast._t = setTimeout(() => { el.hidden = true; }, ms);
+  clearTimeout(toast._hideT);
+  // rAF so the "hidden" removal and ".show" addition land in separate
+  // frames - otherwise the opacity/transform transition wouldn't play.
+  requestAnimationFrame(() => el.classList.add('show'));
+  toast._t = setTimeout(() => {
+    el.classList.remove('show');
+    toast._hideT = setTimeout(() => { el.hidden = true; }, 220);
+  }, ms);
+}
+
+// Custom themed replacement for the native confirm() - same callers, but
+// `await`ed since a <dialog> is inherently asynchronous (no blocking modal
+// API like the browser's own confirm()). Resolves true only if "Confirm" was
+// clicked; Cancel, Esc, or clicking the backdrop all resolve false.
+function confirmDialog(message, { title = 'Confirm', okText = 'Confirm', danger = true } = {}) {
+  return new Promise((resolve) => {
+    const dialog = $('#confirm-dialog');
+    const okBtn = $('#btn-confirm-ok');
+    const cancelBtn = $('#btn-confirm-cancel');
+    $('#confirm-dialog-title').textContent = title;
+    $('#confirm-dialog-message').textContent = message;
+    okBtn.textContent = okText;
+    okBtn.className = `btn ${danger ? 'btn-danger-outline' : 'btn-primary'}`;
+
+    let result = false;
+    const onOk = () => { result = true; dialog.close(); };
+    const onCancel = () => dialog.close();
+    const onClose = () => {
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      dialog.removeEventListener('close', onClose);
+      resolve(result);
+    };
+
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    dialog.addEventListener('close', onClose);
+    dialog.showModal();
+  });
 }
 
 /* ---------------- auto-translate (EN -> AR) ---------------- */
 
 async function runTranslateButton(btn, fieldPairs) {
-  const original = btn.textContent;
+  // Buttons with an icon keep it in a separate .btn-label span so swapping
+  // the text here doesn't wipe out the icon's SVG; plain text-only buttons
+  // (e.g. the dialog's inline link) fall back to the whole button.
+  const label = btn.querySelector('.btn-label') || btn;
+  const original = label.textContent;
   btn.disabled = true;
-  btn.textContent = 'Translating…';
+  label.textContent = 'Translating…';
   try {
     await Promise.all(fieldPairs.map(async ([enId, arId]) => {
       const enEl = $(enId);
@@ -41,7 +89,7 @@ async function runTranslateButton(btn, fieldPairs) {
     toast('Translation failed - check your internet connection and try again.', 4000);
   } finally {
     btn.disabled = false;
-    btn.textContent = original;
+    label.textContent = original;
   }
 }
 
@@ -53,7 +101,6 @@ function fillMetaPanel() {
   $('#meta-location-en').value = p.location.en || '';
   $('#meta-ptw-number').value = p.ptwNumber || '';
   $('#meta-date').value = formatDDMMYYYY(p.date);
-  $('#meta-date-picker').value = p.date || '';
 }
 
 function wireMetaPanel() {
@@ -66,23 +113,17 @@ function wireMetaPanel() {
     });
   };
   bind('#meta-title-en', ['title', 'en']);
+
+  // Auto-detect only runs once the user has finished typing the title -
+  // leaving the field (blur) or pressing Enter - not on every keystroke.
+  $('#meta-title-en').addEventListener('blur', (e) => runAutoDetect(e.target.value));
+  $('#meta-title-en').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    runAutoDetect(e.target.value);
+  });
   bind('#meta-location-en', ['location', 'en']);
   bind('#meta-ptw-number', ['ptwNumber', null]);
-
-  // Date keeps a hidden native <input type="date"> purely for its calendar
-  // picker (showPicker()) - the visible field always displays dd/mm/yyyy,
-  // since the native picker's own displayed text follows the browser's
-  // locale (often mm/dd/yyyy) and can't be forced to a fixed format.
-  $('#btn-meta-date-pick').addEventListener('click', () => {
-    const picker = $('#meta-date-picker');
-    if (picker.showPicker) picker.showPicker();
-    else picker.focus();
-  });
-  $('#meta-date-picker').addEventListener('change', (e) => {
-    Store.project.date = e.target.value;
-    Store.save();
-    $('#meta-date').value = formatDDMMYYYY(Store.project.date);
-  });
 }
 
 /* ---------------- items table ---------------- */
@@ -93,9 +134,17 @@ function renderItemsTable() {
   tbody.innerHTML = '';
   $('#empty-hint').hidden = items.length > 0;
 
+  // Drop any selected ids that no longer exist (item deleted elsewhere, a
+  // new project loaded, Reset, etc.) so stale selection never lingers.
+  const liveIds = new Set(items.map((i) => i.id));
+  selectedItemIds.forEach((id) => { if (!liveIds.has(id)) selectedItemIds.delete(id); });
+  const multiSelected = selectedItemIds.size > 1;
+
   items.forEach((item, idx) => {
     const tr = document.createElement('tr');
     tr.dataset.id = item.id;
+    const selected = selectedItemIds.has(item.id);
+    if (selected) tr.classList.add('row-selected');
     const evaluation = evaluateRisk(item.severityAfter, item.likelihoodAfter);
 
     const biCell = (field) => {
@@ -109,8 +158,9 @@ function renderItemsTable() {
     tr.innerHTML = `
       <td class="col-actions">
         <div class="row-actions">
+          <input type="checkbox" class="row-select" data-id="${item.id}" ${selected ? 'checked' : ''} aria-label="Select row ${idx + 1}">
           <span class="row-actions-btn drag-handle" draggable="true" title="Drag to reorder" aria-label="Drag to reorder">${ICON_DRAG}</span>
-          <button class="row-actions-btn" data-action="edit" data-id="${item.id}" title="Edit" aria-label="Edit">${ICON_EDIT}</button>
+          <button class="row-actions-btn" data-action="edit" data-id="${item.id}" title="${multiSelected ? 'Select only one item to edit' : 'Edit'}" aria-label="Edit" ${multiSelected ? 'disabled' : ''}>${ICON_EDIT}</button>
           <button class="row-actions-btn" data-action="delete" data-id="${item.id}" title="Delete" aria-label="Delete">${ICON_DELETE}</button>
         </div>
       </td>
@@ -127,6 +177,16 @@ function renderItemsTable() {
       <td class="col-eval">${evalBadge(evaluation)}</td>`;
     tbody.appendChild(tr);
   });
+
+  updateSelectAllCheckbox();
+}
+
+function updateSelectAllCheckbox() {
+  const n = selectedItemIds.size;
+  const total = Store.project.items.length;
+  const selectAll = $('#chk-select-all');
+  selectAll.checked = total > 0 && n === total;
+  selectAll.indeterminate = n > 0 && n < total;
 }
 
 function escapeHtml(s) {
@@ -252,7 +312,7 @@ function wireItemDialog() {
     renderItemsTable();
   });
 
-  $('#items-tbody').addEventListener('click', (e) => {
+  $('#items-tbody').addEventListener('click', async (e) => {
     const btn = e.target.closest('button[data-action]');
     if (!btn) return;
     const id = btn.dataset.id;
@@ -260,8 +320,14 @@ function wireItemDialog() {
       const item = Store.project.items.find((i) => i.id === id);
       if (item) openItemDialog(item);
     } else if (btn.dataset.action === 'delete') {
-      if (confirm('Delete this risk item?')) {
-        Store.deleteItem(id);
+      // Deleting a row that's part of a multi-selection deletes the whole
+      // selection; deleting any other row only deletes that one (selection
+      // elsewhere is left untouched).
+      const ids = (selectedItemIds.has(id) && selectedItemIds.size > 1) ? Array.from(selectedItemIds) : [id];
+      const msg = ids.length > 1 ? `Delete ${ids.length} selected risk items?` : 'Delete this risk item?';
+      if (await confirmDialog(msg, { title: 'Delete risk item(s)', okText: 'Delete' })) {
+        ids.forEach((delId) => Store.deleteItem(delId));
+        selectedItemIds.clear();
         renderItemsTable();
       }
     }
@@ -270,11 +336,17 @@ function wireItemDialog() {
 
 /* Show/hide Arabic text in the on-screen items table only - a preview
    convenience, never affects PDF/Word export or any stored data. */
+const ICON_EYE = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6z"/><circle cx="10" cy="10" r="2.3"/></svg>';
+const ICON_EYE_OFF = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l14 14"/><path d="M8.6 4.9A9 9 0 0110 4.8c5.2 0 8 5.2 8 5.2a14 14 0 01-2.6 3.4"/><path d="M5.3 5.6A14 14 0 002 10s2.8 5.2 8 5.2c1.3 0 2.5-.3 3.6-.8"/><path d="M8 10a2.3 2.3 0 003.4 2"/></svg>';
+
 function wireArabicPreviewToggle() {
   const btn = $('#btn-toggle-arabic');
+  const ic = btn.querySelector('.btn-ic');
+  const label = btn.querySelector('.btn-label');
   btn.addEventListener('click', () => {
     const hidden = $('#items-table').classList.toggle('hide-arabic');
-    btn.textContent = hidden ? 'Show Arabic (Preview)' : 'Hide Arabic (Preview)';
+    label.textContent = hidden ? 'Show Arabic (Preview)' : 'Hide Arabic (Preview)';
+    ic.innerHTML = hidden ? ICON_EYE_OFF : ICON_EYE;
     btn.setAttribute('aria-pressed', String(hidden));
   });
 }
@@ -285,24 +357,40 @@ function wireArabicPreviewToggle() {
 function wireItemsReorder() {
   const tbody = $('#items-tbody');
   let draggedRow = null;
+  let groupIds = null; // every id moving together, in their original relative order
 
   tbody.addEventListener('dragstart', (e) => {
     const handle = e.target.closest('.drag-handle');
     const row = handle && handle.closest('tr');
     if (!row) { e.preventDefault(); return; }
     draggedRow = row;
+    const id = row.dataset.id;
+    // Dragging a row that's part of a multi-selection moves the whole
+    // selection together; dragging any other row only moves that one.
+    if (selectedItemIds.has(id) && selectedItemIds.size > 1) {
+      const order = Store.project.items.map((i) => i.id);
+      groupIds = Array.from(selectedItemIds).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    } else {
+      groupIds = [id];
+    }
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', row.dataset.id);
-    row.classList.add('dragging');
+    e.dataTransfer.setData('text/plain', id);
+    groupIds.forEach((gid) => {
+      const r = tbody.querySelector(`tr[data-id="${gid}"]`);
+      if (r) r.classList.add('dragging');
+    });
   });
 
   tbody.addEventListener('dragover', (e) => {
     if (!draggedRow) return;
     e.preventDefault();
     const row = e.target.closest('tr');
-    if (!row || row === draggedRow) return;
+    if (!row || groupIds.includes(row.dataset.id)) return;
     const rect = row.getBoundingClientRect();
     const before = (e.clientY - rect.top) < rect.height / 2;
+    // Only the grabbed row previews its position live - the rest of the
+    // group reassembles next to it on drop (avoids constant DOM churn from
+    // repositioning the whole group on every dragover).
     row.parentNode.insertBefore(draggedRow, before ? row : row.nextSibling);
   });
 
@@ -310,10 +398,45 @@ function wireItemsReorder() {
 
   tbody.addEventListener('dragend', () => {
     if (!draggedRow) return;
-    draggedRow.classList.remove('dragging');
-    const orderedIds = Array.from(tbody.querySelectorAll('tr')).map((tr) => tr.dataset.id);
+    groupIds.forEach((gid) => {
+      const r = tbody.querySelector(`tr[data-id="${gid}"]`);
+      if (r) r.classList.remove('dragging');
+    });
+
+    const primaryId = draggedRow.dataset.id;
+    const domOrder = Array.from(tbody.querySelectorAll('tr')).map((tr) => tr.dataset.id);
+    const others = groupIds.filter((gid) => gid !== primaryId);
+    const withoutOthers = domOrder.filter((did) => !others.includes(did));
+    const primaryIdx = withoutOthers.indexOf(primaryId);
+    const orderedIds = [
+      ...withoutOthers.slice(0, primaryIdx + 1),
+      ...others,
+      ...withoutOthers.slice(primaryIdx + 1),
+    ];
+
     draggedRow = null;
+    groupIds = null;
     Store.reorderItems(orderedIds);
+    renderItemsTable();
+  });
+}
+
+/* Multi-select: checkboxes in the items table for bulk delete. Drag-to-
+   reorder (above) and single-row Edit/Delete all keep working independently
+   of selection - only the per-row Edit button gets disabled once more than
+   one item is selected (see renderItemsTable()). */
+function wireBulkSelection() {
+  $('#items-tbody').addEventListener('change', (e) => {
+    const cb = e.target.closest('.row-select');
+    if (!cb) return;
+    if (cb.checked) selectedItemIds.add(cb.dataset.id);
+    else selectedItemIds.delete(cb.dataset.id);
+    renderItemsTable();
+  });
+
+  $('#chk-select-all').addEventListener('change', (e) => {
+    if (e.target.checked) Store.project.items.forEach((i) => selectedItemIds.add(i.id));
+    else selectedItemIds.clear();
     renderItemsTable();
   });
 }
@@ -479,11 +602,14 @@ function wireTranslateAll() {
   });
 
   $('#btn-translate-mode-cancel').addEventListener('click', () => dialog.close());
-  $('#btn-translate-mode-go').addEventListener('click', () => {
+  $('#btn-translate-mode-go').addEventListener('click', async () => {
     const mode = $('input[name="translate-mode"]:checked').value;
     dialog.close();
     if (mode === 'empty' && !collectJobs('empty').length) { toast('All fields already have Arabic - nothing to translate.'); return; }
-    if (mode === 'all' && !confirm('Overwrite ALL existing Arabic text (including your edits and the library\'s built-in Arabic)?')) return;
+    if (mode === 'all') {
+      const ok = await confirmDialog("Overwrite ALL existing Arabic text (including your edits and the library's built-in Arabic)?", { title: 'Overwrite Arabic text', okText: 'Overwrite' });
+      if (!ok) return;
+    }
     runTranslateJobs(btn, collectJobs(mode));
   });
 }
@@ -491,7 +617,8 @@ function wireTranslateAll() {
 async function runTranslateJobs(btn, jobs) {
   if (!jobs.length) { toast('Nothing to translate.'); return; }
 
-  const original = btn.textContent;
+  const label = btn.querySelector('.btn-label') || btn;
+  const original = label.textContent;
   btn.disabled = true;
   const cache = new Map();
   let done = 0;
@@ -515,7 +642,7 @@ async function runTranslateJobs(btn, jobs) {
         }
       }
       done += 1;
-      btn.textContent = `Translating ${done}/${jobs.length}…`;
+      label.textContent = `Translating ${done}/${jobs.length}…`;
     }
   };
 
@@ -523,7 +650,7 @@ async function runTranslateJobs(btn, jobs) {
     await Promise.all([worker(), worker(), worker()]); // 3 requests at a time
   } finally {
     btn.disabled = false;
-    btn.textContent = original;
+    label.textContent = original;
     renderItemsTable();
   }
 
@@ -700,7 +827,8 @@ function wireLibraryExport() {
     const existingIdx = lib.findIndex((c) => norm(c.category?.en) === norm(nameEn));
     let action = 'Added';
     if (existingIdx >= 0) {
-      if (!confirm(`An RA named "${nameEn}" already exists in the library.\nReplace it with the current items?`)) return;
+      const ok = await confirmDialog(`An RA named "${nameEn}" already exists in the library.\nReplace it with the current items?`, { title: 'Replace existing RA', okText: 'Replace' });
+      if (!ok) return;
       lib[existingIdx] = newCat;
       action = 'Replaced';
     } else {
@@ -855,8 +983,9 @@ function wireProjectMenu() {
     reader.readAsText(file);
   });
 
-  $('#btn-reset').addEventListener('click', () => {
-    if (confirm('Reset the whole project (title, meta and all risk items)? This cannot be undone.')) {
+  $('#btn-reset').addEventListener('click', async () => {
+    const ok = await confirmDialog('Reset the whole project (title, meta and all risk items)? This cannot be undone.', { title: 'Reset project', okText: 'Reset' });
+    if (ok) {
       Store.clearAll();
       fillMetaPanel();
       renderItemsTable();
@@ -868,8 +997,11 @@ function wireProjectMenu() {
 
 function wireDropdowns() {
   const dropdowns = [
+    { btn: '#btn-add', menu: '#add-menu' },
+    { btn: '#btn-arabic', menu: '#arabic-menu' },
     { btn: '#btn-export', menu: '#export-menu' },
     { btn: '#btn-project', menu: '#project-menu' },
+    { btn: '#btn-meta-date-pick', menu: '#date-popover' },
   ];
   dropdowns.forEach(({ btn, menu }) => {
     $(btn).addEventListener('click', (e) => {
@@ -896,8 +1028,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }],
     ['fillMetaPanel', fillMetaPanel],
     ['wireMetaPanel', wireMetaPanel],
+    ['wireDatePicker', wireDatePicker],
     ['wireItemDialog', wireItemDialog],
     ['wireItemsReorder', wireItemsReorder],
+    ['wireBulkSelection', wireBulkSelection],
     ['wireArabicPreviewToggle', wireArabicPreviewToggle],
     ['wireLibraryDialog', wireLibraryDialog],
     ['wireExcelImport', wireExcelImport],
@@ -906,6 +1040,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ['wireProjectMenu', wireProjectMenu],
     ['wireLibraryExport', wireLibraryExport],
     ['wireDropdowns', wireDropdowns],
+    ['wireAutoDetectToggle', wireAutoDetectToggle],
     ['renderItemsTable', renderItemsTable],
   ];
   const failed = [];

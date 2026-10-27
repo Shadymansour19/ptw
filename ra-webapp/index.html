@@ -41,14 +41,30 @@
   <section class="panel" id="meta-panel">
     <h2>Risk Assessment Details</h2>
     <div class="meta-grid">
-      <label>Title (English)<input type="text" id="meta-title-en" placeholder="e.g. Scaffold Erection at Unit 4"></label>
-      <label>Location (English)<input type="text" id="meta-location-en"></label>
+      <label>Title<input type="text" id="meta-title-en" placeholder="e.g. Scaffold Erection at Unit 4"></label>
+      <label>Location<input type="text" id="meta-location-en"></label>
       <label>PTW #<input type="text" id="meta-ptw-number" placeholder="e.g. 1234"></label>
       <label>Date
         <div class="date-field">
           <input type="text" id="meta-date" placeholder="dd/mm/yyyy" readonly>
-          <button type="button" id="btn-meta-date-pick" class="date-pick-btn" aria-label="Pick date" title="Pick date">&#128197;</button>
-          <input type="date" id="meta-date-picker" class="date-picker-hidden" tabindex="-1" aria-hidden="true">
+          <div class="dropdown">
+            <button type="button" id="btn-meta-date-pick" class="date-pick-btn" aria-label="Pick date" title="Pick date">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="14" height="12" rx="2"/><path d="M3 8.2h14"/><path d="M7 2.8v3M13 2.8v3"/></svg>
+            </button>
+            <div class="dropdown-menu date-popover" id="date-popover">
+              <div class="cal-header">
+                <button type="button" id="cal-prev" class="cal-nav" aria-label="Previous month">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 5l-5 5 5 5"/></svg>
+                </button>
+                <span id="cal-month-label"></span>
+                <button type="button" id="cal-next" class="cal-nav" aria-label="Next month">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 5l5 5-5 5"/></svg>
+                </button>
+              </div>
+              <div class="cal-weekdays"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div>
+              <div class="cal-days" id="cal-days"></div>
+            </div>
+          </div>
         </div>
       </label>
     </div>
@@ -57,30 +73,91 @@
   <section class="panel" id="toolbar-panel">
     <h2>Risk Items</h2>
     <div class="toolbar">
-      <button id="btn-add-manual" class="btn btn-primary">+ Add Item</button>
-      <button id="btn-add-library" class="btn">Add from General RA Library</button>
-      <button id="btn-import-excel" class="btn">Import from Excel</button>
-      <button id="btn-template-excel" class="btn btn-link">Download Excel Template</button>
-      <button id="btn-translate-all" class="btn">Auto-translate All to Arabic</button>
-      <button id="btn-toggle-arabic" class="btn" aria-pressed="false">Hide Arabic (Preview)</button>
+      <div class="dropdown">
+        <button id="btn-add" class="btn btn-primary">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="8"/><path d="M10 6v8"/><path d="M6 10h8"/></svg>
+          Add Item ▾
+        </button>
+        <div class="dropdown-menu" id="add-menu">
+          <button id="btn-add-manual">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 2.5l4 4L7 17l-5 1 1-5L13.5 2.5z"/><path d="M12 4l4 4"/></svg>
+            Add Manually
+          </button>
+          <button id="btn-add-library">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5A1.5 1.5 0 015.5 3H16v14H5.5A1.5 1.5 0 004 18.5z"/><path d="M4 16.5A1.5 1.5 0 015.5 15H16"/></svg>
+            Add from General RA Library
+          </button>
+          <button id="btn-import-excel">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13V3"/><path d="M6 7l4-4 4 4"/><path d="M4 14v2.5A1.5 1.5 0 005.5 18h9a1.5 1.5 0 001.5-1.5V14"/></svg>
+            Import from Excel
+          </button>
+        </div>
+      </div>
+      <button id="btn-template-excel" class="btn btn-link">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3v10"/><path d="M6 9l4 4 4-4"/><path d="M4 16.5h12"/></svg>
+        Download Excel Template
+      </button>
+      <div class="dropdown">
+        <button id="btn-arabic" class="btn btn-icon-only" title="Arabic Translation Options" aria-label="Arabic Translation Options">
+          <span class="btn-arabic-glyph" aria-hidden="true">ع</span>
+        </button>
+        <div class="dropdown-menu" id="arabic-menu">
+          <button id="btn-translate-all">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="8"/><path d="M2 10h16"/><path d="M10 2c2.5 2.2 2.5 13.8 0 16"/><path d="M10 2c-2.5 2.2-2.5 13.8 0 16"/></svg>
+            <span class="btn-label">Auto-translate All to Arabic</span>
+          </button>
+          <button id="btn-toggle-arabic" aria-pressed="false">
+            <span class="btn-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6z"/><circle cx="10" cy="10" r="2.3"/></svg></span>
+            <span class="btn-label">Hide Arabic (Preview)</span>
+          </button>
+        </div>
+      </div>
+      <label class="auto-detect-toggle" title="When on, typing keywords in the Title (e.g. &quot;dismantle&quot;, &quot;PSV calibration&quot;) auto-adds matching risks from the library. You can still edit/delete/add items freely afterwards.">
+        <input type="checkbox" id="chk-auto-detect">
+        Auto-detect Risks from Title
+      </label>
       <span class="toolbar-spacer"></span>
-      <button id="btn-print" class="btn">Print</button>
+      <button id="btn-print" class="btn btn-icon-only" title="Print" aria-label="Print">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7.5V3h10v4.5"/><path d="M5 14.5H3.8A1.8 1.8 0 012 12.7V9.3a1.8 1.8 0 011.8-1.8h12.4A1.8 1.8 0 0118 9.3v3.4a1.8 1.8 0 01-1.8 1.8H15"/><path d="M5 11.5h10V17H5z"/></svg>
+      </button>
       <div class="dropdown">
-        <button id="btn-export" class="btn btn-accent">Export ▾</button>
+        <button id="btn-export" class="btn btn-accent btn-icon-only" title="Export" aria-label="Export">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3v10"/><path d="M6 9l4 4 4-4"/><path d="M4 16.5h12"/></svg>
+        </button>
         <div class="dropdown-menu" id="export-menu">
-          <button data-export="pdf">Export as PDF</button>
-          <button data-export="word">Export as Word</button>
+          <button data-export="pdf">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 2.5h5l3.5 3.5v11a1 1 0 01-1 1h-7.5a1 1 0 01-1-1v-13.5a1 1 0 011-1z"/><path d="M11.5 2.5V6h3.5"/></svg>
+            Export as PDF
+          </button>
+          <button data-export="word">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 2.5h5l3.5 3.5v11a1 1 0 01-1 1h-7.5a1 1 0 01-1-1v-13.5a1 1 0 011-1z"/><path d="M11.5 2.5V6h3.5"/></svg>
+            Export as Word
+          </button>
         </div>
       </div>
       <div class="dropdown">
-        <button id="btn-project" class="btn">Project ▾</button>
+        <button id="btn-project" class="btn btn-icon-only" title="Project" aria-label="Project">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5.5A1.5 1.5 0 014 4h3.3l1.4 1.5H16a1.5 1.5 0 011.5 1.5v7.5A1.5 1.5 0 0116 16H4a1.5 1.5 0 01-1.5-1.5z"/></svg>
+        </button>
         <div class="dropdown-menu" id="project-menu">
-          <button id="btn-save-json">Save Project (.json)</button>
-          <button id="btn-load-json">Load Project (.json)</button>
-          <button id="btn-export-lib">Export RA to General Library…</button>
+          <button id="btn-save-json">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3.5h9l3 3v10a1 1 0 01-1 1H4a1 1 0 01-1-1v-12a1 1 0 011-1z"/><path d="M6.5 3.5V8h6V3.5"/><path d="M6.5 17v-5.5h7V17"/></svg>
+            Save Project (.json)
+          </button>
+          <button id="btn-load-json">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13V3"/><path d="M6 7l4-4 4 4"/><path d="M4 14v2.5A1.5 1.5 0 005.5 18h9a1.5 1.5 0 001.5-1.5V14"/></svg>
+            Load Project (.json)
+          </button>
+          <button id="btn-export-lib">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5A1.5 1.5 0 015.5 3H16v14H5.5A1.5 1.5 0 004 18.5z"/><path d="M4 16.5A1.5 1.5 0 015.5 15H16"/></svg>
+            Export RA to General Library…
+          </button>
         </div>
       </div>
-      <button id="btn-reset" class="btn btn-danger-outline" title="Remove all risk items and clear all fields">Reset</button>
+      <button id="btn-reset" class="btn btn-danger-outline" title="Remove all risk items and clear all fields">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10a7 7 0 0112-4.9L17 7"/><path d="M17 3v4h-4"/><path d="M17 10a7 7 0 01-12 4.9L3 13"/><path d="M3 17v-4h4"/></svg>
+        Reset
+      </button>
       <input type="file" id="file-import-excel" accept=".xlsx,.xls,.csv" hidden>
       <input type="file" id="file-load-json" accept=".json" hidden>
     </div>
@@ -95,7 +172,9 @@
       </colgroup>
       <thead>
         <tr>
-          <th class="col-actions" rowspan="2"></th>
+          <th class="col-actions" rowspan="2">
+            <input type="checkbox" id="chk-select-all" title="Select all" aria-label="Select all rows">
+          </th>
           <th class="col-no" rowspan="2">No.</th>
           <th class="col-hazard" rowspan="2">Hazard</th>
           <th class="col-effect" rowspan="2">Effect</th>
@@ -121,9 +200,38 @@
 </main>
 
 <footer class="app-footer">
-  &copy; <span id="footer-year">2026</span> &mdash; Powered by <a class="footer-author" href="mailto:shady.abdelhady@rashpetco.com" data-email="shady.abdelhady@rashpetco.com" aria-label="Email Shady Mansour at shady.abdelhady@rashpetco.com">Shady Mansour</a> &middot; <span class="footer-title">Turbo-Machinery Engineer</span>
+  <div class="credit">
+    <span>Powered by <span class="dev-name">Shady Mansour</span> &middot; <span class="footer-title">Turbo-Machinery Engineer</span></span>
+    <span class="credit-links">
+      <a class="credit-link" href="https://github.com/shadymansour19" title="GitHub" aria-label="Shady Mansour – GitHub" target="_blank" rel="noopener noreferrer">
+        <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0020 4.77 5.07 5.07 0 0019.91 1S18.73.65 16 2.48a13.38 13.38 0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 005 4.77a5.44 5.44 0 00-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 009 18.13V22"/></svg>
+      </a>
+      <a class="credit-link" href="https://www.linkedin.com/in/shadymansour19" title="LinkedIn" aria-label="Shady Mansour – LinkedIn" target="_blank" rel="noopener noreferrer">
+        <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M16 8a6 6 0 016 6v7h-4v-7a2 2 0 00-2-2 2 2 0 00-2 2v7h-4v-7a6 6 0 016-6z"/><path d="M2 9h4v12H2z"/><path d="M4 2a2 2 0 100 4 2 2 0 000-4z"/></svg>
+      </a>
+      <a class="credit-link" href="mailto:shady.abdelhady@rashpetco.com" title="Email" aria-label="Email Shady Mansour at shady.abdelhady@rashpetco.com">
+        <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 4h16a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2z"/><path d="M22 6l-10 7L2 6"/></svg>
+      </a>
+      <a id="credit-whatsapp" class="credit-link" href="https://wa.me/201069360912?text=Good%20day%20Shady%2C%20it's%20about%20the%20Risk%20Assessment%20Builder%20app%3A%20%0A%D8%B7%D8%A7%D8%A8%20%D8%A7%D9%84%D8%AE%D9%8A%D8%B1%20%D9%8A%D8%A7%20%D8%B4%D8%A7%D8%AF%D9%8A%D8%8C%20%D8%A8%D9%83%D9%84%D9%85%D9%83%20%D8%A8%D8%AE%D8%B5%D9%88%D8%B5%20%D8%AA%D8%B7%D8%A8%D9%8A%D9%82%20Risk%20Assessment%20Builder%3A%20" title="WhatsApp" aria-label="Shady Mansour – WhatsApp" target="_blank" rel="noopener noreferrer">
+        <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"/><path d="M8.3 7.8c0 4.1 3.6 7.7 7.7 7.7l1.1-1.75-2.4-1.25-1 .9a5 5 0 01-2.4-2.4l.9-1-1.25-2.4z"/></svg>
+      </a>
+    </span>
+  </div>
 </footer>
-<script>document.getElementById('footer-year').textContent = new Date().getFullYear();</script>
+<script>
+// Time-of-day greeting for the footer's WhatsApp link, based on the
+// visitor's own local clock - no emoji, per explicit request. Arabic has no
+// distinct common "good afternoon" phrase (مساء الخير already covers
+// afternoon through evening), so it only splits morning vs. the rest.
+(function () {
+  var hour = new Date().getHours();
+  var en = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  var ar = hour < 12 ? 'صباح الخير' : 'مساء الخير';
+  var msg = en + " Shady, it's about the Risk Assessment Builder app: \n" + ar + '، يا شادي، بكلمك بخصوص تطبيق Risk Assessment Builder: ';
+  var link = document.getElementById('credit-whatsapp');
+  if (link) link.href = 'https://wa.me/201069360912?text=' + encodeURIComponent(msg);
+})();
+</script>
 
 <!-- ===== Manual add/edit item dialog ===== -->
 <dialog id="item-dialog" class="modal">
@@ -192,13 +300,23 @@
   <h3 id="export-lang-title">Export Language</h3>
   <p>Which language should the exported file contain?</p>
   <div class="lang-choice">
-    <label><input type="radio" name="export-lang" value="en"> English only</label>
-    <label><input type="radio" name="export-lang" value="ar"> Arabic only</label>
-    <label><input type="radio" name="export-lang" value="both" checked> Both (English, then Arabic below in each item)</label>
+    <label><input type="radio" name="export-lang" value="en"><span class="choice-text"><strong>English only</strong></span></label>
+    <label><input type="radio" name="export-lang" value="ar"><span class="choice-text"><strong>Arabic only</strong></span></label>
+    <label><input type="radio" name="export-lang" value="both" checked><span class="choice-text"><strong>Both</strong><small>English, then Arabic below in each item</small></span></label>
   </div>
   <div class="dialog-actions">
     <button type="button" class="btn" id="btn-export-lang-cancel">Cancel</button>
     <button type="button" class="btn btn-primary" id="btn-export-lang-go">Export</button>
+  </div>
+</dialog>
+
+<!-- ===== Generic confirmation dialog (replaces native confirm()) ===== -->
+<dialog id="confirm-dialog" class="modal">
+  <h3 id="confirm-dialog-title">Confirm</h3>
+  <p id="confirm-dialog-message" style="white-space: pre-line;"></p>
+  <div class="dialog-actions">
+    <button type="button" class="btn" id="btn-confirm-cancel">Cancel</button>
+    <button type="button" class="btn btn-danger-outline" id="btn-confirm-ok">Confirm</button>
   </div>
 </dialog>
 
@@ -207,8 +325,8 @@
   <h3>Auto-translate to Arabic</h3>
   <p id="translate-mode-summary"></p>
   <div class="lang-choice">
-    <label><input type="radio" name="translate-mode" value="empty" checked> <span>Empty only - skip fields that already have Arabic</span></label>
-    <label><input type="radio" name="translate-mode" value="all"> <span>All - re-translate and overwrite existing Arabic</span></label>
+    <label><input type="radio" name="translate-mode" value="empty" checked><span class="choice-text"><strong>Empty only</strong><small>Skip fields that already have Arabic</small></span></label>
+    <label><input type="radio" name="translate-mode" value="all"><span class="choice-text"><strong>All</strong><small>Re-translate and overwrite existing Arabic</small></span></label>
   </div>
   <div class="dialog-actions">
     <button type="button" class="btn" id="btn-translate-mode-cancel">Cancel</button>
@@ -261,6 +379,8 @@
 <script src="js/excelImport.js"></script>
 <script src="js/exportPdf.js"></script>
 <script src="js/exportWord.js"></script>
+<script src="js/autoDetect.js"></script>
+<script src="js/datePicker.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

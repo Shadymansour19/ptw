@@ -92,6 +92,13 @@ const Store = {
   },
 
   deleteItem(id) {
+    const item = this.project.items.find((i) => i.id === id);
+    // If the user deletes an item auto-detect added, remember it so it
+    // doesn't silently come back while the title still matches its keyword.
+    if (item && item.autoAdded) {
+      if (!this.project.autoDismissed) this.project.autoDismissed = [];
+      this.project.autoDismissed.push(riskItemKey(item));
+    }
     this.project.items = this.project.items.filter((i) => i.id !== id);
     this.save();
   },
