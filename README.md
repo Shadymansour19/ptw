@@ -24,6 +24,12 @@ A desktop-based **Permit To Work (PTW)** management system built for industrial 
 **New PTW Form:**
 ![New PTW](screenshots/new-ptw.png)
 
+**IC (Isolation Certificate) List:**
+![IC List](screenshots/ic-list.png)
+
+**New IC Form:**
+![New IC](screenshots/new-ic.png)
+
 **Server Logs:**
 ![Server Logs](screenshots/server-logs.png)
 
